@@ -1,0 +1,70 @@
+name: vote-machine
+
+services:
+  postgres:
+    image: postgres:18.3-bookworm
+    environment:
+      POSTGRES_USER: vote_machine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vote_machine_local}
+      POSTGRES_DB: vote_machine
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U vote_machine -d vote_machine']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
+      API_PORT: '8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          curl,
+          --fail,
+          --silent,
+          --max-time,
+          '4',
+          'http://localhost:8080/health/ready',
+        ]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 20
+    init: true
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      API_ORIGIN: http://api:8080
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    init: true
+
+volumes:
+  postgres_data:
