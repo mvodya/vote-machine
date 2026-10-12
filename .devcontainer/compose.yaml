@@ -6,6 +6,9 @@ services:
       target: dev
     command: sleep infinity
     init: true
+    ports:
+      - '127.0.0.1:${WORKSPACE_WEB_PORT:-3001}:3000'
+      - '127.0.0.1:${WORKSPACE_API_PORT:-8081}:8080'
     volumes:
       - .:/workspace
       - api_build:/workspace/build/api
