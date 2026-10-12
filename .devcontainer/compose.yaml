@@ -1,0 +1,27 @@
+services:
+  workspace:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    command: sleep infinity
+    init: true
+    volumes:
+      - .:/workspace
+      - api_build:/workspace/build/api
+      - workspace_modules:/workspace/node_modules
+      - web_modules:/workspace/apps/web/node_modules
+      - web_next:/workspace/apps/web/.next
+    environment:
+      DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
+      API_ORIGIN: http://127.0.0.1:8080
+      NEXT_TELEMETRY_DISABLED: '1'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  api_build:
+  workspace_modules:
+  web_modules:
+  web_next:
