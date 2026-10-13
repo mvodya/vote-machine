@@ -1,0 +1,16 @@
+{
+  "name": "vote-machine",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "test": "pnpm --filter @vote-machine/web test",
+    "typecheck": "pnpm --filter @vote-machine/web typecheck",
+    "build": "pnpm --filter @vote-machine/web build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:e2e": "pnpm --filter @vote-machine/web test:e2e"
+  },
+  "devDependencies": {
+    "prettier": "3.8.1"
+  }
+}

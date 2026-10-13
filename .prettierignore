@@ -1,0 +1,8 @@
+ToR.md
+pnpm-lock.yaml
+.next
+node_modules
+build
+coverage
+playwright-report
+test-results
