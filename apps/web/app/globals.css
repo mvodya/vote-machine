@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-page: #f6f7f1;
+  --color-ink: #183e35;
+  --color-border: #dce1d6;
+  --color-success-ink: #245442;
+  --color-success-bg: #e7f1dc;
+  --color-error-ink: #852b24;
+  --color-error-bg: #fce9e1;
+  --font-sans: Arial, Helvetica, sans-serif;
+}
