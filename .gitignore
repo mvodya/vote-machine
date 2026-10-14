@@ -12,6 +12,7 @@ coverage/
 *.tsbuildinfo
 .turbo/
 .pnpm-store/
+.cache/
 
 # Local configuration and secrets
 .env
