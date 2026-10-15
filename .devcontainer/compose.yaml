@@ -12,6 +12,7 @@ services:
     volumes:
       - .:/workspace
       - api_build:/workspace/build/api
+      - api_sanitize_build:/workspace/build/api-sanitize
       - workspace_modules:/workspace/node_modules
       - web_modules:/workspace/apps/web/node_modules
       - web_next:/workspace/apps/web/.next
@@ -25,6 +26,7 @@ services:
 
 volumes:
   api_build:
+  api_sanitize_build:
   workspace_modules:
   web_modules:
   web_next:

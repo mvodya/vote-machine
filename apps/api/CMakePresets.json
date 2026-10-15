@@ -16,12 +16,25 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "BUILD_TESTING": "ON"
       }
+    },
+    {
+      "name": "sanitize",
+      "inherits": "dev",
+      "displayName": "Vote Machine API (ASan + UBSan)",
+      "binaryDir": "${sourceDir}/../../build/api-sanitize",
+      "cacheVariables": {
+        "VOTE_MACHINE_SANITIZERS": "ON"
+      }
     }
   ],
   "buildPresets": [
     {
       "name": "dev",
       "configurePreset": "dev"
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize"
     }
   ],
   "testPresets": [
@@ -30,6 +43,17 @@
       "configurePreset": "dev",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
       }
     }
   ]
