@@ -1,6 +1,16 @@
 packages:
   - apps/web
 
+verifyDepsBeforeRun: error
+engineStrict: true
+saveExact: true
+fetchTimeout: 600000
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: false
+
 minimumReleaseAgeExclude:
   - next@16.4.3
   - '@next/env@16.4.3'
@@ -12,7 +22,5 @@ minimumReleaseAgeExclude:
   - '@next/swc-linux-x64-musl@16.4.3'
   - '@next/swc-win32-arm64-msvc@16.4.3'
   - '@next/swc-win32-x64-msvc@16.4.3'
-
-onlyBuiltDependencies:
-  - esbuild
-  - sharp
+  - '@next/eslint-plugin-next@16.4.3'
+  - eslint-config-next@16.4.3

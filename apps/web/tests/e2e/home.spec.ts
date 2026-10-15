@@ -27,3 +27,20 @@ test('failure can be retried', async ({page}) => {
   await page.getByRole('button', {name: 'Проверить снова'}).click();
   await expect(page.getByRole('heading', {name: 'Hello world'})).toBeVisible();
 });
+
+test('reload sends a fresh API request', async ({page}) => {
+  for (const open of [() => page.goto('/'), () => page.reload()]) {
+    const reply = page.waitForResponse('**/api/hello');
+    await open();
+    const response = await reply;
+    expect(response.status()).toBe(200);
+    expect(response.headers()['cache-control']).toContain('no-store');
+    expect(await response.json()).toEqual({
+      message: 'Hello world',
+      database: 'connected',
+    });
+    await expect(
+      page.getByRole('heading', {name: 'Hello world'}),
+    ).toBeVisible();
+  }
+});

@@ -16,6 +16,8 @@ function compose(...args) {
 
 async function hello(status) {
   const response = await fetch(`${baseUrl}/api/hello`, {
+    // Docker commands block the event loop while idle sockets can close
+    headers: {Connection: 'close'},
     signal: AbortSignal.timeout(10000),
   });
   assert.equal(response.status, status);
@@ -106,6 +108,25 @@ try {
   compose('start', 'api');
 }
 await waitForReady();
+compose('stop', 'api');
+const apiContainer = compose('ps', '--all', '--quiet', 'api');
+assert.equal(
+  execFileSync(
+    'docker',
+    ['inspect', '--format', '{{.State.ExitCode}}', apiContainer],
+    {
+      encoding: 'utf8',
+      timeout: 10000,
+    },
+  ).trim(),
+  '0',
+);
+const apiLogs = compose('logs', '--no-color', 'api');
+assert.doesNotMatch(apiLogs, /creating path .*Permission denied/);
+assert.doesNotMatch(
+  apiLogs,
+  /ERROR: (AddressSanitizer|LeakSanitizer)|SUMMARY: (AddressSanitizer|UndefinedBehaviorSanitizer)|runtime error:/,
+);
 console.log(
   'Stack checks passed: real DB, no-cache, failures, recovery, persistence',
 );
