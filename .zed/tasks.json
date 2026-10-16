@@ -1,0 +1,29 @@
+[
+  {
+    "label": "Web: dev server",
+    "command": "pnpm dev:web",
+    "use_new_terminal": true,
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "API: rebuild and restart on changes",
+    "command": "pnpm dev:api",
+    "use_new_terminal": true,
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "Web: quality checks",
+    "command": "pnpm check:web",
+    "use_new_terminal": true
+  },
+  {
+    "label": "API: quality checks",
+    "command": "pnpm format:cpp:check && pnpm lint:cpp && cd apps/api && ctest --preset dev",
+    "use_new_terminal": true
+  },
+  {
+    "label": "API: sanitizer tests",
+    "command": "cd apps/api && cmake --preset sanitize && cmake --build --preset sanitize --parallel 2 && ctest --preset sanitize",
+    "use_new_terminal": true
+  }
+]
