@@ -8,7 +8,11 @@ function config(files) {
   return JSON.parse(
     execFileSync('docker', ['compose', ...args, 'config', '--format', 'json'], {
       encoding: 'utf8',
-      env: {...process.env, WORKSPACE_DB_PORT: '15432'},
+      env: {
+        ...process.env,
+        WORKSPACE_DB_PORT: '15432',
+        ADMIN_LINK_KEY: '1'.repeat(64),
+      },
       timeout: 10000,
     }),
   );

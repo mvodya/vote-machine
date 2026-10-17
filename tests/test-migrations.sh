@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+# Use a disposable encryption key only for the isolated test stack
+export ADMIN_LINK_KEY=1111111111111111111111111111111111111111111111111111111111111111
 cd "$(dirname "$0")/.."
 export COMPOSE_PROJECT_NAME="vote-machine-migrations-check-$$"
 fixture_dir=$(mktemp -d)
@@ -63,5 +65,5 @@ test "$(docker inspect --format '{{.State.ExitCode}}' "$migration_id")" -ne 0
 # The normal image should recover without failed schema changes
 compose up -d --no-build --wait --wait-timeout 90 api
 compose exec -T api curl --fail --silent http://localhost:8080/health/ready
-compose exec -T postgres psql -U vote_machine -d vote_machine -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF (SELECT count(*) FROM schema_migrations) <> 2 OR to_regclass('public.failed_release') IS NOT NULL THEN RAISE EXCEPTION 'Bad migration state'; END IF; END \$\$;"
+compose exec -T postgres psql -U vote_machine -d vote_machine -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF (SELECT count(*) FROM schema_migrations) <> $(find db/migrations -name '*.mjs' | wc -l | tr -d ' ') OR to_regclass('public.failed_release') IS NOT NULL THEN RAISE EXCEPTION 'Bad migration state'; END IF; END \$\$;"
 echo 'Migration checks passed: schema, upgrade, rollback, locks and startup gate'

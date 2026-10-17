@@ -25,6 +25,7 @@ endif()
 
 # Find libraries
 find_package(Drogon CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
 include(CTest)
 if(BUILD_TESTING)
   find_package(GTest CONFIG REQUIRED)
@@ -36,10 +37,14 @@ target_include_directories(vote_machine_config PUBLIC src)
 target_link_libraries(vote_machine_config PUBLIC vote_machine_options)
 
 # API
-add_executable(vote_machine_api src/main.cpp)
+add_library(vote_machine_access src/access.cpp)
+target_include_directories(vote_machine_access PUBLIC src)
+target_link_libraries(vote_machine_access PUBLIC vote_machine_options OpenSSL::Crypto)
+
+add_executable(vote_machine_api src/main.cpp src/rooms.cpp)
 target_link_libraries(
   vote_machine_api
-  PRIVATE vote_machine_config Drogon::Drogon
+  PRIVATE vote_machine_config vote_machine_access Drogon::Drogon
 )
 
 # Testing
@@ -50,4 +55,7 @@ if(BUILD_TESTING)
     PRIVATE vote_machine_config GTest::gtest_main
   )
   add_test(NAME config_test COMMAND config_test)
+  add_executable(access_test tests/access_test.cpp)
+  target_link_libraries(access_test PRIVATE vote_machine_access GTest::gtest_main)
+  add_test(NAME access_test COMMAND access_test)
 endif()

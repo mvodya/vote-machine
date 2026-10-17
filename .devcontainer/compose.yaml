@@ -23,6 +23,7 @@ services:
       - web_next:/workspace/apps/web/.next
     environment:
       DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
+      ADMIN_LINK_KEY: ${ADMIN_LINK_KEY:?Set ADMIN_LINK_KEY in .env}
       API_ORIGIN: http://127.0.0.1:8080
       NEXT_TELEMETRY_DISABLED: '1'
     depends_on:

@@ -90,10 +90,82 @@ assert.equal(
     '-d',
     'vote_machine',
     '-Atc',
-    "SELECT to_regclass('public.rooms') IS NOT NULL AND to_regclass('public.room_admin_credentials') IS NOT NULL",
+    "SELECT to_regclass('public.rooms') IS NOT NULL AND to_regclass('public.room_admin_credentials') IS NULL AND to_regclass('public.room_admin_sessions') IS NOT NULL",
   ),
   't',
 );
+
+// Readiness must reject a schema that does not match the running API
+compose(
+  'exec',
+  '-T',
+  'postgres',
+  'psql',
+  '-U',
+  'vote_machine',
+  '-d',
+  'vote_machine',
+  '-v',
+  'ON_ERROR_STOP=1',
+  '-c',
+  'ALTER FUNCTION vm_create_room(text, bytea, bytea) RENAME TO schema_probe',
+);
+try {
+  assert.equal(apiStatus('/health/ready'), '503');
+} finally {
+  compose(
+    'exec',
+    '-T',
+    'postgres',
+    'psql',
+    '-U',
+    'vote_machine',
+    '-d',
+    'vote_machine',
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    'ALTER FUNCTION schema_probe(text, bytea, bytea) RENAME TO vm_create_room',
+  );
+}
+assert.equal(apiStatus('/health/ready'), '200');
+
+// Keep an admin session across service and database restarts
+const created = await fetch(`${baseUrl}/api/rooms`, {
+  method: 'POST',
+  headers: {
+    Origin: new URL(baseUrl).origin,
+    'Content-Type': 'application/json',
+    Connection: 'close',
+  },
+  body: JSON.stringify({name: 'Persistent room'}),
+});
+assert.equal(created.status, 201);
+const {room, adminToken} = await created.json();
+const exchanged = await fetch(`${baseUrl}/api/rooms/${room.id}/session`, {
+  method: 'POST',
+  headers: {
+    Origin: new URL(baseUrl).origin,
+    'Content-Type': 'application/json',
+    Connection: 'close',
+  },
+  body: JSON.stringify({token: adminToken}),
+});
+assert.equal(exchanged.status, 200);
+const adminCookie = exchanged.headers.get('set-cookie').split(';')[0];
+
+// A restored API must use the same shared database session
+async function adminRoom(status) {
+  const response = await fetch(`${baseUrl}/api/rooms/${room.id}`, {
+    headers: {Cookie: adminCookie, Connection: 'close'},
+    signal: AbortSignal.timeout(15000),
+  });
+  assert.equal(response.status, status);
+  assert.match(response.headers.get('cache-control'), /no-store/);
+  const body = await response.json();
+  if (status === 200) assert.deepEqual(body, {room});
+}
+await adminRoom(200);
 
 // Save a value to check after the database restarts
 compose(
@@ -115,12 +187,14 @@ compose(
 try {
   compose('stop', 'postgres');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
+  await adminRoom(503);
   assert.equal(apiStatus('/health/live'), '200');
   assert.equal(apiStatus('/health/ready'), '503');
 } finally {
   compose('start', 'postgres');
 }
 await waitForReady();
+await adminRoom(200);
 assert.equal(
   compose(
     'exec',
@@ -141,10 +215,12 @@ assert.equal(
 try {
   compose('stop', 'api');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
+  await adminRoom(503);
 } finally {
   compose('start', 'api');
 }
 await waitForReady();
+await adminRoom(200);
 // Check a clean exit and look for runtime errors
 compose('stop', 'api');
 assert.equal(exitCode('api'), '0');

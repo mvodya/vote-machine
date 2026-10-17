@@ -8,6 +8,7 @@
 namespace vote_machine {
 namespace {
 
+// Use the default port when it is not set
 TEST(ParseConfigTest, UsesDefaultPort) {
   const auto config = ParseConfig("postgresql://db/test", "");
 
@@ -15,6 +16,7 @@ TEST(ParseConfigTest, UsesDefaultPort) {
   EXPECT_EQ(config.database_url, "postgresql://db/test");
 }
 
+// Check the allowed port range
 TEST(ParseConfigTest, AcceptsValidPorts) {
   for (const std::string port : {"1", "65535", "3000"}) {
     SCOPED_TRACE(port);
@@ -23,6 +25,7 @@ TEST(ParseConfigTest, AcceptsValidPorts) {
   }
 }
 
+// Reject values that are not whole valid ports
 TEST(ParseConfigTest, RejectsInvalidPorts) {
   for (const std::string port :
        {"0", "65536", "-1", "80abc", " 80", "1.5", "999999999999999999999"}) {
@@ -33,6 +36,7 @@ TEST(ParseConfigTest, RejectsInvalidPorts) {
   }
 }
 
+// Fail before startup when the database address is missing
 TEST(ParseConfigTest, RequiresDatabaseUrl) {
   EXPECT_THROW(ParseConfig("", "8080"), std::invalid_argument);
 }

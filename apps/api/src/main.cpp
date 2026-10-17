@@ -7,18 +7,19 @@
 #include <string_view>
 
 #include "config.hpp"
+#include "rooms.hpp"
 
 namespace {
 
 using Reply = std::function<void(const drogon::HttpResponsePtr&)>;
 
-// Reading enviroment variable
+// Read a setting without changing the environment
 std::string_view ReadEnv(const char* name) {
   const char* value = std::getenv(name);
   return value == nullptr ? "" : value;
 }
 
-// JSON response
+// Send JSON without caching
 drogon::HttpResponsePtr JsonReply(
     const Json::Value& body, drogon::HttpStatusCode status = drogon::k200OK) {
   auto response = drogon::HttpResponse::newHttpJsonResponse(body);
@@ -27,18 +28,26 @@ drogon::HttpResponsePtr JsonReply(
   return response;
 }
 
-// Check DB status and send response
+// Check the database and required schema
 void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
                    bool hello) {
   database->execSqlAsync(
-      "SELECT $1::text AS message",
+      hello ? "SELECT $1::text AS message"
+            : "SELECT $1::text AS message, "
+              "to_regprocedure('public.vm_create_room(text,bytea,bytea)') IS "
+              "NOT NULL AS schema_ready",
       [reply, hello](const drogon::orm::Result& result) {
         Json::Value body;
+        // The hello route returns the database reply
         if (hello) {
           body["message"] = result[0]["message"].as<std::string>();
           body["database"] = "connected";
-        } else {
+        } else if (result[0]["schema_ready"].as<bool>()) {
           body["status"] = "ready";
+        } else {
+          body["error"] = "Database schema is unavailable";
+          reply(JsonReply(body, drogon::k503ServiceUnavailable));
+          return;
         }
         reply(JsonReply(body));
       },
@@ -52,6 +61,7 @@ void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
 
 }  // namespace
 
+// Set up the server and close database connections on exit
 int main() {
   try {
     // Read config
@@ -61,7 +71,7 @@ int main() {
     auto database = drogon::orm::DbClient::newPgClient(config.database_url, 2);
     database->setTimeout(3.0);
 
-    // Register handlers
+    // Keep process health separate from database health
     drogon::app().registerHandler(
         "/health/live",
         [](const drogon::HttpRequestPtr&, Reply&& reply) {
@@ -83,10 +93,15 @@ int main() {
         },
         {drogon::Get});
 
+    // Load the link key from the environment
+    vote_machine::RegisterRoomHandlers(database,
+                                       std::string(ReadEnv("ADMIN_LINK_KEY")));
+
     // Run app
     drogon::app()
         .setLogLevel(trantor::Logger::kWarn)
         .setThreadNum(2)
+        .setClientMaxBodySize(4096)
         .addListener("0.0.0.0", config.port)
         .run();
 

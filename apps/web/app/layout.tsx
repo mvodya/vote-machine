@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   description: 'Система голосования',
 };
 
+// Set the page language and shared styles
 export default function RootLayout({children}: {children: ReactNode}) {
   return (
     <html lang="ru">

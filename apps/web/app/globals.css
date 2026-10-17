@@ -2,7 +2,10 @@
 
 @theme {
   --color-page: #f6f7f1;
+  --color-surface: #fbfcf8;
+  --color-accent: #e9eedf;
   --color-ink: #183e35;
+  --color-muted: #718073;
   --color-border: #dce1d6;
   --color-success-ink: #245442;
   --color-success-bg: #e7f1dc;

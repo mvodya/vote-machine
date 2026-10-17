@@ -2,6 +2,7 @@ import {isHello} from '../../../lib/hello';
 
 export const dynamic = 'force-dynamic';
 
+// Read the hello reply from the API
 export async function GET() {
   const origin = process.env.API_ORIGIN ?? 'http://api:8080';
   const headers = {'Cache-Control': 'no-store'};
@@ -10,6 +11,7 @@ export async function GET() {
       cache: 'no-store',
       signal: AbortSignal.timeout(5000),
     });
+    // Hide API and database errors
     if (!upstream.ok) {
       return Response.json(
         {error: 'Service is unavailable'},
@@ -17,6 +19,7 @@ export async function GET() {
       );
     }
     const body: unknown = await upstream.json();
+    // Do not pass bad reply data to the page
     if (!isHello(body)) {
       return Response.json(
         {error: 'Invalid service response'},
