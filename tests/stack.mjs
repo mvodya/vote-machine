@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 
+// Use only the test project
 const project = process.env.COMPOSE_PROJECT_NAME;
 assert.match(project ?? '', /^vote-machine-check-[0-9]+$/);
 const baseUrl = process.env.TEST_BASE_URL;
 assert.ok(baseUrl);
 
+// Run Docker commands for the test stack
 function compose(...args) {
   return execFileSync('docker', ['compose', '-p', project, ...args], {
     encoding: 'utf8',
@@ -14,6 +16,7 @@ function compose(...args) {
   }).trim();
 }
 
+// Check the web reply and its cache header
 async function hello(status) {
   const response = await fetch(`${baseUrl}/api/hello`, {
     // Docker commands block the event loop while idle sockets can close
@@ -25,6 +28,7 @@ async function hello(status) {
   return response.json();
 }
 
+// Read the HTTP status from inside the API container
 function apiStatus(path) {
   return compose(
     'exec',
@@ -42,6 +46,7 @@ function apiStatus(path) {
   );
 }
 
+// Wait for the API and database to recover
 async function waitForReady() {
   for (let attempt = 0; attempt < 30; attempt++) {
     try {
@@ -61,6 +66,7 @@ assert.deepEqual(await hello(200), {
 assert.equal(apiStatus('/health/live'), '200');
 assert.equal(apiStatus('/health/ready'), '200');
 
+// Save a value to check after the database restarts
 compose(
   'exec',
   '-T',
@@ -76,6 +82,7 @@ compose(
   "CREATE TABLE stage1_probe (value text); INSERT INTO stage1_probe VALUES ('kept')",
 );
 
+// Check the error reply while the database is down
 try {
   compose('stop', 'postgres');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
@@ -101,6 +108,7 @@ assert.equal(
   'kept',
 );
 
+// Check the error reply while the API is down
 try {
   compose('stop', 'api');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
@@ -108,6 +116,7 @@ try {
   compose('start', 'api');
 }
 await waitForReady();
+// Check a clean exit and look for runtime errors
 compose('stop', 'api');
 const apiContainer = compose('ps', '--all', '--quiet', 'api');
 assert.equal(

@@ -1,3 +1,4 @@
+# Use the API image with ASan and UBSan
 services:
   api:
     build:

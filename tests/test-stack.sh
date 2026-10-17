@@ -1,11 +1,14 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+# Keep test containers separate from the working stack
 export COMPOSE_PROJECT_NAME="vote-machine-check-$$"
 export WEB_PORT="${TEST_WEB_PORT:-3100}"
 export TEST_BASE_URL="http://127.0.0.1:$WEB_PORT"
+# Remove only this test stack and its data
 cleanup() {
   status=$?
+  # Show logs when a check fails
   if [ "$status" -ne 0 ]; then
     docker compose -p "$COMPOSE_PROJECT_NAME" logs --no-color
   fi

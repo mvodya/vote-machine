@@ -12,6 +12,7 @@ const script = fileURLToPath(
   new URL('../scripts/dev-api.mjs', import.meta.url),
 );
 
+// Wait for a result and show logs on timeout
 async function waitFor(check, output) {
   for (let attempt = 0; attempt < 150; attempt++) {
     if (await check()) return;
@@ -24,6 +25,7 @@ test(
   'API watcher rebuilds, recovers from failures and stops its child',
   {timeout: 60000},
   async () => {
+    // Build a small app outside the project
     const directory = await mkdtemp(join(tmpdir(), 'vote-machine-watch-'));
     const api = join(directory, 'apps/api');
     await mkdir(api, {recursive: true});
@@ -69,11 +71,13 @@ int main() {
     });
     const exited = once(watcher, 'exit');
     let pid;
+    // Check that the expected app is still running
     async function running(version) {
       try {
         const [actual, processId] = (
           await readFile(join(directory, 'runtime.txt'), 'utf8')
         ).split(' ');
+        // Ignore a result left by an older process
         if (actual !== version) return false;
         process.kill(Number(processId), 0);
         pid = Number(processId);
@@ -82,11 +86,13 @@ int main() {
         return false;
       }
     }
+    // Check that the old process is gone
     function stopped(processId) {
       try {
         process.kill(processId, 0);
         return false;
       } catch (error) {
+        // A missing process means it has stopped
         if (error.code === 'ESRCH') return true;
         throw error;
       }
@@ -96,6 +102,7 @@ int main() {
         () => running('first'),
         () => output,
       );
+      // An edit should replace the old app
       const firstPid = pid;
       await writeFile(value, '#define VALUE "second"\n');
       await waitFor(
@@ -104,6 +111,7 @@ int main() {
       );
       assert.ok(stopped(firstPid));
       const secondPid = pid;
+      // A failed build should stop the old app
       await writeFile(value, 'invalid C++\n');
       await waitFor(
         () => output.includes('API build failed'),
@@ -117,6 +125,7 @@ int main() {
       );
       const recoveredPid = pid;
       output = '';
+      // Check recovery after a file is removed and added
       await rm(value);
       await waitFor(
         () => output.includes('API build failed'),
@@ -129,6 +138,7 @@ int main() {
         () => output,
       );
       output = '';
+      // Check recovery after a CMake error
       await writeFile(join(api, 'CMakeLists.txt'), 'invalid cmake syntax (\n');
       await waitFor(
         () => output.includes('API build failed'),
@@ -139,6 +149,7 @@ int main() {
         () => running('added'),
         () => output,
       );
+      // Stop the watcher while CMake is still running
       const apiPid = pid;
       await writeFile(
         join(api, 'CMakeLists.txt'),
@@ -168,6 +179,7 @@ int main() {
         () => output,
       );
     } finally {
+      // Stop the watcher even if a check fails
       if (watcher.exitCode === null && watcher.signalCode === null) {
         watcher.kill('SIGTERM');
         await exited;
