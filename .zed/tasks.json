@@ -25,5 +25,11 @@
     "label": "API: sanitizer tests",
     "command": "cd apps/api && cmake --preset sanitize && cmake --build --preset sanitize --parallel 2 && ctest --preset sanitize",
     "use_new_terminal": true
+  },
+  {
+    "label": "Database: apply migrations",
+    "command": "pnpm db:migrate",
+    "use_new_terminal": true,
+    "allow_concurrent_runs": false
   }
 ]

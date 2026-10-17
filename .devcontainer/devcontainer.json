@@ -2,7 +2,7 @@
   "name": "Vote Machine",
   "dockerComposeFile": ["../compose.yaml", "compose.yaml"],
   "service": "workspace",
-  "runServices": ["workspace", "postgres"],
+  "runServices": ["workspace", "postgres", "migrate"],
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
   "postCreateCommand": "pnpm install --frozen-lockfile",

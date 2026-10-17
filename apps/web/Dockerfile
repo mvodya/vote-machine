@@ -4,6 +4,7 @@ RUN npm install --global pnpm@11.25.0 --registry=https://registry.npmjs.org
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/package.json apps/web/package.json
+COPY db/package.json db/package.json
 RUN --mount=type=cache,id=vote-machine-pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --store-dir=/pnpm/store
 

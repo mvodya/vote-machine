@@ -1,0 +1,14 @@
+{
+  "name": "@vote-machine/db",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate": "node migrate.mjs",
+    "test": "node --test tests/migrate.test.mjs",
+    "rollback": "node migrate.mjs down"
+  },
+  "dependencies": {
+    "node-pg-migrate": "9.0.0",
+    "pg": "8.23.1"
+  }
+}

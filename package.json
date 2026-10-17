@@ -16,7 +16,10 @@
     "format:cpp": "sh scripts/format-cpp.sh --write",
     "format:cpp:check": "sh scripts/format-cpp.sh --check",
     "lint:cpp": "sh scripts/lint-cpp.sh",
-    "test:tools": "node --test tests/dev-api.test.mjs"
+    "test:tools": "node --test tests/dev-api.test.mjs",
+    "db:migrate": "pnpm --filter @vote-machine/db migrate",
+    "test:db": "sh tests/test-migrations.sh",
+    "db:rollback": "pnpm --filter @vote-machine/db rollback"
   },
   "devDependencies": {
     "prettier": "3.8.1"

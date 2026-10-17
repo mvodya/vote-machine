@@ -3,6 +3,7 @@ name: vote-machine
 services:
   postgres:
     image: postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba
+    command: [postgres, -c, timezone=UTC]
     environment:
       POSTGRES_USER: vote_machine
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vote_machine_local}
@@ -15,6 +16,17 @@ services:
       timeout: 3s
       retries: 30
 
+  migrate:
+    build:
+      context: .
+      dockerfile: db/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    init: true
+
   api:
     build:
       context: .
@@ -25,6 +37,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [

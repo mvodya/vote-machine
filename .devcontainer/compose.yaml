@@ -1,4 +1,8 @@
 services:
+  postgres:
+    ports:
+      - '127.0.0.1:${WORKSPACE_DB_PORT:-5432}:5432'
+
   workspace:
     build:
       context: .
@@ -15,6 +19,7 @@ services:
       - api_sanitize_build:/workspace/build/api-sanitize
       - workspace_modules:/workspace/node_modules
       - web_modules:/workspace/apps/web/node_modules
+      - db_modules:/workspace/db/node_modules
       - web_next:/workspace/apps/web/.next
     environment:
       DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
@@ -23,10 +28,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   api_build:
   api_sanitize_build:
   workspace_modules:
   web_modules:
+  db_modules:
   web_next:

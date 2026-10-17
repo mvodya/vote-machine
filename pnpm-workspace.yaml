@@ -1,7 +1,10 @@
 packages:
   - apps/web
+  - db
 
 verifyDepsBeforeRun: error
+# Keep package links inside the project
+enableGlobalVirtualStore: false
 engineStrict: true
 saveExact: true
 fetchTimeout: 600000

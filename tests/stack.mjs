@@ -46,6 +46,19 @@ function apiStatus(path) {
   );
 }
 
+// Read the exit code of a stopped service
+function exitCode(service) {
+  const container = compose('ps', '--all', '--quiet', service);
+  return execFileSync(
+    'docker',
+    ['inspect', '--format', '{{.State.ExitCode}}', container],
+    {
+      encoding: 'utf8',
+      timeout: 10000,
+    },
+  ).trim();
+}
+
 // Wait for the API and database to recover
 async function waitForReady() {
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -65,6 +78,22 @@ assert.deepEqual(await hello(200), {
 });
 assert.equal(apiStatus('/health/live'), '200');
 assert.equal(apiStatus('/health/ready'), '200');
+assert.equal(exitCode('migrate'), '0');
+assert.equal(
+  compose(
+    'exec',
+    '-T',
+    'postgres',
+    'psql',
+    '-U',
+    'vote_machine',
+    '-d',
+    'vote_machine',
+    '-Atc',
+    "SELECT to_regclass('public.rooms') IS NOT NULL AND to_regclass('public.room_admin_credentials') IS NOT NULL",
+  ),
+  't',
+);
 
 // Save a value to check after the database restarts
 compose(
@@ -118,18 +147,7 @@ try {
 await waitForReady();
 // Check a clean exit and look for runtime errors
 compose('stop', 'api');
-const apiContainer = compose('ps', '--all', '--quiet', 'api');
-assert.equal(
-  execFileSync(
-    'docker',
-    ['inspect', '--format', '{{.State.ExitCode}}', apiContainer],
-    {
-      encoding: 'utf8',
-      timeout: 10000,
-    },
-  ).trim(),
-  '0',
-);
+assert.equal(exitCode('api'), '0');
 const apiLogs = compose('logs', '--no-color', 'api');
 assert.doesNotMatch(apiLogs, /creating path .*Permission denied/);
 assert.doesNotMatch(
