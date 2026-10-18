@@ -108,7 +108,7 @@ test('empty database, repeat run and upgrade keep existing room data', async () 
       const {room} = await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1792886400010-upgrade',
+        '1792972800010-upgrade',
         'ALTER TABLE rooms ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       assert.equal((await runMigrations({databaseUrl, dir})).length, 1);
@@ -212,12 +212,12 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1792886400010-probe',
+        '1792972800010-probe',
         'CREATE TABLE migration_probe (id integer); INSERT INTO migration_probe VALUES (1);',
       );
       await addMigration(
         dir,
-        '1792886400011-failure',
+        '1792972800011-failure',
         "UPDATE rooms SET name = 'lost'; SELECT 1 / 0;",
       );
       await assert.rejects(runMigrations({databaseUrl, dir}));
@@ -237,7 +237,7 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       // Only failed migrations may be fixed in place
       await addMigration(
         dir,
-        '1792886400011-failure',
+        '1792972800011-failure',
         'ALTER TABLE migration_probe ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       // A new container must load the fixed file again
@@ -372,7 +372,7 @@ test('dates keep their instant across time zones and migration sessions use UTC'
     await withMigrations(async (dir) => {
       await addMigration(
         dir,
-        '1792886400010-time-zone',
+        '1792972800010-time-zone',
         "CREATE TABLE migration_zone AS SELECT current_setting('TimeZone') AS zone;",
       );
       await runMigrations({databaseUrl, dir});
@@ -395,15 +395,35 @@ test('each project migration has explicit up and down steps', async () => {
   }
 });
 
-test('manual rollback removes the schema and up can apply it again', async () => {
+test('latest rollback keeps rooms and full rollback removes the schema', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
-    await adminRoom(client, 'kept');
+    const {room, session} = await adminRoom(client, 'kept');
     const result = await execFileAsync(process.execPath, [script, 'down'], {
       env: {...process.env, DATABASE_URL: databaseUrl},
     });
     assert.equal(result.stdout.trim(), 'Reverted 1 migrations');
-    assert.equal(await migrationCount(client), 0);
+    assert.equal(await migrationCount(client), total - 1);
+    assert.equal(
+      (await client.query("SELECT to_regclass('public.voting_links') AS name"))
+        .rows[0].name,
+      null,
+    );
+    assert.equal(
+      (
+        await client.query('SELECT * FROM vm_admin_room($1,$2)', [
+          room.id,
+          hash(session),
+        ])
+      ).rowCount,
+      1,
+    );
+    assert.equal((await runMigrations({databaseUrl})).length, 1);
+    assert.equal(
+      (await runMigrations({databaseUrl, direction: 'down', count: total}))
+        .length,
+      total,
+    );
     assert.equal(
       (await client.query("SELECT to_regclass('public.rooms') AS name")).rows[0]
         .name,
@@ -698,5 +718,347 @@ test('room triggers notify after commit and never publish secrets or rolled back
     } finally {
       await listener.end();
     }
+  });
+});
+
+// Make unique keys while leaving cipher checks to API tests
+function linkItem(name = 'Respondent', mode = 'personal') {
+  const key = randomBytes(32).toString('hex');
+  return {
+    key,
+    name,
+    mode,
+    hash: hash(key).toString('hex'),
+    cipher: Buffer.alloc(92).toString('hex'),
+  };
+}
+// Add a whole batch through the database access function
+async function addLinks(client, admin, items) {
+  return (
+    await client.query('SELECT * FROM vm_add_voting_links($1,$2,$3)', [
+      admin.room.id,
+      hash(admin.session),
+      JSON.stringify(items),
+    ])
+  ).rows;
+}
+// Change a link through the same locked path used by the API
+async function editLink(client, admin, link, action, key = linkItem()) {
+  return (
+    await client.query(
+      'SELECT * FROM vm_edit_voting_link($1,$2,$3,$4,$5,$6,$7)',
+      [
+        admin.room.id,
+        hash(admin.session),
+        link.id,
+        action,
+        key.name,
+        Buffer.from(key.hash, 'hex'),
+        Buffer.from(key.cipher, 'hex'),
+      ],
+    )
+  ).rows;
+}
+// Use real stored sessions when checking access
+async function openLink(
+  client,
+  link,
+  key,
+  session = randomBytes(32).toString('hex'),
+) {
+  const result = await client.query(
+    'SELECT * FROM vm_open_voting_session($1,$2,$3)',
+    [link.id, hash(key), hash(session)],
+  );
+  return {session, count: result.rowCount};
+}
+// Check the session against the current link generation
+async function linkAccess(client, link, session) {
+  return (
+    await client.query('SELECT * FROM vm_voting_access($1,$2)', [
+      link.id,
+      hash(session),
+    ])
+  ).rowCount;
+}
+
+test('link batches are atomic and database access stays inside the room', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    const first = linkItem();
+    for (const bad of [
+      {...linkItem(), name: 'x'.repeat(201)},
+      {...linkItem(), mode: 'bad'},
+      {...linkItem(), hash: '01'},
+      {...linkItem(), cipher: ''},
+    ]) {
+      await assert.rejects(addLinks(client, admin, [first, bad]));
+      assert.equal(
+        (await client.query('SELECT count(*) FROM voting_links')).rows[0].count,
+        '0',
+      );
+    }
+    await assert.rejects(addLinks(client, admin, []), {code: '23514'});
+    await assert.rejects(
+      addLinks(
+        client,
+        admin,
+        Array.from({length: 101}, () => linkItem()),
+      ),
+      {code: '23514'},
+    );
+    assert.equal(
+      (await addLinks(client, {...admin, session: other.session}, [first]))
+        .length,
+      0,
+    );
+    const [link] = await addLinks(client, admin, [first]);
+    assert.equal((await editLink(client, other, link, 'revoke')).length, 0);
+    assert.equal(
+      (
+        await client.query('SELECT * FROM vm_voting_link_secret($1,$2,$3)', [
+          other.room.id,
+          hash(other.session),
+          link.id,
+        ])
+      ).rowCount,
+      0,
+    );
+    assert.equal(
+      (
+        await client.query('SELECT * FROM vm_list_voting_links($1,$2,0,51)', [
+          admin.room.id,
+          hash(other.session),
+        ])
+      ).rowCount,
+      0,
+    );
+    for (const sql of [
+      "mode = 'reusable'",
+      `room_id = '${other.room.id}'`,
+      'id = gen_random_uuid()',
+      'ordinal = ordinal + 1000',
+    ]) {
+      await assert.rejects(
+        client.query(`UPDATE voting_links SET ${sql} WHERE id=$1`, [link.id]),
+      );
+    }
+  });
+});
+
+test('link pages have stable cursors and total links have no batch limit', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    await addLinks(
+      client,
+      admin,
+      Array.from({length: 100}, () => linkItem()),
+    );
+    await addLinks(client, admin, [linkItem('More', 'reusable')]);
+    const ids = new Set();
+    let after = '0';
+    while (true) {
+      const rows = (
+        await client.query('SELECT * FROM vm_list_voting_links($1,$2,$3,51)', [
+          admin.room.id,
+          hash(admin.session),
+          after,
+        ])
+      ).rows;
+      const page = rows.slice(0, 50);
+      for (const row of page) {
+        assert(!ids.has(row.id));
+        ids.add(row.id);
+      }
+      if (rows.length <= 50) break;
+      after = page.at(-1).ordinal;
+    }
+    assert.equal(ids.size, 101);
+    for (const [cursor, limit] of [
+      [-1, 51],
+      [0, 52],
+      [null, 50],
+      [0, null],
+    ]) {
+      await assert.rejects(
+        client.query('SELECT * FROM vm_list_voting_links($1,$2,$3,$4)', [
+          admin.room.id,
+          hash(admin.session),
+          cursor,
+          limit,
+        ]),
+        {code: '23514'},
+      );
+    }
+  });
+});
+
+test('renames keep access and revoke or rotation preserve stable used rights', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const key = linkItem();
+    const [link] = await addLinks(client, admin, [key]);
+    const opened = await openLink(client, link, key.key);
+    assert.equal(opened.count, 1);
+    assert.equal(await linkAccess(client, link, admin.session), 0);
+    assert.equal(
+      (
+        await client.query('SELECT * FROM vm_admin_room($1,$2)', [
+          admin.room.id,
+          hash(opened.session),
+        ])
+      ).rowCount,
+      0,
+    );
+    // A real child row models a right keyed by stable link identity
+    await client.query(
+      'CREATE TABLE used_right_probe (link_id uuid PRIMARY KEY REFERENCES voting_links(id))',
+    );
+    await client.query('INSERT INTO used_right_probe VALUES ($1)', [link.id]);
+    const [renamed] = await editLink(
+      client,
+      admin,
+      link,
+      'rename',
+      linkItem('New name'),
+    );
+    assert.equal(renamed.generation, link.generation);
+    assert.equal(await linkAccess(client, link, opened.session), 1);
+    await editLink(client, admin, link, 'revoke');
+    assert.equal(await linkAccess(client, link, opened.session), 0);
+    assert.equal((await openLink(client, link, key.key)).count, 0);
+    assert.equal(
+      (
+        await client.query('SELECT * FROM vm_voting_link_secret($1,$2,$3)', [
+          admin.room.id,
+          hash(admin.session),
+          link.id,
+        ])
+      ).rowCount,
+      0,
+    );
+    const replacement = linkItem();
+    const [rotated] = await editLink(
+      client,
+      admin,
+      link,
+      'rotate',
+      replacement,
+    );
+    assert.equal(rotated.id, link.id);
+    assert.equal(rotated.name, 'New name');
+    assert.equal(rotated.mode, 'personal');
+    assert.equal(rotated.revoked_at, null);
+    assert.equal((await openLink(client, link, key.key)).count, 0);
+    assert.equal(await linkAccess(client, link, opened.session), 0);
+    const current = await openLink(client, link, replacement.key);
+    assert.equal(current.count, 1);
+    await assert.rejects(
+      client.query('INSERT INTO used_right_probe VALUES ($1)', [rotated.id]),
+      {code: '23505'},
+    );
+    await editLink(client, admin, link, 'rotate', linkItem());
+    assert.equal(await linkAccess(client, link, current.session), 0);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM used_right_probe')).rows[0]
+        .count,
+      '1',
+    );
+  });
+});
+
+test('opening a session cannot race past revoke or key replacement', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      for (const action of ['revoke', 'rotate']) {
+        for (let index = 0; index < 5; index++) {
+          const key = linkItem();
+          const [link] = await addLinks(client, admin, [key]);
+          const [opened] = await Promise.all([
+            openLink(second, link, key.key),
+            editLink(client, admin, link, action),
+          ]);
+          assert.equal(await linkAccess(client, link, opened.session), 0);
+          assert.equal((await openLink(client, link, key.key)).count, 0);
+        }
+      }
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('link signals are committed without names or keys and rollback sends none', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const listener = new pg.Client({connectionString: databaseUrl});
+    await listener.connect();
+    const signals = [];
+    listener.on('notification', (event) =>
+      signals.push(JSON.parse(event.payload)),
+    );
+    try {
+      await listener.query('LISTEN voting_link_changes');
+      await client.query('BEGIN');
+      const [link] = await addLinks(client, admin, [linkItem('Private label')]);
+      await delay(20);
+      assert.equal(signals.length, 0);
+      await client.query('COMMIT');
+      for (let index = 0; index < 50 && !signals.length; index++)
+        await delay(10);
+      assert.deepEqual(signals, [
+        {roomId: admin.room.id, linkId: link.id, revision: '0'},
+      ]);
+      await client.query('BEGIN');
+      await editLink(client, admin, link, 'revoke');
+      await client.query('ROLLBACK');
+      await delay(40);
+      assert.equal(signals.length, 1);
+    } finally {
+      await listener.end();
+    }
+  });
+});
+
+test('a blocked link rollback preserves link access and migration history', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const key = linkItem();
+    const [link] = await addLinks(client, admin, [key]);
+    const opened = await openLink(client, link, key.key);
+    await client.query(
+      'CREATE TABLE outside_link_reference (link_id uuid REFERENCES voting_links(id))',
+    );
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
+      code: '2BP01',
+    });
+    assert.equal(await migrationCount(client), total);
+    assert.equal(await linkAccess(client, link, opened.session), 1);
+    await client.query('DROP TABLE outside_link_reference');
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal(
+      (
+        await client.query('SELECT * FROM vm_admin_room($1,$2)', [
+          admin.room.id,
+          hash(admin.session),
+        ])
+      ).rowCount,
+      1,
+    );
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await client.query('SELECT count(*) FROM voting_links')).rows[0].count,
+      '0',
+    );
   });
 });

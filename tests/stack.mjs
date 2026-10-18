@@ -90,7 +90,7 @@ assert.equal(
     '-d',
     'vote_machine',
     '-Atc',
-    "SELECT to_regclass('public.rooms') IS NOT NULL AND to_regclass('public.room_admin_credentials') IS NULL AND to_regclass('public.room_admin_sessions') IS NOT NULL",
+    "SELECT to_regclass('public.rooms') IS NOT NULL AND to_regclass('public.room_admin_credentials') IS NULL AND to_regclass('public.room_admin_sessions') IS NOT NULL AND to_regclass('public.voting_links') IS NOT NULL AND to_regclass('public.voting_sessions') IS NOT NULL",
   ),
   't',
 );
@@ -154,6 +154,50 @@ const exchanged = await fetch(`${baseUrl}/api/rooms/${room.id}/session`, {
 assert.equal(exchanged.status, 200);
 const adminCookie = exchanged.headers.get('set-cookie').split(';')[0];
 
+// Keep a real participant session across the same restarts
+const privateHeaders = {
+  Origin: new URL(baseUrl).origin,
+  Cookie: adminCookie,
+  'Content-Type': 'application/json',
+  Connection: 'close',
+};
+const added = await fetch(`${baseUrl}/api/rooms/${room.id}/links`, {
+  method: 'POST',
+  headers: privateHeaders,
+  body: JSON.stringify({mode: 'personal', names: ['Persistent respondent']}),
+});
+assert.equal(added.status, 201);
+const linkId = (await added.json()).links[0].id;
+const recovered = await fetch(
+  `${baseUrl}/api/rooms/${room.id}/links/${linkId}/secret`,
+  {headers: privateHeaders},
+);
+assert.equal(recovered.status, 200);
+const linkKey = (await recovered.json()).token;
+const joined = await fetch(`${baseUrl}/api/vote/${linkId}/session`, {
+  method: 'POST',
+  headers: {
+    Origin: new URL(baseUrl).origin,
+    'Content-Type': 'application/json',
+    Connection: 'close',
+  },
+  body: JSON.stringify({token: linkKey}),
+});
+assert.equal(joined.status, 200);
+const voteCookie = joined.headers.get('set-cookie').split(';')[0];
+// Access is checked in PostgreSQL after every restart or outage
+async function participantAccess(status) {
+  const response = await fetch(`${baseUrl}/api/vote/${linkId}`, {
+    headers: {Cookie: voteCookie, Connection: 'close'},
+    signal: AbortSignal.timeout(15000),
+  });
+  assert.equal(response.status, status);
+  assert.match(response.headers.get('cache-control'), /no-store/);
+  if (status === 200)
+    assert.equal((await response.json()).participant.linkId, linkId);
+}
+await participantAccess(200);
+
 // A restored API must use the same shared database session
 async function adminRoom(status) {
   const response = await fetch(`${baseUrl}/api/rooms/${room.id}`, {
@@ -166,6 +210,7 @@ async function adminRoom(status) {
   if (status === 200) assert.deepEqual(body, {room});
 }
 await adminRoom(200);
+await participantAccess(200);
 
 // Save a value to check after the database restarts
 compose(
@@ -188,6 +233,7 @@ try {
   compose('stop', 'postgres');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
   await adminRoom(503);
+  await participantAccess(503);
   assert.equal(apiStatus('/health/live'), '200');
   assert.equal(apiStatus('/health/ready'), '503');
 } finally {
@@ -195,6 +241,7 @@ try {
 }
 await waitForReady();
 await adminRoom(200);
+await participantAccess(200);
 assert.equal(
   compose(
     'exec',
@@ -216,15 +263,19 @@ try {
   compose('stop', 'api');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
   await adminRoom(503);
+  await participantAccess(503);
 } finally {
   compose('start', 'api');
 }
 await waitForReady();
 await adminRoom(200);
+await participantAccess(200);
 // Check a clean exit and look for runtime errors
 compose('stop', 'api');
 assert.equal(exitCode('api'), '0');
 const apiLogs = compose('logs', '--no-color', 'api');
+assert(!apiLogs.includes(linkKey));
+assert(!apiLogs.includes(voteCookie.split('=')[1]));
 assert.doesNotMatch(apiLogs, /creating path .*Permission denied/);
 assert.doesNotMatch(
   apiLogs,

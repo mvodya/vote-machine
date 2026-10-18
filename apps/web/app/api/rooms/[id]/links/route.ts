@@ -1,0 +1,21 @@
+import {adminLinkProxy} from '../../../../../lib/link-proxy';
+
+export const dynamic = 'force-dynamic';
+
+// Forward this admin link action after checking its session
+export async function GET(
+  request: Request,
+  context: {params: Promise<{id: string}>},
+) {
+  const params = await context.params;
+  return adminLinkProxy(request, params.id);
+}
+
+// Forward this admin link action after checking its session
+export async function POST(
+  request: Request,
+  context: {params: Promise<{id: string}>},
+) {
+  const params = await context.params;
+  return adminLinkProxy(request, params.id);
+}

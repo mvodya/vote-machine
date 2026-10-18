@@ -252,7 +252,7 @@ test('home entry opens a saved link and supports cookie access without a secret'
   }
 });
 
-test('room shell has empty sections and settings without question or respondent actions', async ({
+test('room shell keeps question and result placeholders with respondent controls', async ({
   page,
 }, info) => {
   await createRoom(page, 'Заседание совета');
@@ -263,6 +263,9 @@ test('room shell has empty sections and settings without question or respondent 
   ).toBeDisabled();
   await page.getByRole('tab', {name: 'Респонденты', exact: true}).click();
   await expect(page.getByText('Респондентов пока нет')).toBeVisible();
+  await expect(
+    page.getByRole('button', {name: 'Добавить респондентов', exact: true}),
+  ).toBeEnabled();
   await page.getByRole('tab', {name: 'Результаты', exact: true}).click();
   await expect(page.getByText('Результатов пока нет')).toBeVisible();
   await page.getByRole('tab', {name: 'Вопросы', exact: true}).click();

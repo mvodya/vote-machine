@@ -8,29 +8,10 @@
 #include <utility>
 
 #include "access.hpp"
+#include "http.hpp"
 
 namespace vote_machine {
 namespace {
-using Reply = std::function<void(const drogon::HttpResponsePtr&)>;
-
-// Send private JSON without caching
-void Send(const Reply& reply, const Json::Value& body,
-          drogon::HttpStatusCode status = drogon::k200OK) {
-  auto response = drogon::HttpResponse::newHttpJsonResponse(body);
-  response->setStatusCode(status);
-  response->addHeader("Cache-Control", "no-store");
-  response->addHeader("Referrer-Policy", "no-referrer");
-  reply(response);
-}
-
-// Send a short error without private details
-void Error(const Reply& reply, drogon::HttpStatusCode status,
-           const std::string& message) {
-  Json::Value body;
-  body["error"] = message;
-  Send(reply, body, status);
-}
-
 // Read a short room name from JSON
 bool Name(const drogon::HttpRequestPtr& request, std::string& name,
           bool optional) {
@@ -50,16 +31,6 @@ bool Name(const drogon::HttpRequestPtr& request, std::string& name,
   return characters <= 200 && name.find('\0') == std::string::npos;
 }
 
-// Read and hash the session key from the request
-std::string Session(const drogon::HttpRequestPtr& request) {
-  const auto& authorization = request->getHeader("Authorization");
-  constexpr std::string_view kPrefix = "Bearer ";
-  // Cookies are handled by the web server, not here
-  if (!authorization.starts_with(kPrefix)) return "";
-  const auto token = authorization.substr(kPrefix.size());
-  return IsSecret(token) ? HashSecret(token) : "";
-}
-
 // Return public room fields without saved secrets
 Json::Value Room(const drogon::orm::Row& row) {
   Json::Value room;
@@ -75,11 +46,6 @@ const std::string kRoomColumns =
     "SELECT id::text, name, "
     "to_char(created_at AT TIME ZONE 'UTC', "
     "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS created_at, revision::text FROM ";
-
-// Hide database and crypto errors from the client
-void Unavailable(const Reply& reply) {
-  Error(reply, drogon::k503ServiceUnavailable, "Service is unavailable");
-}
 
 }  // namespace
 

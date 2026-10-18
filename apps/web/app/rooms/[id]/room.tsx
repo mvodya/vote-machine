@@ -1,6 +1,8 @@
 'use client';
 
-import {useEffect, useRef, useState, type FormEvent} from 'react';
+import {Respondents} from './respondents';
+
+import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
 import Link from 'next/link';
 import {
   ListChecks,
@@ -49,6 +51,9 @@ export default function AdminRoom({id}: {id: string}) {
   const key = useRef<string | null>(null);
   // Whether this URL has already been read
   const captured = useRef(false);
+
+  // Leave private panels when the session is rejected
+  const denyAccess = useCallback(() => setState('denied'), []);
 
   useEffect(() => {
     // Handle a new link opened on the same page
@@ -313,18 +318,7 @@ export default function AdminRoom({id}: {id: string}) {
                 </Panel>
               )}
               {section === 'respondents' && (
-                <Panel>
-                  <SectionHeader title="Респонденты">
-                    <Button disabled endIcon={<Plus size={18} />}>
-                      Добавить респондентов
-                    </Button>
-                  </SectionHeader>
-                  <EmptyState
-                    icon={<Users size={32} />}
-                    title="Респондентов пока нет"
-                    description="Здесь появятся ссылки респондентов"
-                  />
-                </Panel>
+                <Respondents roomId={id} onDenied={denyAccess} />
               )}
               {section === 'results' && (
                 <Panel>
