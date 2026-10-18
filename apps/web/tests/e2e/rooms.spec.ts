@@ -42,7 +42,7 @@ test('create, save the link, rename and reopen after reload', async ({
   await page
     .getByLabel('Название комнаты', {exact: true})
     .fill('Новое название');
-  await page.getByRole('button', {name: 'Сохранить название'}).click();
+  await page.getByLabel('Название комнаты', {exact: true}).press('Tab');
   await expect(page.getByRole('status')).toHaveText('Название сохранено');
   await expect(
     page.getByRole('heading', {name: 'Новое название', exact: true}),
@@ -252,7 +252,7 @@ test('home entry opens a saved link and supports cookie access without a secret'
   }
 });
 
-test('room shell keeps question and result placeholders with respondent controls', async ({
+test('room sections show question and respondent controls with a result placeholder', async ({
   page,
 }, info) => {
   await createRoom(page, 'Заседание совета');
@@ -260,7 +260,7 @@ test('room shell keeps question and result placeholders with respondent controls
   await expect(page.getByText('Вопросов пока нет')).toBeVisible();
   await expect(
     page.getByRole('button', {name: 'Создать вопрос'}),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await page.getByRole('tab', {name: 'Респонденты', exact: true}).click();
   await expect(page.getByText('Респондентов пока нет')).toBeVisible();
   await expect(

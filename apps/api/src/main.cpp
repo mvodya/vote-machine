@@ -8,6 +8,7 @@
 
 #include "config.hpp"
 #include "links.hpp"
+#include "questions.hpp"
 #include "rooms.hpp"
 
 namespace {
@@ -39,7 +40,9 @@ void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
               "NOT NULL AND "
               "to_regprocedure('public.vm_add_voting_links(uuid,bytea,jsonb)') "
               "IS "
-              "NOT NULL AS schema_ready",
+              "NOT NULL AND "
+              "to_regprocedure('public.vm_question_request(uuid,bytea,uuid,"
+              "text,jsonb)') IS NOT NULL AS schema_ready",
       [reply, hello](const drogon::orm::Result& result) {
         Json::Value body;
         // The hello route returns the database reply
@@ -103,12 +106,13 @@ int main() {
 
     vote_machine::RegisterLinkHandlers(database,
                                        std::string(ReadEnv("ADMIN_LINK_KEY")));
+    vote_machine::RegisterQuestionHandlers(database);
 
     // Run app
     drogon::app()
         .setLogLevel(trantor::Logger::kWarn)
         .setThreadNum(2)
-        .setClientMaxBodySize(128UL * 1024UL)
+        .setClientMaxBodySize(4UL * 1024UL * 1024UL)
         .addListener("0.0.0.0", config.port)
         .run();
 

@@ -41,7 +41,7 @@ add_library(vote_machine_access src/access.cpp)
 target_include_directories(vote_machine_access PUBLIC src)
 target_link_libraries(vote_machine_access PUBLIC vote_machine_options OpenSSL::Crypto)
 
-add_executable(vote_machine_api src/main.cpp src/rooms.cpp src/http.cpp src/links.cpp)
+add_executable(vote_machine_api src/main.cpp src/rooms.cpp src/http.cpp src/links.cpp src/questions.cpp)
 target_link_libraries(
   vote_machine_api
   PRIVATE vote_machine_config vote_machine_access Drogon::Drogon

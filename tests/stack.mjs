@@ -90,7 +90,7 @@ assert.equal(
     '-d',
     'vote_machine',
     '-Atc',
-    "SELECT to_regclass('public.rooms') IS NOT NULL AND to_regclass('public.room_admin_credentials') IS NULL AND to_regclass('public.room_admin_sessions') IS NOT NULL AND to_regclass('public.voting_links') IS NOT NULL AND to_regclass('public.voting_sessions') IS NOT NULL",
+    "SELECT to_regclass('public.rooms') IS NOT NULL AND to_regclass('public.room_admin_credentials') IS NULL AND to_regclass('public.room_admin_sessions') IS NOT NULL AND to_regclass('public.voting_links') IS NOT NULL AND to_regclass('public.voting_sessions') IS NOT NULL AND to_regclass('public.questions') IS NOT NULL AND to_regclass('public.question_options') IS NOT NULL",
   ),
   't',
 );
@@ -126,6 +126,41 @@ try {
     'ON_ERROR_STOP=1',
     '-c',
     'ALTER FUNCTION schema_probe(text, bytea, bytea) RENAME TO vm_create_room',
+  );
+}
+assert.equal(apiStatus('/health/ready'), '200');
+
+// The API must also reject a room-only schema without question functions
+compose(
+  'exec',
+  '-T',
+  'postgres',
+  'psql',
+  '-U',
+  'vote_machine',
+  '-d',
+  'vote_machine',
+  '-v',
+  'ON_ERROR_STOP=1',
+  '-c',
+  'ALTER FUNCTION vm_question_request(uuid,bytea,uuid,text,jsonb) RENAME TO question_schema_probe',
+);
+try {
+  assert.equal(apiStatus('/health/ready'), '503');
+} finally {
+  compose(
+    'exec',
+    '-T',
+    'postgres',
+    'psql',
+    '-U',
+    'vote_machine',
+    '-d',
+    'vote_machine',
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    'ALTER FUNCTION question_schema_probe(uuid,bytea,uuid,text,jsonb) RENAME TO vm_question_request',
   );
 }
 assert.equal(apiStatus('/health/ready'), '200');
@@ -198,6 +233,42 @@ async function participantAccess(status) {
 }
 await participantAccess(200);
 
+// Keep a full question and its stable options through service restarts
+const draftText = 'Private persisted question';
+const draftResponse = await fetch(`${baseUrl}/api/rooms/${room.id}/questions`, {
+  method: 'POST',
+  headers: privateHeaders,
+  body: JSON.stringify({
+    content: draftText,
+    choiceMode: 'single',
+    minChoices: 1,
+    maxChoices: 1,
+    shareResults: false,
+    publication: 'after_close',
+    hideResultsUntilEnd: false,
+    allowAnswerChange: false,
+    anonymous: false,
+    choices: [{content: 'One'}, {content: 'Two'}],
+  }),
+});
+assert.equal(draftResponse.status, 201);
+const savedQuestion = (await draftResponse.json()).question;
+// A restored API must read the same question and option IDs
+async function questionAccess(status) {
+  const response = await fetch(
+    `${baseUrl}/api/rooms/${room.id}/questions/${savedQuestion.id}`,
+    {
+      headers: {Cookie: adminCookie, Connection: 'close'},
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  assert.equal(response.status, status);
+  assert.match(response.headers.get('cache-control'), /no-store/);
+  if (status === 200)
+    assert.deepEqual((await response.json()).question, savedQuestion);
+}
+await questionAccess(200);
+
 // A restored API must use the same shared database session
 async function adminRoom(status) {
   const response = await fetch(`${baseUrl}/api/rooms/${room.id}`, {
@@ -211,6 +282,7 @@ async function adminRoom(status) {
 }
 await adminRoom(200);
 await participantAccess(200);
+await questionAccess(200);
 
 // Save a value to check after the database restarts
 compose(
@@ -234,6 +306,7 @@ try {
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
   await adminRoom(503);
   await participantAccess(503);
+  await questionAccess(503);
   assert.equal(apiStatus('/health/live'), '200');
   assert.equal(apiStatus('/health/ready'), '503');
 } finally {
@@ -242,6 +315,7 @@ try {
 await waitForReady();
 await adminRoom(200);
 await participantAccess(200);
+await questionAccess(200);
 assert.equal(
   compose(
     'exec',
@@ -264,16 +338,19 @@ try {
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
   await adminRoom(503);
   await participantAccess(503);
+  await questionAccess(503);
 } finally {
   compose('start', 'api');
 }
 await waitForReady();
 await adminRoom(200);
 await participantAccess(200);
+await questionAccess(200);
 // Check a clean exit and look for runtime errors
 compose('stop', 'api');
 assert.equal(exitCode('api'), '0');
 const apiLogs = compose('logs', '--no-color', 'api');
+assert(!apiLogs.includes(draftText));
 assert(!apiLogs.includes(linkKey));
 assert(!apiLogs.includes(voteCookie.split('=')[1]));
 assert.doesNotMatch(apiLogs, /creating path .*Permission denied/);

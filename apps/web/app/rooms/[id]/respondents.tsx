@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import {Button} from '../../../components/ui/button';
+import {Pagination} from '../../../components/ui/pagination';
 import {Panel} from '../../../components/ui/panel';
 import {SectionHeader} from '../../../components/ui/section-header';
 import {EmptyState} from '../../../components/ui/empty-state';
@@ -579,27 +580,15 @@ export function Respondents({
           ))}
         </ul>
       )}
-      {!loading && !failed && (cursors.length > 1 || next) && (
-        <nav
-          aria-label="Страницы респондентов"
-          className="mt-5 flex items-center gap-3"
-        >
-          <Button
-            variant="secondary"
-            disabled={busy || cursors.length < 2}
-            onClick={() => setCursors((value) => value.slice(0, -1))}
-          >
-            Назад
-          </Button>
-          <span className="text-sm text-muted">{cursors.length}</span>
-          <Button
-            variant="secondary"
-            disabled={busy || !next}
-            onClick={() => next && setCursors((value) => [...value, next])}
-          >
-            Далее
-          </Button>
-        </nav>
+      {!loading && !failed && (
+        <Pagination
+          label="Страницы респондентов"
+          page={cursors.length}
+          hasNext={Boolean(next)}
+          busy={busy}
+          onPrevious={() => setCursors((value) => value.slice(0, -1))}
+          onNext={() => next && setCursors((value) => [...value, next])}
+        />
       )}
       <p role="status" className="mt-4 text-sm text-muted">
         {notice}

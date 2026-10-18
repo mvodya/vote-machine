@@ -1,23 +1,18 @@
 'use client';
 
+import {RoomName} from './room-name';
+import {Questions} from './questions';
+import {QuestionPolicy} from './question-policy';
 import {Respondents} from './respondents';
 
-import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import Link from 'next/link';
-import {
-  ListChecks,
-  Users,
-  ChartColumn,
-  Settings,
-  Plus,
-  Copy,
-} from 'lucide-react';
+import {ListChecks, Users, ChartColumn, Settings, Copy} from 'lucide-react';
 import {Brand} from '../../../components/brand';
 import {Tabs} from '../../../components/ui/tabs';
 import {EmptyState} from '../../../components/ui/empty-state';
 import {Button} from '../../../components/ui/button';
 import {TextField} from '../../../components/ui/text-field';
-import {Form} from '../../../components/ui/form';
 import {Panel} from '../../../components/ui/panel';
 import {SectionHeader} from '../../../components/ui/section-header';
 import {
@@ -35,14 +30,10 @@ export default function AdminRoom({id}: {id: string}) {
   const [state, setState] = useState<State>('loading');
   // Room data returned by the API
   const [room, setRoom] = useState<Room | null>(null);
-  // Name being edited in settings
-  const [name, setName] = useState('');
   // Full admin link shown in settings
   const [link, setLink] = useState('');
   // Change this value to retry loading
   const [attempt, setAttempt] = useState(0);
-  // Whether the name is being saved
-  const [saving, setSaving] = useState(false);
   // Short result or error message
   const [notice, setNotice] = useState('');
   // Current room tab
@@ -130,7 +121,6 @@ export default function AdminRoom({id}: {id: string}) {
         if (!controller.signal.aborted) {
           key.current = null;
           setRoom(body.room);
-          setName(body.room.name);
           setState('ready');
         }
       } catch {
@@ -168,39 +158,6 @@ export default function AdminRoom({id}: {id: string}) {
     void loadLink();
     return () => controller.abort();
   }, [id, section, state, attempt]);
-
-  // Save the name and show the latest room data
-  async function rename(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    // Do not send the same edit twice
-    if (saving) return;
-    setSaving(true);
-    setNotice('');
-    try {
-      const response = await fetch(`/api/rooms/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name}),
-        signal: AbortSignal.timeout(12000),
-      });
-      // Stop editing if the session has no access
-      if (response.status === 401) {
-        setState('denied');
-        return;
-      }
-      if (!response.ok) throw new Error('Save failed');
-      const body = await response.json();
-      if (!isRoom(body.room) || body.room.id !== id)
-        throw new Error('Invalid room');
-      setRoom(body.room);
-      setName(body.room.name);
-      setNotice('Название сохранено');
-    } catch {
-      setNotice('Не удалось сохранить название, попробуйте снова');
-    } finally {
-      setSaving(false);
-    }
-  }
 
   // Copy the full admin link or suggest manual copying
   async function copy() {
@@ -304,18 +261,7 @@ export default function AdminRoom({id}: {id: string}) {
               className="pt-6"
             >
               {section === 'questions' && (
-                <Panel>
-                  <SectionHeader title="Вопросы">
-                    <Button disabled endIcon={<Plus size={18} />}>
-                      Создать вопрос
-                    </Button>
-                  </SectionHeader>
-                  <EmptyState
-                    icon={<ListChecks size={32} />}
-                    title="Вопросов пока нет"
-                    description="Здесь появятся вопросы комнаты"
-                  />
-                </Panel>
+                <Questions roomId={id} onDenied={denyAccess} />
               )}
               {section === 'respondents' && (
                 <Respondents roomId={id} onDenied={denyAccess} />
@@ -332,21 +278,18 @@ export default function AdminRoom({id}: {id: string}) {
               )}
               {section === 'settings' && (
                 <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.2fr]">
-                  <Panel aria-label="Настройки комнаты">
-                    <h2 className="mb-5 text-lg font-semibold">Комната</h2>
-                    <Form onSubmit={(event) => void rename(event)}>
-                      <TextField
-                        id="edit-name"
-                        label="Название комнаты"
-                        value={name}
-                        maxLength={200}
-                        onChange={(event) => setName(event.target.value)}
+                  <div className="space-y-6">
+                    <Panel aria-label="Настройки комнаты">
+                      <h2 className="mb-5 text-lg font-semibold">Комната</h2>
+                      <RoomName
+                        room={room}
+                        onSaved={setRoom}
+                        onDenied={denyAccess}
+                        onNotice={setNotice}
                       />
-                      <Button type="submit" disabled={saving}>
-                        {saving ? 'Сохраняем…' : 'Сохранить название'}
-                      </Button>
-                    </Form>
-                  </Panel>
+                    </Panel>
+                    <QuestionPolicy roomId={id} onDenied={denyAccess} />
+                  </div>
                   <Panel aria-label="Административный доступ">
                     <h2 className="mb-3 text-lg font-semibold">
                       Административный доступ

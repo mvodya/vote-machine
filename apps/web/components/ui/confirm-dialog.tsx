@@ -2,7 +2,7 @@
 import {useEffect, useId, useRef} from 'react';
 import {Button} from './button';
 
-// Confirm actions that replace or block an existing link
+// Confirm an action before changing saved data
 export function ConfirmDialog({
   title,
   description,
@@ -24,7 +24,7 @@ export function ConfirmDialog({
   error?: string;
   // Run the chosen action
   onConfirm: () => void;
-  // Return without changing the link
+  // Return without changing data
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);

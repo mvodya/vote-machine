@@ -108,7 +108,7 @@ test('empty database, repeat run and upgrade keep existing room data', async () 
       const {room} = await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1792972800010-upgrade',
+        '1793059200010-upgrade',
         'ALTER TABLE rooms ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       assert.equal((await runMigrations({databaseUrl, dir})).length, 1);
@@ -212,12 +212,12 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1792972800010-probe',
+        '1793059200010-probe',
         'CREATE TABLE migration_probe (id integer); INSERT INTO migration_probe VALUES (1);',
       );
       await addMigration(
         dir,
-        '1792972800011-failure',
+        '1793059200011-failure',
         "UPDATE rooms SET name = 'lost'; SELECT 1 / 0;",
       );
       await assert.rejects(runMigrations({databaseUrl, dir}));
@@ -237,7 +237,7 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       // Only failed migrations may be fixed in place
       await addMigration(
         dir,
-        '1792972800011-failure',
+        '1793059200011-failure',
         'ALTER TABLE migration_probe ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       // A new container must load the fixed file again
@@ -372,7 +372,7 @@ test('dates keep their instant across time zones and migration sessions use UTC'
     await withMigrations(async (dir) => {
       await addMigration(
         dir,
-        '1792972800010-time-zone',
+        '1793059200010-time-zone',
         "CREATE TABLE migration_zone AS SELECT current_setting('TimeZone') AS zone;",
       );
       await runMigrations({databaseUrl, dir});
@@ -405,7 +405,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(result.stdout.trim(), 'Reverted 1 migrations');
     assert.equal(await migrationCount(client), total - 1);
     assert.equal(
-      (await client.query("SELECT to_regclass('public.voting_links') AS name"))
+      (await client.query("SELECT to_regclass('public.questions') AS name"))
         .rows[0].name,
       null,
     );
@@ -1039,13 +1039,16 @@ test('a blocked link rollback preserves link access and migration history', asyn
     await client.query(
       'CREATE TABLE outside_link_reference (link_id uuid REFERENCES voting_links(id))',
     );
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
-      code: '2BP01',
-    });
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 1}),
+      {
+        code: '2BP01',
+      },
+    );
     assert.equal(await migrationCount(client), total);
     assert.equal(await linkAccess(client, link, opened.session), 1);
     await client.query('DROP TABLE outside_link_reference');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 1});
     assert.equal(
       (
         await client.query('SELECT * FROM vm_admin_room($1,$2)', [
@@ -1060,5 +1063,572 @@ test('a blocked link rollback preserves link access and migration history', asyn
       (await client.query('SELECT count(*) FROM voting_links')).rows[0].count,
       '0',
     );
+  });
+});
+
+// Build a complete draft with valid defaults
+function questionDocument(extra = {}) {
+  return {
+    content: '',
+    choiceMode: 'single',
+    minChoices: 1,
+    maxChoices: 1,
+    shareResults: false,
+    publication: 'after_close',
+    hideResultsUntilEnd: false,
+    allowAnswerChange: false,
+    anonymous: false,
+    choices: [],
+    ...extra,
+  };
+}
+// Use the public database entry point with a real admin session
+async function questionCall(client, admin, action, data = {}, id = null) {
+  return (
+    await client.query('SELECT vm_question_request($1,$2,$3,$4,$5) AS reply', [
+      admin.room.id,
+      hash(admin.session),
+      id,
+      action,
+      JSON.stringify(data),
+    ])
+  ).rows[0].reply;
+}
+
+test('drafts keep source text, stable option IDs, settings and display order', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const empty = await questionCall(
+      client,
+      admin,
+      'create',
+      questionDocument(),
+    );
+    assert.equal(empty.status, 201);
+    assert.deepEqual(empty.question.choices, []);
+    const created = await questionCall(
+      client,
+      admin,
+      'create',
+      questionDocument({
+        content: 'Choose',
+        choices: [{content: 'A'}, {content: 'B'}, {content: 'C'}],
+        choiceMode: 'multiple',
+        maxChoices: 3,
+        minChoices: 2,
+        shareResults: true,
+        publication: 'after_answer',
+        hideResultsUntilEnd: true,
+        allowAnswerChange: true,
+        anonymous: true,
+      }),
+    );
+    assert.equal(created.status, 201);
+    const q = created.question;
+    assert.equal(q.state, 'draft');
+    assert.equal(q.editLocked, null);
+    assert.equal(q.choices.length, 3);
+    assert(q.choices.every((choice) => choice.id));
+    const edited = await questionCall(
+      client,
+      admin,
+      'save',
+      {
+        ...q,
+        content: 'Changed',
+        choices: [q.choices[2], q.choices[0], {content: 'New'}],
+      },
+      q.id,
+    );
+    assert.equal(edited.status, 200);
+    assert.equal(edited.question.choices[0].id, q.choices[2].id);
+    assert.equal(edited.question.choices[1].id, q.choices[0].id);
+    assert.equal(edited.question.choices[2].content, 'New');
+    assert.equal(edited.question.createdAt, q.createdAt);
+    assert.equal(edited.question.ordinal, q.ordinal);
+    assert(BigInt(edited.question.revision) > BigInt(q.revision));
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM question_options WHERE id=$1',
+          [q.choices[1].id],
+        )
+      ).rows[0].count,
+      '0',
+    );
+    assert.deepEqual(
+      (await questionCall(client, admin, 'get', {}, q.id)).question,
+      edited.question,
+    );
+  });
+});
+
+test('invalid drafts and foreign options never leave partial changes', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    const created = await questionCall(
+      client,
+      admin,
+      'create',
+      questionDocument({
+        content: 'Kept',
+        choices: [{content: 'A'}, {content: 'B'}],
+      }),
+    );
+    const q = created.question;
+    const foreign = (
+      await questionCall(
+        client,
+        other,
+        'create',
+        questionDocument({choices: [{content: 'Foreign'}]}),
+      )
+    ).question;
+    for (const extra of [
+      {content: 'x'.repeat(20001)},
+      {choices: [{content: 'x'.repeat(5001)}]},
+      {choices: Array.from({length: 101}, () => ({content: ''}))},
+      {minChoices: 0},
+      {maxChoices: 3},
+      {choiceMode: 'bad'},
+      {minChoices: 1.5},
+      {shareResults: 'yes'},
+      {choices: [q.choices[0], q.choices[0]]},
+      {choices: [foreign.choices[0]]},
+      {choices: [{id: randomUUID(), content: 'Unknown'}]},
+      {choices: [{id: null, content: ''}]},
+    ]) {
+      const reply = await questionCall(
+        client,
+        admin,
+        'save',
+        {...q, ...extra},
+        q.id,
+      );
+      assert.equal(reply.status, 400);
+      assert.deepEqual(
+        (await questionCall(client, admin, 'get', {}, q.id)).question,
+        q,
+      );
+    }
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          {...admin, session: other.session},
+          'get',
+          {},
+          q.id,
+        )
+      ).status,
+      401,
+    );
+    for (const action of ['get', 'save', 'delete'])
+      assert.equal(
+        (await questionCall(client, other, action, q, q.id)).status,
+        404,
+      );
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, foreign.id)).status,
+      404,
+    );
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'save',
+          {...q, revision: '9223372036854775808'},
+          q.id,
+        )
+      ).status,
+      400,
+    );
+  });
+});
+
+test('concurrent draft saves and save versus delete reject old revisions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      let q = (
+        await questionCall(
+          client,
+          admin,
+          'create',
+          questionDocument({content: 'Start'}),
+        )
+      ).question;
+      const saves = await Promise.all([
+        questionCall(client, admin, 'save', {...q, content: 'One'}, q.id),
+        questionCall(second, admin, 'save', {...q, content: 'Two'}, q.id),
+      ]);
+      assert.deepEqual(saves.map((reply) => reply.status).sort(), [200, 409]);
+      q = (await questionCall(client, admin, 'get', {}, q.id)).question;
+      const race = await Promise.all([
+        questionCall(client, admin, 'save', {...q, content: 'Last'}, q.id),
+        questionCall(second, admin, 'delete', {revision: q.revision}, q.id),
+      ]);
+      assert.equal(race.filter((reply) => reply.status === 200).length, 1);
+      assert(
+        race.some((reply) => reply.status === 409 || reply.status === 404),
+      );
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('room edit policy is captured on first opening and cannot be withdrawn', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    let policy = (await questionCall(client, admin, 'policy')).policy;
+    assert.equal(policy.lockAfterOpen, true);
+    let q = (
+      await questionCall(
+        client,
+        admin,
+        'create',
+        questionDocument({choices: [{content: 'A'}, {content: 'B'}]}),
+      )
+    ).question;
+    // Seed the future lifecycle through SQL without adding an opening API
+    await client.query(
+      "UPDATE questions SET state='open', edit_locked=false WHERE id=$1",
+      [q.id],
+    );
+    q = (await questionCall(client, admin, 'get', {}, q.id)).question;
+    assert.equal(q.editLocked, true);
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'save',
+          {...q, content: 'Changed'},
+          q.id,
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'delete',
+          {revision: q.revision},
+          q.id,
+        )
+      ).status,
+      409,
+    );
+    await assert.rejects(
+      client.query('UPDATE questions SET edit_locked=false WHERE id=$1', [
+        q.id,
+      ]),
+      {code: '23514'},
+    );
+    await assert.rejects(
+      client.query(
+        "UPDATE question_options SET content='Changed' WHERE question_id=$1",
+        [q.id],
+      ),
+      {code: '23514'},
+    );
+    assert.equal(
+      (
+        await questionCall(client, admin, 'setPolicy', {
+          ...policy,
+          lockAfterOpen: false,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, q.id)).question.editLocked,
+      true,
+    );
+    assert.equal(
+      (
+        await questionCall(client, admin, 'setPolicy', {
+          ...policy,
+          lockAfterOpen: false,
+        })
+      ).status,
+      409,
+    );
+    let editable = (
+      await questionCall(
+        client,
+        admin,
+        'create',
+        questionDocument({content: 'Editable'}),
+      )
+    ).question;
+    await client.query("UPDATE questions SET state='open' WHERE id=$1", [
+      editable.id,
+    ]);
+    editable = (await questionCall(client, admin, 'get', {}, editable.id))
+      .question;
+    assert.equal(editable.editLocked, false);
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'save',
+          {...editable, content: 'Updated'},
+          editable.id,
+        )
+      ).status,
+      200,
+    );
+    editable = (await questionCall(client, admin, 'get', {}, editable.id))
+      .question;
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'save',
+          {...editable, anonymous: true},
+          editable.id,
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'delete',
+          {revision: editable.revision},
+          editable.id,
+        )
+      ).status,
+      409,
+    );
+    policy = (await questionCall(client, admin, 'policy')).policy;
+    await questionCall(client, admin, 'setPolicy', {
+      ...policy,
+      lockAfterOpen: true,
+    });
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, editable.id)).question
+        .editLocked,
+      false,
+    );
+    await client.query("UPDATE questions SET state='closed' WHERE id=$1", [
+      editable.id,
+    ]);
+    await assert.rejects(
+      client.query(
+        "UPDATE questions SET state='draft',first_opened_at=NULL,edit_locked=NULL WHERE id=$1",
+        [editable.id],
+      ),
+      {code: '23514'},
+    );
+  });
+});
+
+test('database constraints protect option ownership, positions and selection limits', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    const q = (
+      await questionCall(
+        client,
+        admin,
+        'create',
+        questionDocument({
+          choices: [{content: 'A'}, {content: 'B'}],
+          choiceMode: 'multiple',
+          maxChoices: 2,
+        }),
+      )
+    ).question;
+    for (const sql of [
+      'UPDATE questions SET min_choices=0 WHERE id=$1',
+      "UPDATE questions SET content=repeat('a',20001) WHERE id=$1",
+      'UPDATE questions SET ordinal=ordinal+1 WHERE id=$1',
+      'UPDATE question_options SET position=99 WHERE question_id=$1',
+      'DELETE FROM question_options WHERE question_id=$1',
+    ])
+      await assert.rejects(client.query(sql, [q.id]));
+    await assert.rejects(
+      client.query(
+        'UPDATE question_options SET room_id=$1 WHERE question_id=$2',
+        [other.room.id, q.id],
+      ),
+    );
+    await assert.rejects(
+      client.query(
+        'UPDATE question_options SET id=gen_random_uuid() WHERE question_id=$1',
+        [q.id],
+      ),
+    );
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, q.id)).question.choices
+        .length,
+      2,
+    );
+  });
+});
+
+test('question pages sort by time and stable key even after a boundary is deleted', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    await client.query(
+      "INSERT INTO questions(room_id,content,created_at) SELECT $1,'Question ' || n,'2026-10-25T00:00:00.123456Z'::timestamptz FROM generate_series(1,55) n",
+      [admin.room.id],
+    );
+    const first = await questionCall(client, admin, 'list', {after: '0'});
+    assert.equal(first.status, 200);
+    assert.equal(first.questions.length, 50);
+    assert(first.nextCursor.endsWith(`~${first.questions.at(-1).ordinal}`));
+    assert(
+      first.questions.every((q) => !('content' in q) && !('choices' in q)),
+    );
+    const boundary = first.questions.at(-1);
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'delete',
+          {revision: boundary.revision},
+          boundary.id,
+        )
+      ).status,
+      200,
+    );
+    const second = await questionCall(client, admin, 'list', {
+      after: first.nextCursor,
+    });
+    assert.equal(second.questions.length, 5);
+    assert.equal(second.nextCursor, null);
+    assert(
+      !second.questions.some((q) =>
+        first.questions.some((old) => old.id === q.id),
+      ),
+    );
+    for (const after of [
+      'bad',
+      '2026-99-99T00:00:00.000000Z~1',
+      '2026-10-25T00:00:00.000000Z~9223372036854775808',
+    ])
+      assert.equal(
+        (await questionCall(client, admin, 'list', {after})).status,
+        400,
+      );
+  });
+});
+
+test('question and option changes signal only after commit without source text', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const listener = new pg.Client({connectionString: databaseUrl});
+    await listener.connect();
+    const signals = [];
+    listener.on('notification', (event) =>
+      signals.push(JSON.parse(event.payload)),
+    );
+    try {
+      await listener.query('LISTEN question_changes');
+      await client.query('BEGIN');
+      const q = (
+        await questionCall(
+          client,
+          admin,
+          'create',
+          questionDocument({
+            content: 'Private text',
+            choices: [{content: 'Private option'}],
+          }),
+        )
+      ).question;
+      await delay(20);
+      assert.equal(signals.length, 0);
+      await client.query('COMMIT');
+      for (let i = 0; i < 50 && !signals.length; i++) await delay(10);
+      assert(signals.length > 0);
+      assert(
+        signals.every(
+          (s) => s.roomId === admin.room.id && s.questionId === q.id,
+        ),
+      );
+      assert(!JSON.stringify(signals).includes('Private'));
+      assert.equal(signals.at(-1).revision, q.revision);
+      const amount = signals.length;
+      await client.query('BEGIN');
+      await questionCall(
+        client,
+        admin,
+        'save',
+        {...q, content: 'Rolled back'},
+        q.id,
+      );
+      await client.query('ROLLBACK');
+      await delay(30);
+      assert.equal(signals.length, amount);
+      await questionCall(client, admin, 'delete', {revision: q.revision}, q.id);
+      for (let i = 0; i < 50 && signals.length === amount; i++) await delay(10);
+      assert.equal(signals.at(-1).deleted, true);
+    } finally {
+      await listener.end();
+    }
+  });
+});
+
+test('question rollback is atomic and preserves room and respondent access', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const key = linkItem();
+    const [link] = await addLinks(client, admin, [key]);
+    const session = await openLink(client, link, key.key);
+    const q = (await questionCall(client, admin, 'create', questionDocument()))
+      .question;
+    await client.query(
+      'CREATE TABLE outside_question_reference (question_id uuid REFERENCES questions(id))',
+    );
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
+      code: '2BP01',
+    });
+    assert.equal(await migrationCount(client), total);
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, q.id)).status,
+      200,
+    );
+    await client.query('DROP TABLE outside_question_reference');
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal(await linkAccess(client, link, session.session), 1);
+    assert.equal(
+      (
+        await client.query('SELECT * FROM vm_admin_room($1,$2)', [
+          admin.room.id,
+          hash(admin.session),
+        ])
+      ).rowCount,
+      1,
+    );
+    await runMigrations({databaseUrl});
+    assert.deepEqual(
+      (await questionCall(client, admin, 'list', {after: '0'})).questions,
+      [],
+    );
+    assert.equal(await linkAccess(client, link, session.session), 1);
   });
 });

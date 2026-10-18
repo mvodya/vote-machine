@@ -22,5 +22,6 @@ trap 'exit 130' INT TERM
 docker compose -p "$COMPOSE_PROJECT_NAME" up --build --wait --wait-timeout 180
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/rooms-api.mjs
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/links-api.mjs
+docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/questions-api.mjs
 pnpm test:e2e
 node tests/stack.mjs
