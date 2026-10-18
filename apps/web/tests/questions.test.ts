@@ -164,7 +164,7 @@ describe('question browser boundary', () => {
       vi.mocked(fetch).mock.calls[0][1]!.body as string,
     );
     expect(forwarded).not.toHaveProperty('adminToken');
-    expect(forwarded).not.toHaveProperty('state');
+    expect(forwarded.state).toBe('open');
     expect(forwarded).not.toHaveProperty('roomId');
     expect(response.headers.get('cache-control')).toBe('no-store');
   });

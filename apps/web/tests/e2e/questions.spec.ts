@@ -45,10 +45,14 @@ test('empty draft, editor settings, stable option order, reload and confirmed de
 }, info) => {
   await setup(page);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page.getByLabel('Текст вопроса', {exact: true}).fill('Temporary');
   await page
-    .getByRole('button', {name: 'Сохранить черновик', exact: true})
+    .getByRole('button', {name: 'Сохранить изменения', exact: true})
+    .first()
     .click();
-  await expect(page.getByText('Вопрос сохранен', {exact: true})).toBeVisible();
+  await expect(
+    page.getByText('Изменения сохранены', {exact: true}),
+  ).toBeVisible();
   await page
     .getByLabel('Текст вопроса', {exact: true})
     .fill('Утвердить решение?');
@@ -64,6 +68,10 @@ test('empty draft, editor settings, stable option order, reload and confirmed de
   await expect(page.getByLabel('Вариант 2', {exact: true})).toHaveValue(
     'Воздержался',
   );
+  await page
+    .getByRole('tablist', {name: 'Разделы вопроса'})
+    .getByRole('tab', {name: 'Настройки', exact: true})
+    .click();
   await page.getByLabel('Выбор ответа', {exact: true}).selectOption('multiple');
   await page.getByLabel('Минимум вариантов', {exact: true}).fill('2');
   await page.getByLabel('Максимум вариантов', {exact: true}).fill('3');
@@ -87,10 +95,11 @@ test('empty draft, editor settings, stable option order, reload and confirmed de
       /\/questions\/[0-9a-f-]+$/.test(new URL(response.url()).pathname),
   );
   await page
-    .getByRole('button', {name: 'Сохранить черновик', exact: true})
+    .getByRole('button', {name: 'Сохранить изменения', exact: true})
+    .first()
     .click();
   expect((await saved).status()).toBe(200);
-  await page.getByRole('button', {name: 'К списку', exact: true}).click();
+  await page.getByRole('tab', {name: 'Вопросы', exact: true}).click();
   const row = page.getByRole('listitem', {
     name: 'Утвердить решение?',
     exact: true,
@@ -126,7 +135,7 @@ test('empty draft, editor settings, stable option order, reload and confirmed de
     path: info.outputPath('question-editor.png'),
     fullPage: true,
   });
-  await page.getByRole('button', {name: 'К списку', exact: true}).click();
+  await page.getByRole('tab', {name: 'Вопросы', exact: true}).click();
   await row
     .getByRole('button', {
       name: 'Удалить вопрос: Утвердить решение?',
@@ -171,16 +180,18 @@ test('two editors reject old revisions and keep unsaved text until explicit relo
       .click();
     await page.getByLabel('Текст вопроса', {exact: true}).fill('First edit');
     await page
-      .getByRole('button', {name: 'Сохранить черновик', exact: true})
+      .getByRole('button', {name: 'Сохранить изменения', exact: true})
+      .first()
       .click();
     await expect(
-      page.getByText('Вопрос сохранен', {exact: true}),
+      page.getByText('Изменения сохранены', {exact: true}),
     ).toBeVisible();
     await second
       .getByLabel('Текст вопроса', {exact: true})
       .fill('Second unsaved edit');
     await second
-      .getByRole('button', {name: 'Сохранить черновик', exact: true})
+      .getByRole('button', {name: 'Сохранить изменения', exact: true})
+      .first()
       .click();
     await expect(
       second
@@ -334,4 +345,122 @@ test('room settings save on blur and toggle without separate action buttons', as
     path: info.outputPath('automatic-settings.png'),
     fullPage: true,
   });
+});
+
+test('clean editors return directly while dirty editors confirm room navigation', async ({
+  page,
+}) => {
+  await setup(page);
+  const tabs = page.getByRole('tablist', {name: 'Разделы комнаты'});
+  await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await expect(
+    page.getByRole('button', {name: 'Сохранить изменения', exact: true}),
+  ).toHaveCount(0);
+  await tabs.getByRole('tab', {name: 'Вопросы', exact: true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page.getByLabel('Текст вопроса', {exact: true}).fill('Saved');
+  await page
+    .getByRole('button', {name: 'Сохранить изменения', exact: true})
+    .click();
+  await expect(
+    page.getByRole('button', {name: 'Вернуться', exact: true}),
+  ).toBeVisible();
+  await page.getByLabel('Текст вопроса', {exact: true}).fill('Unsaved');
+  for (const name of ['Вопросы', 'Респонденты', 'Результаты', 'Настройки']) {
+    await tabs.getByRole('tab', {name, exact: true}).click();
+    const dialog = page.getByRole('dialog', {
+      name: 'Выйти из редактирования вопроса без сохранений?',
+    });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', {name: 'Отмена', exact: true}).click();
+    await expect(page.getByLabel('Текст вопроса', {exact: true})).toHaveValue(
+      'Unsaved',
+    );
+  }
+  await page.getByRole('button', {name: 'Отменить', exact: true}).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', {name: 'Продолжить редактирование', exact: true})
+    .click();
+  await expect(page.getByLabel('Текст вопроса', {exact: true})).toHaveValue(
+    'Unsaved',
+  );
+  await page.getByRole('button', {name: 'Отменить', exact: true}).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', {name: 'Отменить изменения', exact: true})
+    .click();
+  await expect(page.getByLabel('Текст вопроса', {exact: true})).toHaveValue(
+    'Saved',
+  );
+  await page.getByRole('button', {name: 'Вернуться', exact: true}).click();
+  await expect(
+    page.getByRole('listitem', {name: 'Saved', exact: true}),
+  ).toBeVisible();
+});
+
+test('question tabs save one document and quick controls use its relative deadline', async ({
+  page,
+}, info) => {
+  const room = await setup(page);
+  await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page.getByLabel('Текст вопроса', {exact: true}).fill('Lifecycle');
+  await page.getByLabel('Вариант 1', {exact: true}).fill('Yes');
+  await page.getByLabel('Вариант 2', {exact: true}).fill('No');
+  const tabs = page.getByRole('tablist', {name: 'Разделы вопроса'});
+  await tabs.getByRole('tab', {name: 'Настройки', exact: true}).click();
+  await page
+    .getByLabel('Состояние вопроса', {exact: true})
+    .selectOption('open');
+  await page.getByLabel('Разрешить пропуск вопроса', {exact: true}).check();
+  await tabs.getByRole('tab', {name: 'Управление', exact: true}).click();
+  await page.getByRole('button', {name: 'После открытия', exact: true}).click();
+  await page.getByLabel('Закрыть через', {exact: true}).fill('90');
+  await page.getByLabel('Единица времени', {exact: true}).selectOption('1');
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === `/api/rooms/${room}/questions`,
+  );
+  await page
+    .getByRole('button', {name: 'Сохранить изменения', exact: true})
+    .click();
+  const response = await saved;
+  expect(response.status()).toBe(201);
+  const {question} = await response.json();
+  expect(question.state).toBe('open');
+  expect(question.allowSkip).toBe(true);
+  expect(question.closeAfterSeconds).toBe(90);
+  expect(Date.parse(question.closesAt) - Date.parse(question.openedAt)).toBe(
+    90000,
+  );
+  await expect(
+    page.getByRole('tab', {name: 'Управление', exact: true}),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.screenshot({
+    path: info.outputPath('question-management.png'),
+    fullPage: true,
+  });
+  await page.getByRole('button', {name: 'Вернуться', exact: true}).click();
+  const row = page.getByRole('listitem', {name: 'Lifecycle', exact: true});
+  await expect(
+    row.getByRole('button', {name: 'Управление', exact: true}),
+  ).toHaveCount(0);
+  await row
+    .getByRole('button', {name: 'Закрыть вопрос: Lifecycle', exact: true})
+    .click();
+  await expect(row).toContainText('Закрыт');
+  await row
+    .getByRole('button', {name: 'Открыть вопрос: Lifecycle', exact: true})
+    .click();
+  await expect(row).toContainText('Открыт');
+  await row
+    .getByRole('button', {name: 'Удалить вопрос: Lifecycle', exact: true})
+    .click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', {name: 'Удалить', exact: true})
+    .click();
+  await expect(page.getByText('Вопросов пока нет')).toBeVisible();
 });

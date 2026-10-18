@@ -33,5 +33,6 @@ docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module <
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/questions-api.mjs
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/media-api.mjs
 node tests/assets-cleanup.mjs
+node tests/lifecycle-recovery.mjs
 pnpm test:e2e
 node tests/stack.mjs

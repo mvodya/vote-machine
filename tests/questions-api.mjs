@@ -71,7 +71,7 @@ const created = await call(path, {
   body: document({
     content: 'Choose',
     choices: [{content: 'A'}, {content: 'B'}],
-    state: 'open',
+    state: 'draft',
   }),
 });
 assert.equal(created.status, 201);

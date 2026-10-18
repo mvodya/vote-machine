@@ -32,6 +32,7 @@ assert.deepEqual(Object.keys(room).sort(), [
   'id',
   'name',
   'revision',
+  'timeZone',
 ]);
 assert.match(adminToken, /^[0-9a-f]{64}$/);
 const other = (await call('/api/rooms', {method: 'POST', body: {}})).data;

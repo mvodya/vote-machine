@@ -48,8 +48,13 @@ void RequestQuestion(const drogon::orm::DbClientPtr& database,
   Json::StreamWriterBuilder writer;
   writer["indentation"] = "";
   database->execSqlAsync(
-      "SELECT vm_question_request($1::uuid,decode($2,'hex'),"
-      "NULLIF($3,'')::uuid,$4,$5::jsonb)::text AS response",
+      action == "lifecycle"
+          ? "SELECT "
+            "vm_question_lifecycle($1::uuid,decode($2,'hex'),$3::uuid,$5::"
+            "jsonb)::text AS response WHERE $4 = 'lifecycle'"
+          : "SELECT "
+            "vm_question_request($1::uuid,decode($2,'hex'),NULLIF($3,'')::uuid,"
+            "$4,$5::jsonb)::text AS response",
       [reply](const drogon::orm::Result& result) {
         DatabaseReply(result, reply);
       },
@@ -78,6 +83,15 @@ void RegisterQuestionHandlers(const drogon::orm::DbClientPtr& database) {
                         request->method() == drogon::Get ? "list" : "create");
       },
       {drogon::Get, drogon::Post});
+  drogon::app().registerHandler(
+      "/api/rooms/{1}/questions/{2}/lifecycle",
+      [database](const drogon::HttpRequestPtr& request, Reply&& reply,
+                 // Route fields follow the URL order
+                 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+                 const std::string& room, const std::string& id) {
+        RequestQuestion(database, request, reply, room, id, "lifecycle");
+      },
+      {drogon::Post});
   drogon::app().registerHandler(
       "/api/rooms/{1}/questions/{2}",
       [database](const drogon::HttpRequestPtr& request, Reply&& reply,

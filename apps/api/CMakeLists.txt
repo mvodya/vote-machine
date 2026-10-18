@@ -46,7 +46,7 @@ add_library(vote_machine_markdown src/markdown.cpp)
 target_include_directories(vote_machine_markdown PUBLIC src)
 target_link_libraries(vote_machine_markdown PUBLIC vote_machine_access vote_machine_options Drogon::Drogon ${CMARK_GFM_LIBRARY})
 
-add_executable(vote_machine_api src/main.cpp src/rooms.cpp src/http.cpp src/links.cpp src/questions.cpp src/assets.cpp)
+add_executable(vote_machine_api src/main.cpp src/rooms.cpp src/http.cpp src/links.cpp src/questions.cpp src/assets.cpp src/voting.cpp)
 target_link_libraries(
   vote_machine_api
   PRIVATE vote_machine_config vote_machine_access vote_machine_markdown Drogon::Drogon

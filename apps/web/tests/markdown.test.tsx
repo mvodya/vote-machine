@@ -80,3 +80,32 @@ it.each([
   'java\nscript:alert(1)',
   'file:///private',
 ])('blocks unsafe link %s', (url) => expect(safeMarkdownLink(url)).toBe(false));
+
+it('keeps media mounted on parent edits and accepts a bounded display width', async () => {
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      asset: {
+        id,
+        kind: 'image',
+        mime: 'image/webp',
+        width: 1000,
+        height: 500,
+        bytes: 100,
+      },
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const source = `![Photo](asset:${id} "width=320")`;
+  const {rerender} = render(
+    <Markdown viewer={{roomId: room}} source={source} />,
+  );
+  const photo = await screen.findByRole('img', {name: 'Photo'});
+  expect(photo).toHaveStyle({width: '320px'});
+  expect(photo).toHaveClass('object-left', 'ml-0');
+  rerender(<Markdown viewer={{roomId: room}} source={source} />);
+  expect(screen.getByRole('img')).toBe(photo);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  rerender(<Markdown viewer={{roomId: room}} source={`Updated ${source}`} />);
+  expect(screen.getByRole('img')).toBe(photo);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});

@@ -1,6 +1,8 @@
 'use client';
 import {useEffect, useRef, useState} from 'react';
 import {
+  TextCursorInput,
+  Eye,
   Bold,
   Italic,
   Link as LinkIcon,
@@ -9,6 +11,7 @@ import {
   Code,
   Paperclip,
 } from 'lucide-react';
+import {Help} from './help';
 import {Button} from './button';
 import {TextareaField} from './textarea-field';
 import {Markdown} from '../markdown';
@@ -144,6 +147,7 @@ export function MarkdownField({
             >
               <Button
                 variant="switch"
+                startIcon={<TextCursorInput />}
                 aria-pressed={!preview}
                 onClick={() => setPreview(false)}
               >
@@ -151,6 +155,7 @@ export function MarkdownField({
               </Button>
               <Button
                 variant="switch"
+                startIcon={<Eye />}
                 aria-pressed={preview}
                 onClick={() => setPreview(true)}
               >
@@ -162,6 +167,9 @@ export function MarkdownField({
               aria-label={`Форматирование: ${label}`}
               className="flex flex-wrap gap-0.5"
             >
+              <Help label={label}>
+                {hint} {'Размер изображения: ![Описание](asset:ID "width=320")'}
+              </Help>
               <Button
                 variant="ghost"
                 title="Жирный текст"
@@ -234,7 +242,7 @@ export function MarkdownField({
           if (file) void upload(file);
         }}
       />
-      {preview ? (
+      {readOnly || preview ? (
         <section
           aria-label={`Предпросмотр: ${label}`}
           className="min-h-28 rounded-xl border border-border bg-white px-4 py-2"
@@ -246,7 +254,6 @@ export function MarkdownField({
           ref={area}
           id={id}
           label={label}
-          hint={hint}
           value={value}
           rows={rows}
           onChange={(event) => {

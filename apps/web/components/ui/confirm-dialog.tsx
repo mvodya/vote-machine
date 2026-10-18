@@ -7,6 +7,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = 'Отмена',
   busy,
   error,
   onConfirm,
@@ -18,6 +19,8 @@ export function ConfirmDialog({
   description: string;
   // Text for the final action
   confirmLabel: string;
+  // Optional label for keeping the current work
+  cancelLabel?: string;
   // Whether the action is running
   busy: boolean;
   // Error from the last save
@@ -55,7 +58,7 @@ export function ConfirmDialog({
       )}
       <div className="mt-6 flex flex-wrap justify-end gap-3">
         <Button variant="secondary" disabled={busy} onClick={onClose}>
-          Отмена
+          {cancelLabel}
         </Button>
         <Button disabled={busy} onClick={onConfirm}>
           {busy ? 'Сохраняем…' : confirmLabel}

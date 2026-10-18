@@ -7,6 +7,7 @@ export function Media({
   id,
   alt,
   viewer,
+  displayWidth,
 }: {
   // File selected by a parsed managed reference
   id: string;
@@ -14,6 +15,8 @@ export function Media({
   alt: string;
   // Current room and access role
   viewer: MediaViewer;
+  // Optional Markdown display width in pixels
+  displayWidth?: number;
 }) {
   // Safe public metadata from the access-checked route
   const [asset, setAsset] = useState<Asset | null>(null);
@@ -56,10 +59,13 @@ export function Media({
   if (!asset || asset.id !== id)
     return <span className="text-sm text-muted">Загружаем файл…</span>;
   return (
-    <span className="my-3 block max-w-full">
+    <span
+      className="my-3 block max-w-full text-left"
+      style={displayWidth ? {width: displayWidth} : undefined}
+    >
       {asset.kind === 'video' ? (
         <video
-          className="max-h-120 max-w-full rounded-xl"
+          className="mr-auto ml-0 block h-auto max-h-120 w-auto max-w-full rounded-xl object-left"
           controls
           onError={() => setFailed(true)}
           playsInline
@@ -75,7 +81,8 @@ export function Media({
         // Private images use the viewer cookie and cannot go through a public optimizer
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          className="max-h-120 max-w-full rounded-xl object-contain"
+          className="mr-auto ml-0 block h-auto max-h-120 max-w-full rounded-xl object-contain object-left"
+          style={{width: displayWidth ?? 'auto'}}
           src={path}
           alt={alt || 'Изображение'}
           width={asset.width}

@@ -125,7 +125,12 @@ test('personal link, rename, repeated copy, revoke and reissue across devices', 
     await expect(
       participant.getByRole('heading', {name: 'Ожидание вопросов'}),
     ).toBeVisible();
-    await expect(participant.getByRole('tab')).toHaveCount(0);
+    await expect(
+      participant.getByRole('tablist', {name: 'Разделы комнаты'}),
+    ).toHaveCount(0);
+    await expect(
+      participant.getByRole('tab', {name: 'Мои ответы', exact: true}),
+    ).toBeVisible();
     await expect(
       participant.getByRole('button', {name: /Скопировать|Настройки/}),
     ).toHaveCount(0);

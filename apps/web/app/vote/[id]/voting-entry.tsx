@@ -1,11 +1,10 @@
 'use client';
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import Link from 'next/link';
-import {ListChecks} from 'lucide-react';
 import {Brand} from '../../../components/brand';
 import {Panel} from '../../../components/ui/panel';
 import {Button} from '../../../components/ui/button';
-import {EmptyState} from '../../../components/ui/empty-state';
+import {ParticipantJourney} from './journey';
 import {roomIdPattern, secretPattern} from '../../../lib/rooms';
 import {isParticipant, type Participant} from '../../../lib/voting-links';
 
@@ -15,6 +14,8 @@ export default function VotingEntry({id}: {id: string}) {
   const [state, setState] = useState<'loading' | 'ready' | 'denied' | 'error'>(
     'loading',
   );
+  // Leave private content when a later access check fails
+  const denyAccess = useCallback(() => setState('denied'), []);
   // Labels from the allowed link
   const [participant, setParticipant] = useState<Participant | null>(null);
   // Retry counter
@@ -96,7 +97,7 @@ export default function VotingEntry({id}: {id: string}) {
   }, [id, attempt]);
   return (
     <main className="min-h-svh bg-page px-4 py-6 text-ink">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-5xl">
         <Link href="/" aria-label="На главную">
           <Brand />
         </Link>
@@ -137,19 +138,7 @@ export default function VotingEntry({id}: {id: string}) {
                 ? 'Персональная ссылка'
                 : 'Многоразовая ссылка'}
             </p>
-            <Panel className="mt-6">
-              <EmptyState
-                icon={<ListChecks />}
-                title="Ожидание вопросов"
-                description="Здесь появятся вопросы комнаты"
-              />
-              <Button
-                variant="secondary"
-                onClick={() => setAttempt((value) => value + 1)}
-              >
-                Обновить
-              </Button>
-            </Panel>
+            <ParticipantJourney linkId={id} onDenied={denyAccess} />
           </>
         )}
       </div>

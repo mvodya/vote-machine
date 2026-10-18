@@ -54,13 +54,42 @@ test('image-only questions and choices upload privately, preview and survive rel
       )
       .toBeGreaterThan(0);
   }
-  const save = page.getByRole('button', {
-    name: 'Сохранить черновик',
+  // Other previews must keep their media while one field changes
+  const choicePreview = page.getByRole('region', {
+    name: 'Предпросмотр: Вариант 1',
     exact: true,
   });
+  const existing = await choicePreview.getByRole('img').elementHandle();
+  let infoReads = 0;
+  const countInfo = (request: import('@playwright/test').Request) => {
+    if (request.url().endsWith('/info')) infoReads++;
+  };
+  page.on('request', countInfo);
+  await page
+    .getByRole('group', {name: 'Режим редактора: Текст вопроса', exact: true})
+    .getByRole('button', {name: 'Текст', exact: true})
+    .click();
+  const text = page.getByLabel('Текст вопроса', {exact: true});
+  const original = await text.inputValue();
+  await text.fill(`Updated ${original}`);
+  await expect
+    .poll(() => existing!.evaluate((element) => element.isConnected))
+    .toBe(true);
+  await text.fill(original);
+  await page.waitForTimeout(200);
+  expect(infoReads).toBe(0);
+  page.off('request', countInfo);
+  const save = page
+    .getByRole('button', {
+      name: 'Сохранить изменения',
+      exact: true,
+    })
+    .first();
   await expect(save).toBeEnabled();
   await save.click();
-  await expect(page.getByText('Вопрос сохранен', {exact: true})).toBeVisible();
+  await expect(
+    page.getByText('Изменения сохранены', {exact: true}),
+  ).toBeVisible();
   const source = await page
     .getByLabel('Текст вопроса', {exact: true})
     .inputValue();
@@ -74,7 +103,7 @@ test('image-only questions and choices upload privately, preview and survive rel
   } finally {
     await visitor.close();
   }
-  await page.getByRole('button', {name: 'К списку', exact: true}).click();
+  await page.getByRole('tab', {name: 'Вопросы', exact: true}).click();
   await expect(
     page.getByRole('listitem', {name: 'Изображение', exact: true}),
   ).toBeVisible();

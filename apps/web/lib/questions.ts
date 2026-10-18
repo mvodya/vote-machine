@@ -26,6 +26,8 @@ export interface QuestionInput {
   allowAnswerChange: boolean;
   // Hide respondent identity in results
   anonymous: boolean;
+  // Allow a temporary skip without recording an answer
+  allowSkip?: boolean;
   // Options in their display order
   choices: Choice[];
 }
@@ -38,6 +40,14 @@ export interface QuestionSummary {
   preview: string;
   // Current lifecycle state
   state: 'draft' | 'open' | 'closed';
+  // Optional deadline and close details from the database
+  closesAt?: string | null;
+  closedAt?: string | null;
+  closedReason?: 'manual' | 'deadline' | null;
+  // Saved deadline mode and relative duration
+  deadlineMode?: 'none' | 'absolute' | 'duration';
+  closeAfterSeconds?: number | null;
+  openedAt?: string | null;
   // Stable key for equal creation times
   ordinal: string;
   // Creation time in UTC
@@ -106,6 +116,7 @@ export function isQuestionInput(value: unknown): value is QuestionInput {
       'allowAnswerChange',
       'anonymous',
     ].every((field) => typeof value[field] === 'boolean') &&
+    (value.allowSkip === undefined || typeof value.allowSkip === 'boolean') &&
     (value.publication === 'after_answer' ||
       value.publication === 'after_close')
   );
@@ -165,6 +176,7 @@ export function emptyQuestion(): QuestionInput {
     hideResultsUntilEnd: false,
     allowAnswerChange: false,
     anonymous: false,
+    allowSkip: false,
     choices: [{content: ''}, {content: ''}],
   };
 }
@@ -180,6 +192,7 @@ export function questionInput(value: QuestionInput): QuestionInput {
     hideResultsUntilEnd: value.hideResultsUntilEnd,
     allowAnswerChange: value.allowAnswerChange,
     anonymous: value.anonymous,
+    allowSkip: value.allowSkip ?? false,
     choices: value.choices.map((choice) => ({
       ...(choice.id ? {id: choice.id} : {}),
       content: choice.content,
@@ -189,6 +202,20 @@ export function questionInput(value: QuestionInput): QuestionInput {
 // Keep storage-only data out of editor replies
 export function publicSummary(value: QuestionSummary): QuestionSummary {
   return {
+    ...(value.closesAt !== undefined
+      ? {
+          closesAt: value.closesAt,
+          closedAt: value.closedAt,
+          closedReason: value.closedReason,
+        }
+      : {}),
+    ...(value.deadlineMode !== undefined
+      ? {
+          deadlineMode: value.deadlineMode,
+          closeAfterSeconds: value.closeAfterSeconds,
+          openedAt: value.openedAt,
+        }
+      : {}),
     id: value.id,
     roomId: value.roomId,
     preview: value.preview,

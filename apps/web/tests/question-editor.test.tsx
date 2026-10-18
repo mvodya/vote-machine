@@ -33,7 +33,9 @@ function show(editLocked: boolean | null) {
 it('shows a small edit notice only for a locked question', () => {
   show(true);
   expect(
-    screen.getByText('Администратор не может редактировать этот вопрос'),
+    screen.getByText(
+      'Администратор не может редактировать содержимое этого вопроса',
+    ),
   ).toHaveClass('text-xs', 'text-muted');
   expect(
     screen.getByRole('region', {name: 'Предпросмотр: Текст вопроса'}),
@@ -47,7 +49,9 @@ it.each([false, null])(
   (locked) => {
     show(locked);
     expect(
-      screen.queryByText('Администратор не может редактировать этот вопрос'),
+      screen.queryByText(
+        'Администратор не может редактировать содержимое этого вопроса',
+      ),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText('Текст вопроса')).toBeEnabled();
   },

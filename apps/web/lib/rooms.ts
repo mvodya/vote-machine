@@ -1,3 +1,4 @@
+import {validTimeZone} from './time';
 export interface Room {
   // Room ID
   id: string;
@@ -5,6 +6,8 @@ export interface Room {
   name: string;
   // Room creation time in UTC
   createdAt: string;
+  // One IANA zone for the whole room, unset until first admin entry
+  timeZone?: string | null;
   // Room version used for updates
   revision: string;
 }
@@ -24,6 +27,9 @@ export function isRoom(value: unknown): value is Room {
     typeof room.name === 'string' &&
     typeof room.createdAt === 'string' &&
     Number.isFinite(Date.parse(room.createdAt)) &&
+    (room.timeZone === undefined ||
+      room.timeZone === null ||
+      validTimeZone(room.timeZone)) &&
     typeof room.revision === 'string' &&
     /^\d+$/.test(room.revision)
   );

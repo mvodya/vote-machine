@@ -1,5 +1,7 @@
 'use client';
 
+import {RoomTimeZone} from './room-time-zone';
+import {localTimeZone} from '../../../lib/time';
 import {RoomName} from './room-name';
 import {Questions} from './questions';
 import {QuestionPolicy} from './question-policy';
@@ -9,6 +11,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import Link from 'next/link';
 import {ListChecks, Users, ChartColumn, Settings, Copy} from 'lucide-react';
 import {Brand} from '../../../components/brand';
+import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
 import {Tabs} from '../../../components/ui/tabs';
 import {EmptyState} from '../../../components/ui/empty-state';
 import {Button} from '../../../components/ui/button';
@@ -38,6 +41,10 @@ export default function AdminRoom({id}: {id: string}) {
   const [notice, setNotice] = useState('');
   // Current room tab
   const [section, setSection] = useState('questions');
+  // Ask before leaving an open editor
+  const [editing, setEditing] = useState(false);
+  const [destination, setDestination] = useState<string | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
   // Link key kept until the session is opened
   const key = useRef<string | null>(null);
   // Whether this URL has already been read
@@ -119,6 +126,22 @@ export default function AdminRoom({id}: {id: string}) {
         if (!isRoom(body.room) || body.room.id !== id)
           throw new Error('Invalid room');
         if (!controller.signal.aborted) {
+          // The first admin entry chooses the room's initial local zone
+          if (body.room.timeZone === null) {
+            const initialized = await fetch(`/api/rooms/${id}/time-zone`, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                timeZone: localTimeZone(),
+                initialize: true,
+              }),
+              signal: controller.signal,
+            });
+            const configured = await initialized.json();
+            if (!initialized.ok || !isRoom(configured.room))
+              throw new Error('Zone setup failed');
+            body.room = configured.room;
+          }
           key.current = null;
           setRoom(body.room);
           setState('ready');
@@ -221,6 +244,12 @@ export default function AdminRoom({id}: {id: string}) {
               label="Разделы комнаты"
               value={section}
               onChange={(value) => {
+                if (editing) {
+                  setDestination(value);
+                  return;
+                }
+                if (value === 'questions' && section === 'questions')
+                  setEditorKey((key) => key + 1);
                 setSection(value);
                 setNotice('');
               }}
@@ -261,7 +290,13 @@ export default function AdminRoom({id}: {id: string}) {
               className="pt-6"
             >
               {section === 'questions' && (
-                <Questions roomId={id} onDenied={denyAccess} />
+                <Questions
+                  key={editorKey}
+                  roomId={id}
+                  timeZone={room.timeZone ?? localTimeZone()}
+                  onDenied={denyAccess}
+                  onEditingChange={setEditing}
+                />
               )}
               {section === 'respondents' && (
                 <Respondents roomId={id} onDenied={denyAccess} />
@@ -287,6 +322,14 @@ export default function AdminRoom({id}: {id: string}) {
                         onDenied={denyAccess}
                         onNotice={setNotice}
                       />
+                      <div className="mt-5">
+                        <RoomTimeZone
+                          room={room}
+                          onSaved={setRoom}
+                          onDenied={denyAccess}
+                          onNotice={setNotice}
+                        />
+                      </div>
                     </Panel>
                     <QuestionPolicy roomId={id} onDenied={denyAccess} />
                   </div>
@@ -325,6 +368,22 @@ export default function AdminRoom({id}: {id: string}) {
                 </div>
               )}
             </section>
+            {destination !== null && (
+              <ConfirmDialog
+                title="Выйти из редактирования вопроса без сохранений?"
+                description="Несохраненные изменения будут потеряны"
+                confirmLabel="Выйти"
+                busy={false}
+                onClose={() => setDestination(null)}
+                onConfirm={() => {
+                  setEditing(false);
+                  setEditorKey((value) => value + 1);
+                  setSection(destination);
+                  setDestination(null);
+                  setNotice('');
+                }}
+              />
+            )}
             <p role="status" className="mt-4 text-sm text-muted">
               {notice}
             </p>

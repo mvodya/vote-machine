@@ -108,7 +108,7 @@ test('empty database, repeat run and upgrade keep existing room data', async () 
       const {room} = await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1793145600010-upgrade',
+        '1794000000010-upgrade',
         'ALTER TABLE rooms ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       assert.equal((await runMigrations({databaseUrl, dir})).length, 1);
@@ -212,12 +212,12 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1793145600010-probe',
+        '1794000000010-probe',
         'CREATE TABLE migration_probe (id integer); INSERT INTO migration_probe VALUES (1);',
       );
       await addMigration(
         dir,
-        '1793145600011-failure',
+        '1794000000011-failure',
         "UPDATE rooms SET name = 'lost'; SELECT 1 / 0;",
       );
       await assert.rejects(runMigrations({databaseUrl, dir}));
@@ -237,7 +237,7 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       // Only failed migrations may be fixed in place
       await addMigration(
         dir,
-        '1793145600011-failure',
+        '1794000000011-failure',
         'ALTER TABLE migration_probe ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       // A new container must load the fixed file again
@@ -372,7 +372,7 @@ test('dates keep their instant across time zones and migration sessions use UTC'
     await withMigrations(async (dir) => {
       await addMigration(
         dir,
-        '1793145600010-time-zone',
+        '1794000000010-time-zone',
         "CREATE TABLE migration_zone AS SELECT current_setting('TimeZone') AS zone;",
       );
       await runMigrations({databaseUrl, dir});
@@ -405,8 +405,11 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(result.stdout.trim(), 'Reverted 1 migrations');
     assert.equal(await migrationCount(client), total - 1);
     assert.equal(
-      (await client.query("SELECT to_regclass('public.assets') AS name"))
-        .rows[0].name,
+      (
+        await client.query(
+          "SELECT to_regprocedure('public.vm_store_question(uuid,bytea,uuid,text,jsonb)') AS name",
+        )
+      ).rows[0].name,
       null,
     );
     assert.equal(
@@ -1296,7 +1299,10 @@ test('room edit policy is captured on first opening and cannot be withdrawn', as
         client,
         admin,
         'create',
-        questionDocument({choices: [{content: 'A'}, {content: 'B'}]}),
+        questionDocument({
+          content: 'Choose',
+          choices: [{content: 'A'}, {content: 'B'}],
+        }),
       )
     ).question;
     // Seed the future lifecycle through SQL without adding an opening API
@@ -1319,15 +1325,8 @@ test('room edit policy is captured on first opening and cannot be withdrawn', as
       409,
     );
     assert.equal(
-      (
-        await questionCall(
-          client,
-          admin,
-          'delete',
-          {revision: q.revision},
-          q.id,
-        )
-      ).status,
+      (await questionCall(client, admin, 'delete', {revision: '0'}, q.id))
+        .status,
       409,
     );
     await assert.rejects(
@@ -1370,7 +1369,10 @@ test('room edit policy is captured on first opening and cannot be withdrawn', as
         client,
         admin,
         'create',
-        questionDocument({content: 'Editable'}),
+        questionDocument({
+          content: 'Editable',
+          choices: [{content: 'A'}, {content: 'B'}],
+        }),
       )
     ).question;
     await client.query("UPDATE questions SET state='open' WHERE id=$1", [
@@ -1411,7 +1413,7 @@ test('room edit policy is captured on first opening and cannot be withdrawn', as
           client,
           admin,
           'delete',
-          {revision: editable.revision},
+          {revision: '0'},
           editable.id,
         )
       ).status,
@@ -1861,6 +1863,7 @@ test('participant media access follows published content and current link sessio
         'create',
         questionDocument({
           content: `![Video](asset:${asset.id})`,
+          choices: [{content: 'A'}, {content: 'B'}],
           assetRefs: [{position: -1, assetId: asset.id}],
         }),
       )
@@ -2016,9 +2019,12 @@ test('asset rollback restores the previous question entry point and failed rollb
     await client.query(
       'CREATE TABLE outside_asset_reference(id uuid REFERENCES assets(id))',
     );
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
-      code: '2BP01',
-    });
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 3}),
+      {
+        code: '2BP01',
+      },
+    );
     assert.equal(await migrationCount(client), total);
     assert.equal(
       (await assetCall(client, admin, 'get', {}, asset.id)).status,
@@ -2029,7 +2035,7 @@ test('asset rollback restores the previous question entry point and failed rollb
       200,
     );
     await client.query('DROP TABLE outside_asset_reference');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 3});
     assert.equal(
       (
         await client.query(
@@ -2061,5 +2067,1161 @@ test('asset rollback restores the previous question entry point and failed rollb
       (await questionCall(client, admin, 'get', {}, q.id)).question.content,
       'Kept text',
     );
+  });
+});
+
+// Use the real lifecycle entry point for versioned state changes
+async function lifecycle(client, admin, question, action, extra = {}) {
+  return (
+    await client.query('SELECT vm_question_lifecycle($1,$2,$3,$4) AS reply', [
+      admin.room.id,
+      hash(admin.session),
+      question.id,
+      JSON.stringify({action, revision: question.revision, ...extra}),
+    ])
+  ).rows[0].reply;
+}
+// Build a draft that may be opened without extra edits
+async function readyQuestion(client, admin, extra = {}) {
+  return (
+    await questionCall(
+      client,
+      admin,
+      'create',
+      questionDocument({
+        content: 'Choose',
+        choices: [{content: 'A'}, {content: 'B'}],
+        ...extra,
+      }),
+    )
+  ).question;
+}
+
+test('lifecycle rejects empty drafts, foreign rooms and stale versions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    const empty = (
+      await questionCall(client, admin, 'create', questionDocument())
+    ).question;
+    assert.equal((await lifecycle(client, admin, empty, 'open')).status, 400);
+    const q = await readyQuestion(client, admin);
+    assert.equal((await lifecycle(client, other, q, 'open')).status, 404);
+    const opened = await lifecycle(client, admin, q, 'open');
+    assert.equal(opened.status, 200);
+    assert.equal(opened.question.editLocked, true);
+    assert.equal((await lifecycle(client, admin, q, 'close')).status, 409);
+    assert.equal(
+      (await lifecycle(client, admin, opened.question, 'close')).question
+        .closedReason,
+      'manual',
+    );
+  });
+});
+
+test('deadline closes effective reads before the worker and reopening needs a new deadline', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const q = await readyQuestion(client, admin);
+    const opened = await lifecycle(client, admin, q, 'open', {
+      closesAt: new Date(Date.now() + 120).toISOString(),
+    });
+    assert.equal(opened.status, 200);
+    await client.query('SELECT pg_sleep(0.15)');
+    assert.equal(
+      (await client.query('SELECT state FROM questions WHERE id=$1', [q.id]))
+        .rows[0].state,
+      'open',
+    );
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, q.id)).question.state,
+      'closed',
+    );
+    assert.equal(
+      (await questionCall(client, admin, 'list', {after: '0'})).questions[0]
+        .state,
+      'closed',
+    );
+    assert.equal(
+      (await client.query('SELECT vm_close_due() AS count')).rows[0].count,
+      1,
+    );
+    const closed = (await questionCall(client, admin, 'get', {}, q.id))
+      .question;
+    assert.equal(closed.closedReason, 'deadline');
+    assert.equal((await lifecycle(client, admin, closed, 'open')).status, 409);
+    assert.equal(
+      (await lifecycle(client, admin, closed, 'open', {closesAt: null}))
+        .question.state,
+      'open',
+    );
+  });
+});
+
+test('deadline edits and publication work with locked content and reject timezone-free dates', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    let q = (
+      await lifecycle(client, admin, await readyQuestion(client, admin), 'open')
+    ).question;
+    assert.equal(
+      (
+        await lifecycle(client, admin, q, 'settings', {
+          closesAt: '2027-01-01T10:00',
+          shareResults: true,
+          publication: 'after_close',
+        })
+      ).status,
+      400,
+    );
+    q = (
+      await lifecycle(client, admin, q, 'settings', {
+        closesAt: '2027-01-01T10:00:00+10:00',
+        shareResults: true,
+        publication: 'after_answer',
+      })
+    ).question;
+    assert.equal(
+      new Date(q.closesAt).toISOString(),
+      '2027-01-01T00:00:00.000Z',
+    );
+    assert.equal(q.shareResults, true);
+    q = (
+      await lifecycle(client, admin, q, 'settings', {
+        closesAt: '2020-01-01T00:00:00Z',
+        shareResults: false,
+        publication: 'after_close',
+      })
+    ).question;
+    assert.equal(q.state, 'closed');
+    assert.equal(q.closedReason, 'deadline');
+  });
+});
+
+test('two deadline workers close each overdue question only once', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    await lifecycle(client, admin, await readyQuestion(client, admin), 'open', {
+      closesAt: new Date(Date.now() + 120).toISOString(),
+    });
+    await client.query('SELECT pg_sleep(0.15)');
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      const results = await Promise.all([
+        client.query('SELECT vm_close_due() AS count'),
+        second.query('SELECT vm_close_due() AS count'),
+      ]);
+      assert.equal(
+        results.reduce((sum, result) => sum + result.rows[0].count, 0),
+        1,
+      );
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('lifecycle rollback fails atomically and reapplies with existing questions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const q = await readyQuestion(client, admin);
+    await client.query(
+      'CREATE VIEW outside_deadline AS SELECT closes_at FROM questions',
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 4}),
+      {
+        code: '2BP01',
+      },
+    );
+    assert.equal(await migrationCount(client), total);
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, q.id)).question.id,
+      q.id,
+    );
+    await client.query('DROP VIEW outside_deadline');
+    await runMigrations({databaseUrl, direction: 'down', count: total - 4});
+    await runMigrations({databaseUrl});
+    const current = (await questionCall(client, admin, 'get', {}, q.id))
+      .question;
+    assert.equal((await lifecycle(client, admin, current, 'open')).status, 200);
+  });
+});
+
+// Give each vote check real personal access and an open question
+async function personalFixture(client, extra = {}, editable = false) {
+  const admin = await adminRoom(client);
+  if (editable)
+    await client.query(
+      'UPDATE rooms SET lock_questions_after_open=false WHERE id=$1',
+      [admin.room.id],
+    );
+  const question = (
+    await lifecycle(
+      client,
+      admin,
+      await readyQuestion(client, admin, extra),
+      'open',
+    )
+  ).question;
+  const key = linkItem();
+  const [link] = await addLinks(client, admin, [key]);
+  const {session} = await openLink(client, link, key.key);
+  return {admin, question, link, session};
+}
+// Preserve the request body when checking a retry
+function ballotInput(question, extra = {}) {
+  return {
+    requestId: randomUUID(),
+    questionRevision: question.revision,
+    ballotRevision: '0',
+    choices: [question.choices[0].id],
+    ...extra,
+  };
+}
+// Submit through the same atomic entry point used by the API
+async function cast(client, fixture, body) {
+  return (
+    await client.query('SELECT vm_cast_personal($1,$2,$3,$4) AS reply', [
+      fixture.link.id,
+      hash(fixture.session),
+      fixture.question.id,
+      JSON.stringify(body),
+    ])
+  ).rows[0].reply;
+}
+
+test('personal votes are idempotent after close and reject a changed retry payload', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const body = ballotInput(f.question);
+    const first = await cast(client, f, body);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await cast(client, f, body), first);
+    assert.equal(
+      (await cast(client, f, {...body, choices: [f.question.choices[1].id]}))
+        .error,
+      'idempotency',
+    );
+    assert.equal(
+      (await cast(client, f, ballotInput(f.question))).error,
+      'used',
+    );
+    await lifecycle(client, f.admin, f.question, 'close');
+    assert.deepEqual(await cast(client, f, body), first);
+    assert.equal(
+      (await cast(client, f, ballotInput(f.question))).error,
+      'closed',
+    );
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '1',
+    );
+  });
+});
+
+test('personal vote races consume one right and optimistic answer edits keep one ballot', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      const race = await Promise.all([
+        cast(client, f, ballotInput(f.question)),
+        cast(second, f, ballotInput(f.question)),
+      ]);
+      assert.deepEqual(race.map((reply) => reply.status).sort(), [200, 409]);
+      const g = await personalFixture(client, {allowAnswerChange: true});
+      const first = await cast(client, g, ballotInput(g.question));
+      const edits = await Promise.all([
+        cast(
+          client,
+          g,
+          ballotInput(g.question, {
+            ballotRevision: first.answer.revision,
+            choices: [g.question.choices[1].id],
+          }),
+        ),
+        cast(
+          second,
+          g,
+          ballotInput(g.question, {ballotRevision: first.answer.revision}),
+        ),
+      ]);
+      assert.deepEqual(edits.map((reply) => reply.status).sort(), [200, 409]);
+      assert.equal(
+        (
+          await client.query(
+            'SELECT count(*) FROM ballots WHERE question_id=$1',
+            [g.question.id],
+          )
+        ).rows[0].count,
+        '1',
+      );
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('votes reject wrong-room choices, duplicate choices, stale questions and revoked sessions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const g = await personalFixture(client);
+    assert.equal(
+      (
+        await cast(
+          client,
+          f,
+          ballotInput(f.question, {choices: [g.question.choices[0].id]}),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await cast(
+          client,
+          f,
+          ballotInput(f.question, {
+            choices: [f.question.choices[0].id, f.question.choices[0].id],
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (await cast(client, f, ballotInput(f.question, {questionRevision: '0'})))
+        .error,
+      'changed',
+    );
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...f, question: g.question},
+          ballotInput(g.question),
+        )
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...f, session: f.admin.session},
+          ballotInput(f.question),
+        )
+      ).status,
+      401,
+    );
+    await editLink(client, f.admin, f.link, 'revoke');
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 401);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '0',
+    );
+  });
+});
+
+test('link rotation and reopening preserve a consumed personal right', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 200);
+    const key = linkItem();
+    await editLink(client, f.admin, f.link, 'rotate', key);
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 401);
+    f.session = (await openLink(client, f.link, key.key)).session;
+    let q = (await lifecycle(client, f.admin, f.question, 'close')).question;
+    q = (await lifecycle(client, f.admin, q, 'open')).question;
+    f.question = q;
+    assert.equal((await cast(client, f, ballotInput(q))).error, 'used');
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '1',
+    );
+  });
+});
+
+test('a vote waiting for a lock cannot pass an elapsed database deadline', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'settings', {
+        closesAt: new Date(Date.now() + 160).toISOString(),
+        shareResults: false,
+        publication: 'after_close',
+      })
+    ).question;
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT 1 FROM rooms WHERE id=$1 FOR UPDATE', [
+        f.admin.room.id,
+      ]);
+      const pending = cast(second, f, ballotInput(f.question));
+      await client.query('SELECT pg_sleep(0.2)');
+      await client.query('COMMIT');
+      assert.equal((await pending).error, 'closed');
+      assert.equal(
+        (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+        '0',
+      );
+    } finally {
+      await client.query('ROLLBACK');
+      await second.end();
+    }
+  });
+});
+
+test('close versus vote is atomic and later votes are rejected', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      const results = await Promise.all([
+        cast(client, f, ballotInput(f.question)),
+        lifecycle(second, f.admin, f.question, 'close'),
+      ]);
+      assert.equal(results[1].status, 200);
+      assert([200, 409].includes(results[0].status));
+      assert.equal(
+        (await cast(client, f, ballotInput(f.question))).error,
+        'closed',
+      );
+      assert(
+        Number(
+          (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+        ) <= 1,
+      );
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('database constraints protect selections and used options while editable text keeps votes', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(
+      client,
+      {choiceMode: 'multiple', maxChoices: 2, allowAnswerChange: true},
+      true,
+    );
+    const result = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: f.question.choices.map((choice) => choice.id),
+      }),
+    );
+    assert.equal(result.status, 200);
+    await assert.rejects(
+      client.query('DELETE FROM question_options WHERE id=$1', [
+        f.question.choices[0].id,
+      ]),
+      {code: '23001'},
+    );
+    await client.query('BEGIN');
+    await client.query('DELETE FROM ballot_choices WHERE ballot_id=$1', [
+      result.answer.id,
+    ]);
+    await assert.rejects(client.query('COMMIT'), {code: '23514'});
+    await client.query('ROLLBACK');
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          f.admin,
+          'save',
+          {...f.question, choices: [f.question.choices[1]], maxChoices: 1},
+          f.question.id,
+        )
+      ).error,
+      'used_options',
+    );
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          f.admin,
+          'save',
+          {...f.question, maxChoices: 1},
+          f.question.id,
+        )
+      ).error,
+      'ballots',
+    );
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          f.admin,
+          'save',
+          {
+            ...f.question,
+            content: 'Updated',
+            choices: [...f.question.choices].reverse(),
+          },
+          f.question.id,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM ballot_choices WHERE ballot_id=$1',
+          [result.answer.id],
+        )
+      ).rows[0].count,
+      '2',
+    );
+  });
+});
+
+test('ballot rollback is atomic and reapply preserves rooms, questions and access', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const {answer} = await cast(client, f, ballotInput(f.question));
+    await client.query(
+      'CREATE TABLE outside_ballot_reference(id uuid REFERENCES ballots(id))',
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 5}),
+      {
+        code: '2BP01',
+      },
+    );
+    assert.equal(await migrationCount(client), total);
+    assert.equal(
+      (await client.query('SELECT id FROM ballots')).rows[0].id,
+      answer.id,
+    );
+    await client.query('DROP TABLE outside_ballot_reference');
+    await runMigrations({databaseUrl, direction: 'down', count: total - 5});
+    await runMigrations({databaseUrl});
+    f.question = (
+      await questionCall(client, f.admin, 'get', {}, f.question.id)
+    ).question;
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 200);
+  });
+});
+
+// Read a personal snapshot through the real access function
+async function journey(client, fixture, data = {}) {
+  return (
+    await client.query('SELECT vm_participant_journey($1,$2,$3) AS reply', [
+      fixture.link.id,
+      hash(fixture.session),
+      JSON.stringify({after: '0', ...data}),
+    ])
+  ).rows[0].reply;
+}
+// Add a later question in the same room
+async function laterQuestion(client, fixture, extra = {}) {
+  return (
+    await lifecycle(
+      client,
+      fixture.admin,
+      await readyQuestion(client, fixture.admin, extra),
+      'open',
+    )
+  ).question;
+}
+
+test('required questions block both navigation and direct later votes', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const later = await laterQuestion(client, f, {content: 'Later'});
+    const first = await journey(client, f);
+    assert.equal(first.current.id, f.question.id);
+    assert.equal(first.current.allowSkip, false);
+    assert.equal(first.questions[1].canChoose, false);
+    assert.equal(
+      (await journey(client, f, {selected: later.id})).current.id,
+      f.question.id,
+    );
+    assert.equal(
+      (await journey(client, f, {skip: f.question.id})).error,
+      'skip',
+    );
+    assert.equal(
+      (await cast(client, {...f, question: later}, ballotInput(later))).error,
+      'sequence',
+    );
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 200);
+    assert.equal((await journey(client, f)).current.id, later.id);
+  });
+});
+
+test('skip is an explicit question setting, does not vote and may be changed in lifecycle settings', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {allowSkip: true});
+    const later = await laterQuestion(client, f);
+    assert.equal(f.question.allowSkip, true);
+    assert.equal(
+      (await journey(client, f, {skip: f.question.id})).current.id,
+      later.id,
+    );
+    assert.equal(
+      (await journey(client, f, {selected: later.id})).current.id,
+      later.id,
+    );
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '0',
+    );
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'settings', {
+        allowSkip: false,
+        shareResults: false,
+        publication: 'after_close',
+      })
+    ).question;
+    assert.equal(f.question.allowSkip, false);
+    assert.equal(
+      (await journey(client, f, {selected: later.id})).current.id,
+      f.question.id,
+    );
+    assert.equal(
+      (
+        await lifecycle(client, f.admin, f.question, 'settings', {
+          allowSkip: 'yes',
+          shareResults: false,
+          publication: 'after_close',
+        })
+      ).status,
+      400,
+    );
+  });
+});
+
+test('own history keeps closed content and answers without other respondents or draft content', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      anonymous: true,
+      allowAnswerChange: true,
+    });
+    const saved = await cast(client, f, ballotInput(f.question));
+    const later = await laterQuestion(client, f, {content: 'Later'});
+    await questionCall(
+      client,
+      f.admin,
+      'create',
+      questionDocument({content: 'Private draft'}),
+    );
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    const snapshot = await journey(client, f);
+    assert.equal(snapshot.current.id, later.id);
+    assert.equal(snapshot.progress.pending, 1);
+    const history = await journey(client, f, {selected: f.question.id});
+    assert.equal(history.current.state, 'closed');
+    assert.equal(history.current.anonymous, true);
+    assert.deepEqual(history.answer, saved.answer);
+    assert(!JSON.stringify(history).includes('Private draft'));
+    assert(!('linkId' in history.answer));
+    assert(!('name' in history.answer));
+  });
+});
+
+test('the same old session sees new questions after waiting and cannot access a foreign question', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const other = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    assert.equal((await journey(client, f)).current, null);
+    await client.query(
+      "UPDATE voting_sessions SET created_at=clock_timestamp()-interval '100 years' WHERE secret_hash=$1",
+      [hash(f.session)],
+    );
+    const next = await laterQuestion(client, f, {content: 'Next day'});
+    assert.equal((await journey(client, f)).current.id, next.id);
+    const snapshot = await journey(client, f, {selected: other.question.id});
+    assert.equal(snapshot.current.id, next.id);
+    assert(snapshot.questions.every((item) => item.roomId === f.admin.room.id));
+    await editLink(client, f.admin, f.link, 'revoke');
+    assert.equal((await journey(client, f)).status, 401);
+  });
+});
+
+test('participant pages use stable metadata cursors while the active question stays independent', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {allowSkip: true});
+    for (let i = 0; i < 50; i++)
+      await laterQuestion(client, f, {
+        content: `Question ${i}`,
+        allowSkip: true,
+      });
+    const first = await journey(client, f);
+    assert.equal(first.questions.length, 50);
+    assert(first.nextCursor);
+    const second = await journey(client, f, {after: first.nextCursor});
+    assert.equal(second.questions.length, 1);
+    assert.equal(second.current.id, f.question.id);
+    assert.equal(second.nextCursor, null);
+  });
+});
+
+test('closed media stays available only through the owners own answer history', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {}, true);
+    const asset = await readyAsset(client, f.admin);
+    f.question = (
+      await questionCall(
+        client,
+        f.admin,
+        'save',
+        {
+          ...f.question,
+          content: `![Photo](asset:${asset.id})`,
+          assetRefs: [{position: -1, assetId: asset.id}],
+        },
+        f.question.id,
+      )
+    ).question;
+    const key = linkItem();
+    const [other] = await addLinks(client, f.admin, [key]);
+    const otherSession = (await openLink(client, other, key.key)).session;
+    await cast(client, f, ballotInput(f.question));
+    await lifecycle(client, f.admin, f.question, 'close');
+    assert.equal(
+      (
+        await client.query('SELECT vm_participant_asset($1,$2,$3) AS reply', [
+          f.link.id,
+          hash(f.session),
+          asset.id,
+        ])
+      ).rows[0].reply.status,
+      200,
+    );
+    assert.equal(
+      (
+        await client.query('SELECT vm_participant_asset($1,$2,$3) AS reply', [
+          other.id,
+          hash(otherSession),
+          asset.id,
+        ])
+      ).rows[0].reply.status,
+      404,
+    );
+  });
+});
+
+test('journey rollback is atomic and restores earlier voting functions before reapply', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await client.query(
+      'CREATE VIEW outside_skip AS SELECT allow_skip FROM questions',
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 6}),
+      {
+        code: '2BP01',
+      },
+    );
+    assert.equal(await migrationCount(client), total);
+    assert.equal((await journey(client, f)).current.id, f.question.id);
+    await client.query('DROP VIEW outside_skip');
+    await runMigrations({databaseUrl, direction: 'down', count: total - 6});
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 200);
+    await runMigrations({databaseUrl});
+    assert.equal((await journey(client, f)).current, null);
+  });
+});
+
+// Save the workspace document through the same atomic entry point
+async function workspaceSave(client, admin, question, extra = {}) {
+  return questionCall(
+    client,
+    admin,
+    question ? 'save' : 'create',
+    {
+      ...(question ??
+        questionDocument({
+          content: 'Choose',
+          choices: [{content: 'A'}, {content: 'B'}],
+        })),
+      state: question?.state ?? 'draft',
+      deadlineMode: question?.deadlineMode ?? 'none',
+      ...extra,
+    },
+    question?.id ?? null,
+  );
+}
+// Change a room zone with real admin access
+async function roomZone(client, admin, data) {
+  return (
+    await client.query('SELECT vm_room_time_zone($1,$2,$3) AS reply', [
+      admin.room.id,
+      hash(admin.session),
+      JSON.stringify(data),
+    ])
+  ).rows[0].reply;
+}
+
+test('room time zones initialize once and stay shared across participant snapshots', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    let reply = await roomZone(client, f.admin, {
+      timeZone: 'Asia/Vladivostok',
+      initialize: true,
+    });
+    assert.equal(reply.status, 200);
+    assert.equal(reply.room.timeZone, 'Asia/Vladivostok');
+    const other = await roomZone(client, f.admin, {
+      timeZone: 'Europe/Berlin',
+      initialize: true,
+    });
+    assert.equal(other.room.timeZone, 'Asia/Vladivostok');
+    assert.equal(
+      (
+        await roomZone(client, f.admin, {
+          timeZone: 'bad/zone',
+          revision: reply.room.revision,
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await roomZone(client, f.admin, {
+          timeZone: 'Europe/Berlin',
+          revision: '0',
+        })
+      ).status,
+      409,
+    );
+    reply = await roomZone(client, f.admin, {
+      timeZone: 'Europe/Berlin',
+      revision: reply.room.revision,
+    });
+    assert.equal((await journey(client, f)).timeZone, 'Europe/Berlin');
+    assert.equal(
+      (
+        await roomZone(
+          client,
+          {...f.admin, session: f.session},
+          {timeZone: 'UTC', initialize: true},
+        )
+      ).status,
+      401,
+    );
+    await assert.rejects(
+      client.query("UPDATE rooms SET time_zone='bad/zone' WHERE id=$1", [
+        f.admin.room.id,
+      ]),
+      {code: '23514'},
+    );
+  });
+});
+
+test('two first admin entries cannot choose different room zones', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      const replies = await Promise.all([
+        roomZone(client, admin, {timeZone: 'Asia/Tokyo', initialize: true}),
+        roomZone(second, admin, {
+          timeZone: 'America/New_York',
+          initialize: true,
+        }),
+      ]);
+      assert(replies.every((reply) => reply.status === 200));
+      assert.equal(replies[0].room.timeZone, replies[1].room.timeZone);
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('workspace saves content, settings and opening atomically and rejects partial invalid opens', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const invalid = await workspaceSave(client, admin, null, {
+      content: 'Partial',
+      choices: [{content: 'A'}, {content: ''}],
+      state: 'open',
+      shareResults: true,
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM questions')).rows[0].count,
+      '0',
+    );
+    let q = (await workspaceSave(client, admin, null)).question;
+    const failed = await workspaceSave(client, admin, q, {
+      content: 'Partial',
+      choices: [q.choices[0], {...q.choices[1], content: ''}],
+      state: 'open',
+      shareResults: true,
+    });
+    assert.equal(failed.status, 400);
+    assert.deepEqual(
+      (await questionCall(client, admin, 'get', {}, q.id)).question,
+      q,
+    );
+    q = (
+      await workspaceSave(client, admin, q, {
+        content: 'Opened',
+        state: 'open',
+        shareResults: true,
+        allowSkip: true,
+      })
+    ).question;
+    assert.equal(q.state, 'open');
+    assert.equal(q.editLocked, true);
+    assert.equal(q.shareResults, true);
+    assert.equal(q.allowSkip, true);
+    const updated = await workspaceSave(client, admin, q, {
+      publication: 'after_answer',
+      allowSkip: false,
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.question.publication, 'after_answer');
+    assert.equal(
+      (
+        await workspaceSave(client, admin, updated.question, {
+          content: 'Forbidden',
+        })
+      ).status,
+      409,
+    );
+  });
+});
+
+test('relative deadlines start at each opening and remain inactive in a draft', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    let q = (
+      await workspaceSave(client, admin, null, {
+        deadlineMode: 'duration',
+        closeAfterSeconds: 60,
+      })
+    ).question;
+    assert.equal(q.closesAt, null);
+    assert.equal(q.closeAfterSeconds, 60);
+    q = (await lifecycle(client, admin, q, 'open')).question;
+    assert.equal(Date.parse(q.closesAt) - Date.parse(q.openedAt), 60000);
+    const first = q.openedAt;
+    q = (await lifecycle(client, admin, q, 'close')).question;
+    await client.query('SELECT pg_sleep(0.03)');
+    q = (await lifecycle(client, admin, q, 'open')).question;
+    assert(Date.parse(q.openedAt) > Date.parse(first));
+    assert.equal(Date.parse(q.closesAt) - Date.parse(q.openedAt), 60000);
+  });
+});
+
+test('returning to draft hides answers without discarding ballots or opening promises', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    f.question = (
+      await workspaceSave(client, f.admin, f.question, {state: 'draft'})
+    ).question;
+    assert.equal(f.question.state, 'draft');
+    assert.equal(f.question.editLocked, true);
+    assert.equal((await journey(client, f)).questions.length, 0);
+    assert.equal(
+      (
+        await client.query('SELECT vm_personal_answer($1,$2,$3) AS reply', [
+          f.link.id,
+          hash(f.session),
+          f.question.id,
+        ])
+      ).rows[0].reply.status,
+      404,
+    );
+    f.question = (
+      await workspaceSave(client, f.admin, f.question, {state: 'open'})
+    ).question;
+    assert.equal(
+      (await cast(client, f, ballotInput(f.question))).error,
+      'used',
+    );
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '1',
+    );
+  });
+});
+
+test('any question can be deleted with its ballots, retry records and media references', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {}, true);
+    const asset = await readyAsset(client, f.admin);
+    f.question = (
+      await workspaceSave(client, f.admin, f.question, {
+        content: `![Photo](asset:${asset.id})`,
+        assetRefs: [{position: -1, assetId: asset.id}],
+      })
+    ).question;
+    await cast(client, f, ballotInput(f.question));
+    const result = await questionCall(
+      client,
+      f.admin,
+      'delete',
+      {revision: f.question.revision},
+      f.question.id,
+    );
+    assert.equal(result.status, 200);
+    for (const table of [
+      'questions',
+      'question_options',
+      'ballots',
+      'ballot_choices',
+      'vote_requests',
+      'question_asset_refs',
+    ])
+      assert.equal(
+        (await client.query(`SELECT count(*) FROM ${table}`)).rows[0].count,
+        '0',
+      );
+    assert(
+      (
+        await client.query('SELECT unused_since FROM assets WHERE id=$1', [
+          asset.id,
+        ])
+      ).rows[0].unused_since instanceof Date,
+    );
+    assert.equal(
+      (await questionCall(client, f.admin, 'get', {}, f.question.id)).status,
+      404,
+    );
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 404);
+    assert.equal((await journey(client, f)).questions.length, 0);
+    for (const state of ['draft', 'closed']) {
+      const q = (await workspaceSave(client, f.admin, null, {state})).question;
+      assert.equal(
+        (
+          await questionCall(
+            client,
+            f.admin,
+            'delete',
+            {revision: q.revision},
+            q.id,
+          )
+        ).status,
+        200,
+      );
+    }
+  });
+});
+
+test('delete and vote races leave no orphan ballot or acknowledged retry record', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      const results = await Promise.all([
+        cast(client, f, ballotInput(f.question)),
+        questionCall(
+          second,
+          f.admin,
+          'delete',
+          {revision: f.question.revision},
+          f.question.id,
+        ),
+      ]);
+      assert.equal(results[1].status, 200);
+      assert([200, 404].includes(results[0].status));
+      assert.equal(
+        (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+        '0',
+      );
+      assert.equal(
+        (await client.query('SELECT count(*) FROM vote_requests')).rows[0]
+          .count,
+        '0',
+      );
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('workspace rollback and a blocked deletion both preserve data atomically', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const result = await cast(client, f, ballotInput(f.question));
+    await client.query(
+      'CREATE TABLE outside_ballot(id uuid REFERENCES ballots(id))',
+    );
+    await client.query('INSERT INTO outside_ballot VALUES($1)', [
+      result.answer.id,
+    ]);
+    await assert.rejects(
+      questionCall(
+        client,
+        f.admin,
+        'delete',
+        {revision: f.question.revision},
+        f.question.id,
+      ),
+    );
+    assert.equal(
+      (await client.query('SELECT deleting FROM questions')).rows[0].deleting,
+      false,
+    );
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballot_choices')).rows[0].count,
+      '1',
+    );
+    await client.query('DROP TABLE outside_ballot');
+    await client.query(
+      'CREATE VIEW outside_zone AS SELECT time_zone FROM rooms',
+    );
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
+      code: '2BP01',
+    });
+    assert.equal(await migrationCount(client), total);
+    assert.equal(
+      (await questionCall(client, f.admin, 'get', {}, f.question.id)).question
+        .state,
+      'open',
+    );
+    await client.query('DROP VIEW outside_zone');
+    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '1',
+    );
+    assert.equal((await journey(client, f)).answer, null);
   });
 });

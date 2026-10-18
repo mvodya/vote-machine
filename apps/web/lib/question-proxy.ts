@@ -22,6 +22,7 @@ export async function questionProxy(
   room: string,
   id?: string,
   policy = false,
+  lifecycle = false,
 ) {
   if (!roomIdPattern.test(room) || (id && !roomIdPattern.test(id)))
     return failure(401);
@@ -45,7 +46,18 @@ export async function questionProxy(
       const data: unknown = JSON.parse(text);
       if (!isRecord(data)) return failure(400);
       if ((id || policy) && !validCursor(data.revision)) return failure(400);
-      if (policy) {
+      if (lifecycle) {
+        if (!['open', 'close', 'settings'].includes(String(data.action)))
+          return failure(400);
+        body = {
+          action: data.action,
+          revision: data.revision,
+          ...(data.closesAt !== undefined ? {closesAt: data.closesAt} : {}),
+          shareResults: data.shareResults,
+          allowSkip: data.allowSkip,
+          publication: data.publication,
+        };
+      } else if (policy) {
         if (typeof data.lockAfterOpen !== 'boolean') return failure(400);
         body = {lockAfterOpen: data.lockAfterOpen, revision: data.revision};
       } else if (request.method === 'DELETE') {
@@ -54,6 +66,14 @@ export async function questionProxy(
         if (!isQuestionInput(data)) return failure(400);
         body = {
           ...questionInput(data),
+          ...(data.state !== undefined ? {state: data.state} : {}),
+          ...(data.deadlineMode !== undefined
+            ? {
+                deadlineMode: data.deadlineMode,
+                closesAt: data.closesAt,
+                closeAfterSeconds: data.closeAfterSeconds,
+              }
+            : {}),
           ...(id ? {revision: data.revision} : {}),
         };
       }
@@ -62,7 +82,7 @@ export async function questionProxy(
     }
   }
   try {
-    const path = `/api/rooms/${room}/${policy ? 'question-policy' : `questions${id ? `/${id}` : `?${new URLSearchParams({after})}`}`}`;
+    const path = `/api/rooms/${room}/${policy ? 'question-policy' : `questions${id ? `/${id}${lifecycle ? '/lifecycle' : ''}` : `?${new URLSearchParams({after})}`}`}`;
     const upstream = await fetch(
       new URL(path, process.env.API_ORIGIN ?? 'http://api:8080'),
       {
@@ -84,7 +104,16 @@ export async function questionProxy(
       const data = await upstream.json().catch(() => null);
       const error =
         isRecord(data) &&
-        ['conflict', 'locked', 'asset'].includes(String(data.error))
+        [
+          'conflict',
+          'locked',
+          'asset',
+          'deadline',
+          'ready',
+          'state',
+          'used_options',
+          'ballots',
+        ].includes(String(data.error))
           ? String(data.error)
           : 'Request failed';
       return failure(status, error);

@@ -128,6 +128,9 @@ export async function roomProxy(request: Request, action: Action, id?: string) {
         name: body.room.name,
         createdAt: body.room.createdAt,
         revision: body.room.revision,
+        ...(body.room.timeZone !== undefined
+          ? {timeZone: body.room.timeZone}
+          : {}),
       },
     };
     // A new room returns its first admin link

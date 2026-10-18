@@ -38,12 +38,15 @@ Json::Value Room(const drogon::orm::Row& row) {
   room["name"] = row["name"].as<std::string>();
   room["createdAt"] = row["created_at"].as<std::string>();
   room["revision"] = row["revision"].as<std::string>();
+  room["timeZone"] = row["time_zone"].isNull()
+                         ? Json::Value()
+                         : Json::Value(row["time_zone"].as<std::string>());
   return room;
 }
 
 // Read public fields and format dates in UTC
 const std::string kRoomColumns =
-    "SELECT id::text, name, "
+    "SELECT id::text, name, time_zone, "
     "to_char(created_at AT TIME ZONE 'UTC', "
     "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS created_at, revision::text FROM ";
 
@@ -163,6 +166,37 @@ void RegisterRoomHandlers(const drogon::orm::DbClientPtr& database,
             id, session);
       },
       {drogon::Get});
+
+  // Save one room zone for admins and participants
+  drogon::app().registerHandler(
+      "/api/rooms/{1}/time-zone",
+      [database](const drogon::HttpRequestPtr& request, Reply&& reply,
+                 const std::string& id) {
+        const auto session = Session(request);
+        if (!IsRoomId(id) || session.empty()) {
+          Error(reply, drogon::k401Unauthorized, "Admin access required");
+          return;
+        }
+        const auto body = request->getJsonObject();
+        if (!body || !body->isObject() || HasNull(*body)) {
+          Error(reply, drogon::k400BadRequest, "Invalid time zone");
+          return;
+        }
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        database->execSqlAsync(
+            "SELECT "
+            "vm_room_time_zone($1::uuid,decode($2,'hex'),$3::jsonb)::text AS "
+            "response",
+            [reply](const drogon::orm::Result& result) {
+              DatabaseReply(result, reply);
+            },
+            [reply](const drogon::orm::DrogonDbException&) {
+              Unavailable(reply);
+            },
+            id, session, Json::writeString(writer, *body));
+      },
+      {drogon::Patch});
 
   // Read or rename a room through its session
   drogon::app().registerHandler(

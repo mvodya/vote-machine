@@ -1,7 +1,16 @@
 'use client';
 
 import {useEffect, useState} from 'react';
-import {Eye, ListChecks, Pencil, Plus, RefreshCw, Trash2} from 'lucide-react';
+import {
+  Eye,
+  ListChecks,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Play,
+  Square,
+} from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Panel} from '../../../components/ui/panel';
 import {SectionHeader} from '../../../components/ui/section-header';
@@ -16,17 +25,24 @@ import {
   type QuestionSummary,
 } from '../../../lib/questions';
 import {markdownSummary} from '../../../lib/markdown';
+import {formatTime, localTimeZone} from '../../../lib/time';
 import {QuestionEditor} from './question-editor';
 
 // Show question metadata and open the full editor on demand
 export function Questions({
   roomId,
   onDenied,
+  onEditingChange,
+  timeZone = localTimeZone(),
 }: {
   // Room opened by the admin
   roomId: string;
+  // Shared zone used in question dates
+  timeZone?: string;
   // Leave private panels when the session is rejected
   onDenied: () => void;
+  // Tell room tabs when the editor is open
+  onEditingChange?: (value: boolean) => void;
 }) {
   // Metadata for the current page
   const [items, setItems] = useState<QuestionSummary[]>([]);
@@ -44,6 +60,8 @@ export function Questions({
   const [busy, setBusy] = useState(false);
   // Saved question, new draft, or closed editor
   const [editing, setEditing] = useState<Question | 'new' | null>(null);
+  // A stable editor session keeps its selected tab after saving
+  const [editorSession, setEditorSession] = useState(0);
   // Draft selected for deletion
   const [deleting, setDeleting] = useState<QuestionSummary | null>(null);
   // Result or error shown below the current panel
@@ -117,6 +135,7 @@ export function Questions({
       if (!isQuestion(body.question) || body.question.id !== id)
         throw new Error('Bad question');
       setEditing(body.question);
+      setEditorSession((value) => value + 1);
     } catch {
       setNotice('Не удалось открыть вопрос, обновите список');
     } finally {
@@ -146,9 +165,47 @@ export function Questions({
       if (!response.ok) throw new Error('Delete failed');
       setDeleting(null);
       reload();
-      setNotice('Черновик удален');
+      setNotice('Вопрос удален');
     } catch {
-      setNotice('Не удалось удалить черновик');
+      setNotice('Не удалось удалить вопрос');
+    } finally {
+      setBusy(false);
+    }
+  }
+  // Quick actions use only the saved management settings
+  async function toggle(item: QuestionSummary) {
+    if (busy) return;
+    setBusy(true);
+    setNotice('');
+    try {
+      const response = await fetch(`${base}/${item.id}/lifecycle`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          action: item.state === 'open' ? 'close' : 'open',
+          revision: item.revision,
+        }),
+      });
+      if (response.status === 401) {
+        onDenied();
+        return;
+      }
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(
+          body.error === 'deadline'
+            ? 'Измените истекший срок в вопросе'
+            : body.error === 'ready'
+              ? 'Заполните вопрос и минимум два варианта'
+              : 'Не удалось изменить состояние вопроса, обновите список',
+        );
+      reload();
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось изменить состояние',
+      );
     } finally {
       setBusy(false);
     }
@@ -157,18 +214,22 @@ export function Questions({
     <>
       {editing !== null ? (
         <QuestionEditor
-          key={editing === 'new' ? 'new' : `${editing.id}/${editing.revision}`}
+          key={editorSession}
           roomId={roomId}
+          timeZone={timeZone}
+          onDirtyChange={onEditingChange}
           question={editing === 'new' ? null : editing}
           onDenied={onDenied}
           onClose={() => {
             setEditing(null);
+            onEditingChange?.(false);
             setNotice('');
             reload();
           }}
           onSaved={(value) => {
             setEditing(value);
-            setNotice('Вопрос сохранен');
+            setNotice('Изменения сохранены');
+            reload();
           }}
           onReload={() => {
             if (editing !== 'new') void open(editing.id);
@@ -181,6 +242,7 @@ export function Questions({
               startIcon={<Plus />}
               disabled={busy}
               onClick={() => {
+                setEditorSession((value) => value + 1);
                 setEditing('new');
                 setNotice('');
               }}
@@ -242,16 +304,23 @@ export function Questions({
                       </span>
                       <span>Вариантов: {item.choiceCount}</span>
                       <time dateTime={item.createdAt}>
-                        {new Date(item.createdAt).toLocaleString('ru-RU', {
-                          timeZone: 'UTC',
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })}{' '}
-                        UTC
+                        {formatTime(item.createdAt, timeZone)}
                       </time>
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
+                    <Button
+                      variant="ghost"
+                      title={
+                        item.state === 'open'
+                          ? 'Закрыть вопрос'
+                          : 'Открыть вопрос'
+                      }
+                      aria-label={`${item.state === 'open' ? 'Закрыть' : 'Открыть'} вопрос: ${markdownSummary(item.preview) || 'Без текста'}`}
+                      startIcon={item.state === 'open' ? <Square /> : <Play />}
+                      disabled={busy}
+                      onClick={() => void toggle(item)}
+                    />
                     <Button
                       variant="secondary"
                       startIcon={item.editLocked ? <Eye /> : <Pencil />}
@@ -260,10 +329,10 @@ export function Questions({
                     >
                       {item.editLocked ? 'Просмотреть' : 'Редактировать'}
                     </Button>
-                    {item.state === 'draft' && (
+                    {
                       <Button
                         variant="ghost"
-                        title="Удалить черновик"
+                        title="Удалить вопрос"
                         aria-label={`Удалить вопрос: ${markdownSummary(item.preview) || 'Без текста'}`}
                         startIcon={<Trash2 />}
                         disabled={busy}
@@ -272,7 +341,7 @@ export function Questions({
                           setNotice('');
                         }}
                       />
-                    )}
+                    }
                   </div>
                 </li>
               ))}
@@ -295,8 +364,8 @@ export function Questions({
       </p>
       {deleting && (
         <ConfirmDialog
-          title="Удалить черновик?"
-          description="Черновик и его варианты будут удалены"
+          title="Удалить вопрос?"
+          description="Вопрос, его варианты и все ответы будут удалены"
           confirmLabel="Удалить"
           busy={busy}
           error={notice}
