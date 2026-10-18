@@ -108,7 +108,7 @@ test('empty database, repeat run and upgrade keep existing room data', async () 
       const {room} = await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1793059200010-upgrade',
+        '1793145600010-upgrade',
         'ALTER TABLE rooms ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       assert.equal((await runMigrations({databaseUrl, dir})).length, 1);
@@ -212,12 +212,12 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1793059200010-probe',
+        '1793145600010-probe',
         'CREATE TABLE migration_probe (id integer); INSERT INTO migration_probe VALUES (1);',
       );
       await addMigration(
         dir,
-        '1793059200011-failure',
+        '1793145600011-failure',
         "UPDATE rooms SET name = 'lost'; SELECT 1 / 0;",
       );
       await assert.rejects(runMigrations({databaseUrl, dir}));
@@ -237,7 +237,7 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       // Only failed migrations may be fixed in place
       await addMigration(
         dir,
-        '1793059200011-failure',
+        '1793145600011-failure',
         'ALTER TABLE migration_probe ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       // A new container must load the fixed file again
@@ -372,7 +372,7 @@ test('dates keep their instant across time zones and migration sessions use UTC'
     await withMigrations(async (dir) => {
       await addMigration(
         dir,
-        '1793059200010-time-zone',
+        '1793145600010-time-zone',
         "CREATE TABLE migration_zone AS SELECT current_setting('TimeZone') AS zone;",
       );
       await runMigrations({databaseUrl, dir});
@@ -405,7 +405,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(result.stdout.trim(), 'Reverted 1 migrations');
     assert.equal(await migrationCount(client), total - 1);
     assert.equal(
-      (await client.query("SELECT to_regclass('public.questions') AS name"))
+      (await client.query("SELECT to_regclass('public.assets') AS name"))
         .rows[0].name,
       null,
     );
@@ -1604,16 +1604,19 @@ test('question rollback is atomic and preserves room and respondent access', asy
     await client.query(
       'CREATE TABLE outside_question_reference (question_id uuid REFERENCES questions(id))',
     );
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
-      code: '2BP01',
-    });
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 2}),
+      {
+        code: '2BP01',
+      },
+    );
     assert.equal(await migrationCount(client), total);
     assert.equal(
       (await questionCall(client, admin, 'get', {}, q.id)).status,
       200,
     );
     await client.query('DROP TABLE outside_question_reference');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 2});
     assert.equal(await linkAccess(client, link, session.session), 1);
     assert.equal(
       (
@@ -1630,5 +1633,433 @@ test('question rollback is atomic and preserves room and respondent access', asy
       [],
     );
     assert.equal(await linkAccess(client, link, session.session), 1);
+  });
+});
+
+// Use the same database media entry point as the server
+async function assetCall(client, admin, action, data = {}, id = null) {
+  return (
+    await client.query('SELECT vm_asset_request($1,$2,$3,$4,$5) AS reply', [
+      admin.room.id,
+      hash(admin.session),
+      id,
+      action,
+      JSON.stringify(data),
+    ])
+  ).rows[0].reply;
+}
+// A ready row models metadata already checked by the trusted media server
+async function readyAsset(client, admin, mime = 'image/webp') {
+  const asset = (await assetCall(client, admin, 'reserve', {bytes: 100})).asset;
+  const finished = await assetCall(
+    client,
+    admin,
+    'finish',
+    {mime, width: 2, height: 2, bytes: 100, sha256: 'a'.repeat(64)},
+    asset.id,
+  );
+  assert.equal(finished.status, 200);
+  return finished.asset;
+}
+// Claim shared deletion jobs without holding locks during storage work
+async function cleanupCall(client, action, data = {}) {
+  return (
+    await client.query('SELECT vm_asset_cleanup($1,$2) AS reply', [
+      action,
+      JSON.stringify(data),
+    ])
+  ).rows[0].reply;
+}
+
+test('media metadata, room access and dimensions are checked in PostgreSQL', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    for (const bytes of [0, 10485761, '100'])
+      assert.equal(
+        (await assetCall(client, admin, 'reserve', {bytes})).status,
+        400,
+      );
+    const asset = (await assetCall(client, admin, 'reserve', {bytes: 100}))
+      .asset;
+    assert.equal(
+      (await assetCall(client, admin, 'get', {}, asset.id)).status,
+      404,
+    );
+    for (const metadata of [
+      {mime: 'image/svg+xml', width: 2, height: 2, bytes: 100},
+      {mime: 'image/webp', width: 10000, height: 10000, bytes: 100},
+      {mime: 'image/webp', width: 2, height: 2, bytes: 0},
+    ])
+      assert.equal(
+        (
+          await assetCall(
+            client,
+            admin,
+            'finish',
+            {...metadata, sha256: 'a'.repeat(64)},
+            asset.id,
+          )
+        ).status,
+        400,
+      );
+    assert.equal(
+      (
+        await assetCall(
+          client,
+          admin,
+          'finish',
+          {
+            mime: 'image/webp',
+            width: 2,
+            height: 2,
+            bytes: 100,
+            sha256: 'a'.repeat(64),
+          },
+          asset.id,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await assetCall(client, other, 'get', {}, asset.id)).status,
+      404,
+    );
+    assert.equal(
+      (
+        await assetCall(
+          client,
+          {...admin, session: other.session},
+          'get',
+          {},
+          asset.id,
+        )
+      ).status,
+      401,
+    );
+    assert.equal(
+      (await assetCall(client, admin, 'keepalive', {ids: [asset.id]})).status,
+      200,
+    );
+    assert.equal(
+      (await assetCall(client, other, 'keepalive', {ids: [asset.id]})).status,
+      404,
+    );
+    await assert.rejects(
+      client.query("UPDATE assets SET mime='image/png' WHERE id=$1", [
+        asset.id,
+      ]),
+      {code: '23514'},
+    );
+  });
+});
+
+test('media references stay within the room and keep their full option ownership', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    const asset = await readyAsset(client, admin);
+    const foreign = await readyAsset(client, other);
+    const doc = questionDocument({
+      content: `![Photo](asset:${asset.id})`,
+      choices: [{content: `![Option](asset:${asset.id})`}],
+      assetRefs: [
+        {position: -1, assetId: asset.id},
+        {position: 0, assetId: asset.id},
+      ],
+    });
+    const reply = await questionCall(client, admin, 'create', doc);
+    assert.equal(reply.status, 201);
+    const q = reply.question;
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM question_asset_refs WHERE question_id=$1',
+          [q.id],
+        )
+      ).rows[0].count,
+      '2',
+    );
+    assert.equal(
+      (
+        await client.query('SELECT unused_since FROM assets WHERE id=$1', [
+          asset.id,
+        ])
+      ).rows[0].unused_since,
+      null,
+    );
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'save',
+          {...q, assetRefs: [{position: -1, assetId: foreign.id}]},
+          q.id,
+        )
+      ).status,
+      409,
+    );
+    assert.deepEqual(
+      (await questionCall(client, admin, 'get', {}, q.id)).question,
+      q,
+    );
+    await assert.rejects(
+      client.query(
+        'INSERT INTO question_asset_refs(question_id,room_id,asset_id) VALUES($1,$2,$3)',
+        [q.id, admin.room.id, foreign.id],
+      ),
+    );
+    await assert.rejects(
+      client.query(
+        'UPDATE question_asset_refs SET asset_id=$1 WHERE question_id=$2',
+        [foreign.id, q.id],
+      ),
+      {code: '23514'},
+    );
+    const after = await questionCall(
+      client,
+      admin,
+      'save',
+      {...q, content: 'Text', choices: [], assetRefs: []},
+      q.id,
+    );
+    assert.equal(after.status, 200);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM question_asset_refs WHERE question_id=$1',
+          [q.id],
+        )
+      ).rows[0].count,
+      '0',
+    );
+    assert(
+      (
+        await client.query('SELECT unused_since FROM assets WHERE id=$1', [
+          asset.id,
+        ])
+      ).rows[0].unused_since instanceof Date,
+    );
+  });
+});
+
+test('participant media access follows published content and current link sessions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    const asset = await readyAsset(client, admin, 'video/mp4');
+    const unused = await readyAsset(client, admin);
+    const foreign = await readyAsset(client, other);
+    const q = (
+      await questionCall(
+        client,
+        admin,
+        'create',
+        questionDocument({
+          content: `![Video](asset:${asset.id})`,
+          assetRefs: [{position: -1, assetId: asset.id}],
+        }),
+      )
+    ).question;
+    const key = linkItem();
+    const [link] = await addLinks(client, admin, [key]);
+    const opened = await openLink(client, link, key.key);
+    // Query with real stored sessions, including their revocation generation
+    async function access(id, session = opened.session) {
+      return (
+        await client.query('SELECT vm_participant_asset($1,$2,$3) AS reply', [
+          link.id,
+          hash(session),
+          id,
+        ])
+      ).rows[0].reply;
+    }
+    assert.equal((await access(asset.id)).status, 404);
+    await client.query("UPDATE questions SET state='open' WHERE id=$1", [q.id]);
+    assert.equal((await access(asset.id)).status, 200);
+    assert.equal((await access(unused.id)).status, 404);
+    assert.equal((await access(foreign.id)).status, 404);
+    await assert.rejects(
+      client.query('DELETE FROM question_asset_refs WHERE question_id=$1', [
+        q.id,
+      ]),
+      {code: '23514'},
+    );
+    assert.equal((await access(asset.id, admin.session)).status, 401);
+    await editLink(client, admin, link, 'revoke');
+    assert.equal((await access(asset.id)).status, 401);
+  });
+});
+
+test('cleanup keeps references and grace periods, retries expired leases and rejects stale acknowledgements', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const used = await readyAsset(client, admin);
+    const old = await readyAsset(client, admin);
+    const fresh = await readyAsset(client, admin);
+    const heartbeat = await readyAsset(client, admin);
+    await questionCall(
+      client,
+      admin,
+      'create',
+      questionDocument({
+        content: `![Photo](asset:${used.id})`,
+        assetRefs: [{position: -1, assetId: used.id}],
+      }),
+    );
+    await client.query(
+      "UPDATE assets SET unused_since=statement_timestamp()-interval '25 hours' WHERE id=ANY($1::uuid[])",
+      [[used.id, old.id, heartbeat.id]],
+    );
+    await assetCall(client, admin, 'keepalive', {ids: [heartbeat.id]});
+    const jobs = (await cleanupCall(client, 'claim')).jobs;
+    assert.deepEqual(
+      jobs.map((job) => job.id),
+      [old.id],
+    );
+    assert.equal(
+      (await assetCall(client, admin, 'get', {}, old.id)).status,
+      404,
+    );
+    assert.equal((await cleanupCall(client, 'claim')).jobs.length, 0);
+    await client.query(
+      "UPDATE assets SET cleanup_until=statement_timestamp()-interval '1 second' WHERE id=$1",
+      [old.id],
+    );
+    const retried = (await cleanupCall(client, 'claim')).jobs[0];
+    assert.notEqual(retried.token, jobs[0].token);
+    await cleanupCall(client, 'ack', jobs[0]);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM assets WHERE id=$1', [old.id]))
+        .rows[0].count,
+      '1',
+    );
+    await cleanupCall(client, 'ack', retried);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM assets WHERE id=$1', [old.id]))
+        .rows[0].count,
+      '0',
+    );
+    for (const id of [used.id, fresh.id, heartbeat.id])
+      assert.equal((await assetCall(client, admin, 'get', {}, id)).status, 200);
+  });
+});
+
+test('concurrent attachment and cleanup cannot delete referenced media', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const asset = await readyAsset(client, admin);
+        await client.query(
+          "UPDATE assets SET unused_since=statement_timestamp()-interval '25 hours' WHERE id=$1",
+          [asset.id],
+        );
+        const [saved, claimed] = await Promise.all([
+          questionCall(
+            client,
+            admin,
+            'create',
+            questionDocument({
+              content: `![Photo](asset:${asset.id})`,
+              assetRefs: [{position: -1, assetId: asset.id}],
+            }),
+          ),
+          cleanupCall(second, 'claim'),
+        ]);
+        const row = (
+          await client.query(
+            'SELECT state,(SELECT count(*) FROM question_asset_refs WHERE asset_id=assets.id) AS refs FROM assets WHERE id=$1',
+            [asset.id],
+          )
+        ).rows[0];
+        assert(!(row.state === 'deleting' && row.refs !== '0'));
+        if (saved.status === 201) {
+          assert.equal(row.state, 'ready');
+          assert.equal(row.refs, '1');
+          assert(!claimed.jobs.some((job) => job.id === asset.id));
+        } else {
+          assert.equal(saved.status, 409);
+          assert.equal(row.state, 'deleting');
+        }
+      }
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('asset rollback restores the previous question entry point and failed rollback is atomic', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const asset = await readyAsset(client, admin);
+    const q = (
+      await questionCall(
+        client,
+        admin,
+        'create',
+        questionDocument({
+          content: `![Photo](asset:${asset.id})`,
+          assetRefs: [{position: -1, assetId: asset.id}],
+        }),
+      )
+    ).question;
+    await client.query(
+      'CREATE TABLE outside_asset_reference(id uuid REFERENCES assets(id))',
+    );
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
+      code: '2BP01',
+    });
+    assert.equal(await migrationCount(client), total);
+    assert.equal(
+      (await assetCall(client, admin, 'get', {}, asset.id)).status,
+      200,
+    );
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, q.id)).status,
+      200,
+    );
+    await client.query('DROP TABLE outside_asset_reference');
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal(
+      (
+        await client.query(
+          "SELECT to_regprocedure('vm_question_request_v6(uuid,bytea,uuid,text,jsonb)') AS name",
+        )
+      ).rows[0].name,
+      null,
+    );
+    const current = (await questionCall(client, admin, 'get', {}, q.id))
+      .question;
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'save',
+          {...current, content: 'Kept text'},
+          q.id,
+        )
+      ).status,
+      200,
+    );
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await client.query('SELECT count(*) FROM assets')).rows[0].count,
+      '0',
+    );
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, q.id)).question.content,
+      'Kept text',
+    );
   });
 });

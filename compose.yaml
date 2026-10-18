@@ -1,5 +1,14 @@
 name: vote-machine
 
+x-storage-environment: &storage-environment
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://garage:3900}
+  S3_REGION: ${S3_REGION:-garage}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  S3_BUCKET: ${S3_BUCKET:-votebox-assets}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Run node scripts/setup-local-env.mjs}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?Run node scripts/setup-local-env.mjs}
+  MEDIA_WORKER_KEY: ${MEDIA_WORKER_KEY:?Run node scripts/setup-local-env.mjs}
+
 services:
   postgres:
     image: postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba
@@ -15,6 +24,26 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  garage:
+    image: dxflrs/garage:v2.5.0@sha256:677e5b758e4425a325b811c425c026bf35a4bf42f7ddbaa773de3f4fd779a5a5
+    profiles: [local-storage]
+    command: [/garage, server, --single-node, --default-bucket]
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?Run node scripts/setup-local-env.mjs}
+      GARAGE_DEFAULT_ACCESS_KEY: ${S3_ACCESS_KEY:?Run node scripts/setup-local-env.mjs}
+      GARAGE_DEFAULT_SECRET_KEY: ${S3_SECRET_KEY:?Run node scripts/setup-local-env.mjs}
+      GARAGE_DEFAULT_BUCKET: ${S3_BUCKET:-votebox-assets}
+      NO_COLOR: '1'
+    volumes:
+      - ./storage/garage.toml:/etc/garage.toml:ro
+      - garage_data:/var/lib/garage
+    healthcheck:
+      test: [CMD, /garage, status]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    init: true
 
   migrate:
     build:
@@ -34,6 +63,7 @@ services:
     environment:
       DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
       API_PORT: '8080'
+      MEDIA_WORKER_KEY: ${MEDIA_WORKER_KEY:?Run node scripts/setup-local-env.mjs}
       ADMIN_LINK_KEY: ${ADMIN_LINK_KEY:?Set ADMIN_LINK_KEY in .env}
     depends_on:
       postgres:
@@ -62,12 +92,16 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     environment:
+      <<: *storage-environment
       API_ORIGIN: http://api:8080
     ports:
       - '127.0.0.1:${WEB_PORT:-3000}:3000'
     depends_on:
       api:
         condition: service_healthy
+      garage:
+        condition: service_healthy
+        required: false
     healthcheck:
       test:
         [
@@ -81,5 +115,23 @@ services:
       retries: 20
     init: true
 
+  asset-cleanup:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    command: [node, apps/web/scripts/clean-assets.mjs]
+    environment:
+      <<: *storage-environment
+      API_ORIGIN: http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+    init: true
+
 volumes:
   postgres_data:
+  garage_data:

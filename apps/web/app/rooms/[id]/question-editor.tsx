@@ -1,13 +1,14 @@
 'use client';
+import {markdownAssets} from '../../../lib/markdown';
 
-import {useId, useState, type FormEvent} from 'react';
+import {useCallback, useEffect, useId, useState, type FormEvent} from 'react';
 import {ArrowDown, ArrowUp, Plus, Trash2} from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Form} from '../../../components/ui/form';
 import {Panel} from '../../../components/ui/panel';
 import {SectionHeader} from '../../../components/ui/section-header';
 import {TextField} from '../../../components/ui/text-field';
-import {TextareaField} from '../../../components/ui/textarea-field';
+import {MarkdownField} from '../../../components/ui/markdown-field';
 import {SelectField} from '../../../components/ui/select-field';
 import {CheckboxField} from '../../../components/ui/checkbox-field';
 import {
@@ -67,8 +68,45 @@ export function QuestionEditor({
   const [error, setError] = useState('');
   // Whether the saved version changed in another tab
   const [conflict, setConflict] = useState(false);
+  // A draft must not be saved while its media is still uploading
+  const [uploads, setUploads] = useState(0);
+  const uploadChanged = useCallback(
+    (delta: number) => setUploads((count) => Math.max(0, count + delta)),
+    [],
+  );
   const prefix = useId();
   const locked = question?.editLocked === true;
+
+  useEffect(() => {
+    const ids = [
+      ...new Set(
+        [
+          value.content,
+          ...value.choices.map((choice) => choice.content),
+        ].flatMap(markdownAssets),
+      ),
+    ];
+    if (!ids.length) return;
+    const controller = new AbortController();
+    // Active editing renews the grace period for detached files
+    async function keepFiles() {
+      try {
+        await fetch(`/api/rooms/${roomId}/assets/keepalive`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ids}),
+          signal: controller.signal,
+        });
+      } catch {}
+    }
+    const start = setTimeout(() => void keepFiles(), 1000);
+    const timer = setInterval(() => void keepFiles(), 10 * 60 * 1000);
+    return () => {
+      clearTimeout(start);
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [roomId, value.content, value.choices]);
 
   // Change one field while preserving the rest of the draft
   function field<K extends keyof QuestionInput>(
@@ -96,7 +134,7 @@ export function QuestionEditor({
   // Send the version we loaded so another admin edit is not overwritten
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || locked) return;
+    if (busy || locked || uploads > 0) return;
     if (!isQuestionInput(value)) {
       setError('Проверьте размер текста, варианты и границы выбора');
       return;
@@ -124,11 +162,13 @@ export function QuestionEditor({
       const body = await response.json();
       // Keep local text on screen after a conflicting save
       if (response.status === 409) {
-        setConflict(true);
+        setConflict(body.error !== 'asset');
         setError(
-          body.error === 'locked'
-            ? 'Редактирование этого вопроса запрещено'
-            : 'Вопрос изменен в другой вкладке, ваши правки не сохранены',
+          body.error === 'asset'
+            ? 'Файл удален или недоступен, загрузите его снова'
+            : body.error === 'locked'
+              ? 'Редактирование этого вопроса запрещено'
+              : 'Вопрос изменен в другой вкладке, ваши правки не сохранены',
         );
         return;
       }
@@ -150,13 +190,16 @@ export function QuestionEditor({
       </SectionHeader>
       <Form className="mt-5 space-y-6" onSubmit={(event) => void save(event)}>
         <fieldset disabled={busy || locked} className="min-w-0 space-y-6">
-          <TextareaField
+          <MarkdownField
+            roomId={roomId}
+            onUploadChange={uploadChanged}
+            readOnly={locked}
             id={`${prefix}-content`}
             label="Текст вопроса"
             hint="До 20 000 символов"
             value={value.content}
             rows={5}
-            onChange={(event) => field('content', event.target.value)}
+            onChange={(source) => field('content', source)}
           />
           <div className="grid gap-5 sm:grid-cols-3">
             <SelectField
@@ -211,19 +254,20 @@ export function QuestionEditor({
                 key={choice.localKey}
                 className="rounded-xl border border-border bg-page/50 p-4"
               >
-                <TextareaField
+                <MarkdownField
+                  roomId={roomId}
+                  onUploadChange={uploadChanged}
+                  readOnly={locked}
                   id={`${prefix}-option-${choice.localKey}`}
                   label={`Вариант ${index + 1}`}
                   hint="До 5 000 символов"
                   value={choice.content}
                   rows={2}
-                  onChange={(event) =>
+                  onChange={(source) =>
                     setValue((old) => ({
                       ...old,
                       choices: old.choices.map((item, position) =>
-                        position === index
-                          ? {...item, content: event.target.value}
-                          : item,
+                        position === index ? {...item, content: source} : item,
                       ),
                     }))
                   }
@@ -342,7 +386,7 @@ export function QuestionEditor({
           </Button>
         )}
         {!locked && (
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || uploads > 0}>
             {busy
               ? 'Сохраняем…'
               : question && question.state !== 'draft'

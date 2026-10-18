@@ -1,27 +1,13 @@
 #include "questions.hpp"
 
-#include <memory>
 #include <string>
 
 #include "access.hpp"
 #include "http.hpp"
+#include "markdown.hpp"
 
 namespace vote_machine {
 namespace {
-
-// PostgreSQL text cannot store a null character
-bool HasNull(const Json::Value& value) {
-  if (value.isString()) return value.asString().find('\0') != std::string::npos;
-  if (value.isObject()) {
-    for (const auto& name : value.getMemberNames())
-      if (name.find('\0') != std::string::npos || HasNull(value[name]))
-        return true;
-  } else if (value.isArray()) {
-    for (const auto& item : value)
-      if (HasNull(item)) return true;
-  }
-  return false;
-}
 
 // Keep room access and data changes in one database call
 void RequestQuestion(const drogon::orm::DbClientPtr& database,
@@ -52,6 +38,12 @@ void RequestQuestion(const drogon::orm::DbClientPtr& database,
       return;
     }
     data = *body;
+    // Use parsed media nodes instead of client-supplied references
+    if ((action == "create" || action == "save") &&
+        !MarkdownReferences(data, data["assetRefs"])) {
+      Error(reply, drogon::k400BadRequest, "Invalid Markdown or media source");
+      return;
+    }
   }
   Json::StreamWriterBuilder writer;
   writer["indentation"] = "";
@@ -59,25 +51,7 @@ void RequestQuestion(const drogon::orm::DbClientPtr& database,
       "SELECT vm_question_request($1::uuid,decode($2,'hex'),"
       "NULLIF($3,'')::uuid,$4,$5::jsonb)::text AS response",
       [reply](const drogon::orm::Result& result) {
-        Json::Value body;
-        Json::CharReaderBuilder reader;
-        const auto text = result[0]["response"].as<std::string>();
-        const std::unique_ptr<Json::CharReader> parser(reader.newCharReader());
-        const bool parsed = parser->parse(
-            text.data(), text.data() + text.size(), &body, nullptr);
-        // Database errors must not expose query text or keys
-        if (!parsed || !body.isObject() || !body["status"].isInt()) {
-          Unavailable(reply);
-          return;
-        }
-        const auto status = body["status"].asInt();
-        if (status != 200 && status != 201 && status != 400 && status != 401 &&
-            status != 404 && status != 409) {
-          Unavailable(reply);
-          return;
-        }
-        body.removeMember("status");
-        Send(reply, body, static_cast<drogon::HttpStatusCode>(status));
+        DatabaseReply(result, reply);
       },
       [reply](const drogon::orm::DrogonDbException&) { Unavailable(reply); },
       room, session, id, action, Json::writeString(writer, data));

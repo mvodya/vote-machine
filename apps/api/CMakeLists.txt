@@ -26,6 +26,7 @@ endif()
 # Find libraries
 find_package(Drogon CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_library(CMARK_GFM_LIBRARY cmark-gfm REQUIRED)
 include(CTest)
 if(BUILD_TESTING)
   find_package(GTest CONFIG REQUIRED)
@@ -41,10 +42,14 @@ add_library(vote_machine_access src/access.cpp)
 target_include_directories(vote_machine_access PUBLIC src)
 target_link_libraries(vote_machine_access PUBLIC vote_machine_options OpenSSL::Crypto)
 
-add_executable(vote_machine_api src/main.cpp src/rooms.cpp src/http.cpp src/links.cpp src/questions.cpp)
+add_library(vote_machine_markdown src/markdown.cpp)
+target_include_directories(vote_machine_markdown PUBLIC src)
+target_link_libraries(vote_machine_markdown PUBLIC vote_machine_access vote_machine_options Drogon::Drogon ${CMARK_GFM_LIBRARY})
+
+add_executable(vote_machine_api src/main.cpp src/rooms.cpp src/http.cpp src/links.cpp src/questions.cpp src/assets.cpp)
 target_link_libraries(
   vote_machine_api
-  PRIVATE vote_machine_config vote_machine_access Drogon::Drogon
+  PRIVATE vote_machine_config vote_machine_access vote_machine_markdown Drogon::Drogon
 )
 
 # Testing
@@ -58,4 +63,7 @@ if(BUILD_TESTING)
   add_executable(access_test tests/access_test.cpp)
   target_link_libraries(access_test PRIVATE vote_machine_access GTest::gtest_main)
   add_test(NAME access_test COMMAND access_test)
+  add_executable(markdown_test tests/markdown_test.cpp)
+  target_link_libraries(markdown_test PRIVATE vote_machine_markdown GTest::gtest_main)
+  add_test(NAME markdown_test COMMAND markdown_test)
 endif()

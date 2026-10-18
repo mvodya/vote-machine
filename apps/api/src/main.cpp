@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string_view>
 
+#include "assets.hpp"
 #include "config.hpp"
 #include "links.hpp"
 #include "questions.hpp"
@@ -42,7 +43,9 @@ void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
               "IS "
               "NOT NULL AND "
               "to_regprocedure('public.vm_question_request(uuid,bytea,uuid,"
-              "text,jsonb)') IS NOT NULL AS schema_ready",
+              "text,jsonb)') IS NOT NULL AND "
+              "to_regprocedure('public.vm_asset_request(uuid,bytea,uuid,text,"
+              "jsonb)') IS NOT NULL AS schema_ready",
       [reply, hello](const drogon::orm::Result& result) {
         Json::Value body;
         // The hello route returns the database reply
@@ -107,6 +110,8 @@ int main() {
     vote_machine::RegisterLinkHandlers(database,
                                        std::string(ReadEnv("ADMIN_LINK_KEY")));
     vote_machine::RegisterQuestionHandlers(database);
+    vote_machine::RegisterAssetHandlers(
+        database, std::string(ReadEnv("MEDIA_WORKER_KEY")));
 
     // Run app
     drogon::app()

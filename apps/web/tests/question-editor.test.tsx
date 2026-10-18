@@ -35,7 +35,9 @@ it('shows a small edit notice only for a locked question', () => {
   expect(
     screen.getByText('Администратор не может редактировать этот вопрос'),
   ).toHaveClass('text-xs', 'text-muted');
-  expect(screen.getByLabelText('Текст вопроса')).toBeDisabled();
+  expect(
+    screen.getByRole('region', {name: 'Предпросмотр: Текст вопроса'}),
+  ).toBeVisible();
   expect(
     screen.queryByRole('button', {name: 'Сохранить изменения'}),
   ).not.toBeInTheDocument();

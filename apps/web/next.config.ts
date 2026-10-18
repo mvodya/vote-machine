@@ -3,6 +3,8 @@ import type {NextConfig} from 'next';
 const config: NextConfig = {
   // Build a server for the web container
   output: 'standalone',
+  // The cleanup worker shares these server packages
+  serverExternalPackages: ['@aws-sdk/client-s3', 'sharp'],
   // Do not send the framework name in replies
   poweredByHeader: false,
   // Add basic privacy headers to every page

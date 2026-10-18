@@ -2,6 +2,7 @@
 
 #include <drogon/drogon.h>
 #include <drogon/orm/Exception.h>
+#include <drogon/orm/Result.h>
 
 #include <functional>
 #include <string>
@@ -19,4 +20,8 @@ void Error(const Reply& reply, drogon::HttpStatusCode status,
 std::string Session(const drogon::HttpRequestPtr& request);
 // Hide service errors from the client
 void Unavailable(const Reply& reply);
+// Reject null characters before passing JSON to PostgreSQL
+bool HasNull(const Json::Value& value);
+// Read a short response from a database entry point
+void DatabaseReply(const drogon::orm::Result& result, const Reply& reply);
 }  // namespace vote_machine

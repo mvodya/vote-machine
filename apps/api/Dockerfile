@@ -3,7 +3,7 @@ FROM node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake ninja-build git ca-certificates curl \
     libjsoncpp-dev libssl-dev zlib1g-dev uuid-dev libpq-dev libc-ares-dev \
-    clang-format clangd gdb \
+    clang-format clangd gdb libcmark-gfm-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Drogon library
@@ -25,6 +25,7 @@ RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.l
     && rm -rf /var/lib/apt/lists/*
 # For devcontainer (api & web)
 FROM test_tools AS dev
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libjxl-tools && rm -rf /var/lib/apt/lists/*
 RUN npm install --global pnpm@11.25.0 --registry=https://registry.npmjs.org
 WORKDIR /workspace
 
@@ -39,7 +40,7 @@ RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
 # API runtime
 FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libjsoncpp25 libssl3 zlib1g libuuid1 libpq5 libc-ares2 ca-certificates curl \
+    libjsoncpp25 libssl3 zlib1g libuuid1 libpq5 libc-ares2 libcmark-gfm0.29.0.gfm.6 ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home vote_machine
 COPY --from=build /src/build/vote_machine_api /usr/local/bin/vote_machine_api

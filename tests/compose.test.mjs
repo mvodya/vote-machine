@@ -12,6 +12,10 @@ function config(files) {
         ...process.env,
         WORKSPACE_DB_PORT: '15432',
         ADMIN_LINK_KEY: '1'.repeat(64),
+        MEDIA_WORKER_KEY: '2'.repeat(64),
+        GARAGE_RPC_SECRET: '3'.repeat(64),
+        S3_ACCESS_KEY: 'GK' + '4'.repeat(32),
+        S3_SECRET_KEY: '5'.repeat(64),
       },
       timeout: 10000,
     }),
@@ -29,6 +33,13 @@ test('normal stack keeps PostgreSQL private and waits for migrations', () => {
     services.migrate.depends_on.postgres.condition,
     'service_healthy',
   );
+  assert.deepEqual(services.garage.ports ?? [], []);
+  assert.deepEqual(services.garage.profiles, ['local-storage']);
+  assert.equal(services.web.depends_on.garage.required, false);
+  assert.equal(
+    services['asset-cleanup'].environment.S3_BUCKET,
+    services.web.environment.S3_BUCKET,
+  );
 });
 
 test('devcontainer exposes PostgreSQL only on the host loopback', () => {
@@ -44,5 +55,15 @@ test('devcontainer exposes PostgreSQL only on the host loopback', () => {
   assert.equal(
     services.workspace.depends_on.migrate.condition,
     'service_completed_successfully',
+  );
+  // Cleanup must use the workspace API and avoid starting a second API
+  assert.equal(
+    services['asset-cleanup'].environment.API_ORIGIN,
+    'http://workspace:8080',
+  );
+  assert.equal(services['asset-cleanup'].depends_on.api, undefined);
+  assert.equal(
+    services['asset-cleanup'].depends_on.workspace.condition,
+    'service_started',
   );
 });

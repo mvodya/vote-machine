@@ -83,7 +83,8 @@ export async function questionProxy(
         : 503;
       const data = await upstream.json().catch(() => null);
       const error =
-        isRecord(data) && ['conflict', 'locked'].includes(String(data.error))
+        isRecord(data) &&
+        ['conflict', 'locked', 'asset'].includes(String(data.error))
           ? String(data.error)
           : 'Request failed';
       return failure(status, error);

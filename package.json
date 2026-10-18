@@ -9,7 +9,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:e2e": "pnpm --filter @vote-machine/web test:e2e",
-    "dev:web": "pnpm --filter @vote-machine/web dev",
+    "dev:web": "node --env-file-if-exists=.env scripts/dev-web.mjs",
     "dev:api": "node --env-file-if-exists=.env scripts/dev-api.mjs",
     "lint": "pnpm --filter @vote-machine/web lint",
     "check:web": "pnpm lint && pnpm typecheck && pnpm test && pnpm format:check",

@@ -15,6 +15,7 @@ import {
   type Question,
   type QuestionSummary,
 } from '../../../lib/questions';
+import {markdownSummary} from '../../../lib/markdown';
 import {QuestionEditor} from './question-editor';
 
 // Show question metadata and open the full editor on demand
@@ -219,12 +220,12 @@ export function Questions({
               {items.map((item) => (
                 <li
                   key={item.id}
-                  aria-label={item.preview.trim() || 'Без текста'}
+                  aria-label={markdownSummary(item.preview) || 'Без текста'}
                   className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <h3 className="font-medium whitespace-pre-wrap break-words">
-                      {item.preview.trim() || 'Без текста'}
+                      {markdownSummary(item.preview) || 'Без текста'}
                     </h3>
                     <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
                       <span>
@@ -263,7 +264,7 @@ export function Questions({
                       <Button
                         variant="ghost"
                         title="Удалить черновик"
-                        aria-label={`Удалить вопрос: ${item.preview.trim() || 'Без текста'}`}
+                        aria-label={`Удалить вопрос: ${markdownSummary(item.preview) || 'Без текста'}`}
                         startIcon={<Trash2 />}
                         disabled={busy}
                         onClick={() => {

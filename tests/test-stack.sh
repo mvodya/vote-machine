@@ -2,6 +2,14 @@
 set -eu
 # Use a disposable encryption key only for the isolated test stack
 export ADMIN_LINK_KEY=1111111111111111111111111111111111111111111111111111111111111111
+export MEDIA_WORKER_KEY=2222222222222222222222222222222222222222222222222222222222222222
+export GARAGE_RPC_SECRET=3333333333333333333333333333333333333333333333333333333333333333
+export S3_ACCESS_KEY=GK44444444444444444444444444444444
+export S3_SECRET_KEY=5555555555555555555555555555555555555555555555555555555555555555
+export S3_ENDPOINT=http://garage:3900
+export S3_BUCKET=votebox-assets
+export S3_REGION=garage
+export COMPOSE_PROFILES=local-storage
 cd "$(dirname "$0")/.."
 # Keep test containers separate from the working stack
 export COMPOSE_PROJECT_NAME="vote-machine-check-$$"
@@ -23,5 +31,7 @@ docker compose -p "$COMPOSE_PROJECT_NAME" up --build --wait --wait-timeout 180
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/rooms-api.mjs
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/links-api.mjs
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/questions-api.mjs
+docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/media-api.mjs
+node tests/assets-cleanup.mjs
 pnpm test:e2e
 node tests/stack.mjs
