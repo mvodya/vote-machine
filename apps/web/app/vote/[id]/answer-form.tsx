@@ -21,7 +21,16 @@ export function AnswerForm({
   onDenied,
   onSkip,
   onBusy,
+  submitPath,
+  extraPayload,
+  existingRevision,
+  alreadyAnswered = false,
 }: {
+  // Optional shared manual or reusable vote context
+  submitPath?: string;
+  extraPayload?: Record<string, unknown>;
+  existingRevision?: string;
+  alreadyAnswered?: boolean;
   // Current participant and question
   timeZone?: string;
   linkId: string;
@@ -47,8 +56,11 @@ export function AnswerForm({
   } | null>(null);
   const prefix = useId();
   const canVote =
-    question.state === 'open' && (!answer || question.allowAnswerChange);
-  const viewer = {roomId: question.roomId, linkId};
+    question.state === 'open' &&
+    (!(answer || alreadyAnswered) || question.allowAnswerChange);
+  const viewer = submitPath
+    ? {roomId: question.roomId}
+    : {roomId: question.roomId, linkId};
   // Submit one selection with both content and answer versions
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,7 +77,8 @@ export function AnswerForm({
     const ids = [...selected].sort();
     const signature = JSON.stringify([
       question.revision,
-      answer?.revision ?? '0',
+      existingRevision ?? answer?.revision ?? '0',
+      extraPayload,
       ids,
     ]);
     if (pending.current?.signature !== signature)
@@ -74,7 +87,8 @@ export function AnswerForm({
         body: {
           requestId: crypto.randomUUID(),
           questionRevision: question.revision,
-          ballotRevision: answer?.revision ?? '0',
+          ballotRevision: existingRevision ?? answer?.revision ?? '0',
+          ...extraPayload,
           choices: ids,
         },
       };
@@ -83,7 +97,7 @@ export function AnswerForm({
     setError('');
     try {
       const response = await fetch(
-        `/api/vote/${linkId}/answers/${question.id}`,
+        submitPath ?? `/api/vote/${linkId}/answers/${question.id}`,
         {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -136,7 +150,9 @@ export function AnswerForm({
       )}
       {answer && (
         <p role="status" className="mt-4 text-sm text-success-ink">
-          Ваш ответ сохранен
+          {answer.hidden
+            ? 'Ответ сохранен с другого устройства'
+            : 'Ваш ответ сохранен'}
         </p>
       )}
       {question.state === 'closed' && (
@@ -183,21 +199,25 @@ export function AnswerForm({
             <Button type="submit" startIcon={<Check />} disabled={busy}>
               {busy
                 ? 'Сохраняем…'
-                : answer
+                : answer || alreadyAnswered
                   ? 'Изменить ответ'
                   : 'Отправить ответ'}
             </Button>
           )}
-          {question.state === 'open' && !answer && question.allowSkip && (
-            <Button
-              variant="secondary"
-              startIcon={<SkipForward />}
-              disabled={busy}
-              onClick={onSkip}
-            >
-              Пропустить вопрос
-            </Button>
-          )}
+          {question.state === 'open' &&
+            !answer &&
+            !alreadyAnswered &&
+            !submitPath &&
+            question.allowSkip && (
+              <Button
+                variant="secondary"
+                startIcon={<SkipForward />}
+                disabled={busy}
+                onClick={onSkip}
+              >
+                Пропустить вопрос
+              </Button>
+            )}
         </div>
         {question.editLocked && (
           <p className="text-xs text-muted">

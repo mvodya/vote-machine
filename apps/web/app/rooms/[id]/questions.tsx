@@ -1,16 +1,8 @@
 'use client';
 
+import {useLive} from '../../../lib/use-live';
 import {useEffect, useState} from 'react';
-import {
-  Eye,
-  ListChecks,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Trash2,
-  Play,
-  Square,
-} from 'lucide-react';
+import {Eye, ListChecks, Pencil, Plus, Trash2, Check} from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Panel} from '../../../components/ui/panel';
 import {SectionHeader} from '../../../components/ui/section-header';
@@ -26,6 +18,8 @@ import {
 } from '../../../lib/questions';
 import {markdownSummary} from '../../../lib/markdown';
 import {formatTime, localTimeZone} from '../../../lib/time';
+import {Countdown} from '../../../components/countdown';
+import {QuestionAction} from '../../../components/question-action';
 import {QuestionEditor} from './question-editor';
 
 // Show question metadata and open the full editor on demand
@@ -66,6 +60,7 @@ export function Questions({
   const [deleting, setDeleting] = useState<QuestionSummary | null>(null);
   // Result or error shown below the current panel
   const [notice, setNotice] = useState('');
+  const live = useLive(`/api/rooms/${roomId}/events`, onDenied);
   const base = `/api/rooms/${roomId}/questions`;
   const cursor = cursors[cursors.length - 1];
   useEffect(() => {
@@ -74,7 +69,7 @@ export function Questions({
     async function load() {
       await Promise.resolve();
       if (controller.signal.aborted) return;
-      setLoading(true);
+
       setFailed(false);
       try {
         const response = await fetch(
@@ -111,7 +106,7 @@ export function Questions({
     }
     void load();
     return () => controller.abort();
-  }, [base, cursor, attempt, onDenied]);
+  }, [base, cursor, attempt, onDenied, live.version]);
   // Refresh after a change or a failed read
   function reload() {
     setAttempt((value) => value + 1);
@@ -250,16 +245,6 @@ export function Questions({
               Создать вопрос
             </Button>
           </SectionHeader>
-          <div className="mt-4">
-            <Button
-              variant="ghost"
-              startIcon={<RefreshCw />}
-              disabled={loading || busy}
-              onClick={reload}
-            >
-              Обновить
-            </Button>
-          </div>
           {loading ? (
             <p role="status" className="py-8 text-muted">
               Загружаем вопросы…
@@ -291,11 +276,13 @@ export function Questions({
                     </h3>
                     <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
                       <span>
-                        {item.state === 'draft'
-                          ? 'Черновик'
-                          : item.state === 'open'
-                            ? 'Открыт'
-                            : 'Закрыт'}
+                        {item.state === 'scheduled'
+                          ? 'Ожидание открытия'
+                          : item.state === 'draft'
+                            ? 'Черновик'
+                            : item.state === 'open'
+                              ? 'Открыт'
+                              : 'Закрыт'}
                       </span>
                       <span>
                         {item.choiceMode === 'single'
@@ -308,17 +295,37 @@ export function Questions({
                       </time>
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      variant="ghost"
-                      title={
-                        item.state === 'open'
-                          ? 'Закрыть вопрос'
-                          : 'Открыть вопрос'
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <span
+                      aria-label={`Количество ответов: ${item.answerCount ?? 0}`}
+                      className="inline-flex items-center gap-1 text-xs text-muted"
+                    >
+                      <Check aria-hidden="true" className="size-4" />
+                      {item.answerCount ?? 0}
+                    </span>
+                    <span
+                      aria-label={`Смотрят вопрос: ${item.viewerCount ?? 0}`}
+                      className="inline-flex items-center gap-1 text-xs text-muted"
+                    >
+                      <Eye aria-hidden="true" className="size-4" />
+                      {item.viewerCount ?? 0}
+                    </span>
+                    <Countdown
+                      at={
+                        item.state === 'scheduled'
+                          ? item.scheduledAt
+                          : item.state === 'open'
+                            ? item.closesAt
+                            : null
                       }
-                      aria-label={`${item.state === 'open' ? 'Закрыть' : 'Открыть'} вопрос: ${markdownSummary(item.preview) || 'Без текста'}`}
-                      startIcon={item.state === 'open' ? <Square /> : <Play />}
-                      disabled={busy}
+                      kind={item.state === 'scheduled' ? 'start' : 'close'}
+                      timeZone={timeZone}
+                    />
+                    <QuestionAction
+                      state={item.state}
+                      busy={busy}
+                      compact
+                      name={markdownSummary(item.preview) || 'Без текста'}
                       onClick={() => void toggle(item)}
                     />
                     <Button

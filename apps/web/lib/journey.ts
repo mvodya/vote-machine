@@ -1,3 +1,4 @@
+import {roomIdPattern} from './rooms';
 import {validTimeZone} from './time';
 import {isRecord} from './voting-links';
 import {isAnswer, publicAnswer, type Answer} from './ballots';
@@ -19,7 +20,19 @@ export interface JourneyItem extends QuestionSummary {
   // Whether earlier required questions allow navigation here
   canChoose: boolean;
 }
+export interface VotingRun {
+  // Run identity and creation time
+  id: string;
+  createdAt: string;
+}
 export interface Journey {
+  // Next armed question and whether any result is currently readable
+  upcoming?: {id: string; preview: string; scheduledAt: string} | null;
+  resultsAvailable?: boolean;
+  // Current reusable run and recent runs of this session
+  run?: VotingRun | null;
+  runs?: VotingRun[];
+  repeatAllowed?: boolean;
   // Shared room zone for every participant
   timeZone?: string;
   // A metadata page for open questions and own history
@@ -33,10 +46,37 @@ export interface Journey {
   // Progress of this link through currently open questions
   progress: {answered: number; total: number; pending: number};
 }
+// Check session-owned run metadata before it reaches the browser
+function isRun(value: unknown): value is VotingRun {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    roomIdPattern.test(value.id) &&
+    typeof value.createdAt === 'string' &&
+    Number.isFinite(Date.parse(value.createdAt))
+  );
+}
 // Reject incomplete snapshots instead of showing mixed roles or versions
 export function isJourney(value: unknown): value is Journey {
   if (
     !isRecord(value) ||
+    (value.resultsAvailable !== undefined &&
+      typeof value.resultsAvailable !== 'boolean') ||
+    (value.upcoming !== undefined &&
+      value.upcoming !== null &&
+      (!isRecord(value.upcoming) ||
+        typeof value.upcoming.id !== 'string' ||
+        !roomIdPattern.test(value.upcoming.id) ||
+        typeof value.upcoming.preview !== 'string' ||
+        typeof value.upcoming.scheduledAt !== 'string' ||
+        !Number.isFinite(Date.parse(value.upcoming.scheduledAt)))) ||
+    (value.run !== undefined && value.run !== null && !isRun(value.run)) ||
+    (value.runs !== undefined &&
+      (!Array.isArray(value.runs) ||
+        value.runs.length > 50 ||
+        !value.runs.every(isRun))) ||
+    (value.repeatAllowed !== undefined &&
+      typeof value.repeatAllowed !== 'boolean') ||
     (value.timeZone !== undefined && !validTimeZone(value.timeZone)) ||
     !Array.isArray(value.questions) ||
     value.questions.length > 50 ||
@@ -69,7 +109,33 @@ export function isJourney(value: unknown): value is Journey {
 // Keep storage data and other respondents out of browser snapshots
 export function publicJourney(value: Journey): Journey {
   return {
+    ...(value.resultsAvailable !== undefined
+      ? {resultsAvailable: value.resultsAvailable}
+      : {}),
+    ...(value.upcoming !== undefined
+      ? {
+          upcoming: value.upcoming
+            ? {
+                id: value.upcoming.id,
+                preview: value.upcoming.preview,
+                scheduledAt: value.upcoming.scheduledAt,
+              }
+            : null,
+        }
+      : {}),
     ...(value.timeZone ? {timeZone: value.timeZone} : {}),
+    ...(value.run !== undefined
+      ? {
+          run: value.run
+            ? {id: value.run.id, createdAt: value.run.createdAt}
+            : null,
+          runs: (value.runs ?? []).map((run) => ({
+            id: run.id,
+            createdAt: run.createdAt,
+          })),
+          repeatAllowed: value.repeatAllowed === true,
+        }
+      : {}),
     questions: value.questions.map((item) => ({
       ...publicSummary(item),
       answered: item.answered,

@@ -6,7 +6,10 @@ import {CircleHelp} from 'lucide-react';
 export function Help({
   label,
   children,
+  align = 'end',
 }: {
+  // Keep toolbar help inside a narrow screen
+  align?: 'start' | 'end';
   // Accessible name for this help button
   label: string;
   // Reusable help content
@@ -29,7 +32,7 @@ export function Help({
   return (
     <span
       ref={root}
-      className="relative inline-flex shrink-0"
+      className="relative inline-flex shrink-0 items-center self-center"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -58,7 +61,7 @@ export function Help({
         <span
           id={id}
           role="tooltip"
-          className="absolute top-full right-0 z-30 mt-2 block w-64 max-w-[calc(100vw-3rem)] rounded-xl border border-border bg-white p-4 text-left text-xs leading-5 font-normal break-words text-ink shadow-lg"
+          className={`absolute top-full ${align === 'start' ? 'left-0' : 'right-0'} z-30 mt-2 block w-64 max-w-[calc(100vw-3rem)] rounded-xl border border-border bg-white p-4 whitespace-normal text-left text-xs leading-5 font-normal break-words text-ink shadow-lg`}
         >
           {children}
         </span>

@@ -92,3 +92,56 @@ for (let attempt = 0; attempt < 30; attempt++) {
 }
 assert.equal(stored(question.id), 'closed');
 console.log('Deadline recovery passed: overdue work resumes after API restart');
+
+// An armed start must resume on the existing API worker after downtime
+const {
+  body: {question: scheduled},
+} = await post(
+  `/api/rooms/${room.id}/questions`,
+  {
+    content: 'Scheduled recovery',
+    choiceMode: 'single',
+    minChoices: 1,
+    maxChoices: 1,
+    shareResults: false,
+    publication: 'after_close',
+    hideResultsUntilEnd: false,
+    allowAnswerChange: false,
+    anonymous: false,
+    choices: [{content: 'A'}, {content: 'B'}],
+    state: 'open',
+    startMode: 'duration',
+    startAfterSeconds: 3,
+    deadlineMode: 'duration',
+    closeAfterSeconds: 30,
+  },
+  cookie,
+);
+assert.equal(scheduled.state, 'scheduled');
+compose('stop', 'api');
+await delay(3200);
+assert.equal(stored(scheduled.id), 'draft');
+compose('start', 'api');
+for (let attempt = 0; attempt < 30; attempt++) {
+  if (stored(scheduled.id) === 'open') break;
+  await delay(500);
+}
+assert.equal(stored(scheduled.id), 'open');
+assert.equal(
+  compose(
+    'exec',
+    '-T',
+    'postgres',
+    'psql',
+    '-U',
+    'vote_machine',
+    '-d',
+    'vote_machine',
+    '-Atc',
+    `SELECT extract(epoch FROM closes_at-opened_at)::integer FROM questions WHERE id='${scheduled.id}'`,
+  ),
+  '30',
+);
+console.log(
+  'Scheduled recovery passed: missed start resumes and relative closing starts on actual opening',
+);

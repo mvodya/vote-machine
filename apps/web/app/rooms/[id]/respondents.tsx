@@ -1,5 +1,6 @@
 'use client';
 
+import {useLive} from '../../../lib/use-live';
 import {useEffect, useState, type FormEvent} from 'react';
 import {
   Copy,
@@ -86,6 +87,7 @@ export function Respondents({
   // Text shown when clipboard access fails
   const [manualCopy, setManualCopy] = useState('');
   const cursor = cursors[cursors.length - 1];
+  const live = useLive(`/api/rooms/${roomId}/events`, onDenied);
   const base = `/api/rooms/${roomId}/links`;
 
   useEffect(() => {
@@ -94,7 +96,7 @@ export function Respondents({
     async function load() {
       await Promise.resolve();
       if (controller.signal.aborted) return;
-      setLoading(true);
+
       setFailed(false);
       try {
         const response = await fetch(`${base}?after=${cursor}`, {
@@ -129,7 +131,7 @@ export function Respondents({
     }
     void load();
     return () => controller.abort();
-  }, [base, cursor, attempt, onDenied]);
+  }, [base, cursor, attempt, onDenied, live.version]);
 
   // Refresh the page after a saved change
   function reload() {
@@ -451,14 +453,6 @@ export function Respondents({
           onClick={() => void exportLinks(true)}
         >
           Скачать CSV
-        </Button>
-        <Button
-          variant="ghost"
-          disabled={busy || loading}
-          startIcon={<RefreshCw />}
-          onClick={reload}
-        >
-          Обновить
         </Button>
       </div>
       {loading ? (

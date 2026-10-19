@@ -1,5 +1,8 @@
 'use client';
 
+import {useLive} from '../../../lib/use-live';
+import {Results} from '../../../components/results';
+import {ReusePolicy} from './reuse-policy';
 import {RoomTimeZone} from './room-time-zone';
 import {localTimeZone} from '../../../lib/time';
 import {RoomName} from './room-name';
@@ -13,11 +16,9 @@ import {ListChecks, Users, ChartColumn, Settings, Copy} from 'lucide-react';
 import {Brand} from '../../../components/brand';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
 import {Tabs} from '../../../components/ui/tabs';
-import {EmptyState} from '../../../components/ui/empty-state';
 import {Button} from '../../../components/ui/button';
 import {TextField} from '../../../components/ui/text-field';
 import {Panel} from '../../../components/ui/panel';
-import {SectionHeader} from '../../../components/ui/section-header';
 import {
   isRoom,
   roomIdPattern,
@@ -52,6 +53,33 @@ export default function AdminRoom({id}: {id: string}) {
 
   // Leave private panels when the session is rejected
   const denyAccess = useCallback(() => setState('denied'), []);
+  const live = useLive(
+    state === 'ready' ? `/api/rooms/${id}/events` : null,
+    denyAccess,
+  );
+  useEffect(() => {
+    if (state !== 'ready') return;
+    const controller = new AbortController();
+    async function refreshRoom() {
+      try {
+        const response = await fetch(`/api/rooms/${id}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (response.status === 401) {
+          denyAccess();
+          return;
+        }
+        const data = await response.json();
+        if (response.ok && isRoom(data.room))
+          setRoom((old) =>
+            old?.revision === data.room.revision ? old : data.room,
+          );
+      } catch {}
+    }
+    void refreshRoom();
+    return () => controller.abort();
+  }, [id, state, live.version, denyAccess]);
 
   useEffect(() => {
     // Handle a new link opened on the same page
@@ -302,14 +330,7 @@ export default function AdminRoom({id}: {id: string}) {
                 <Respondents roomId={id} onDenied={denyAccess} />
               )}
               {section === 'results' && (
-                <Panel>
-                  <SectionHeader title="Результаты"></SectionHeader>
-                  <EmptyState
-                    icon={<ChartColumn size={32} />}
-                    title="Результатов пока нет"
-                    description="Здесь появятся результаты голосования"
-                  />
-                </Panel>
+                <Results id={id} admin onDenied={denyAccess} />
               )}
               {section === 'settings' && (
                 <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.2fr]">
@@ -332,6 +353,7 @@ export default function AdminRoom({id}: {id: string}) {
                       </div>
                     </Panel>
                     <QuestionPolicy roomId={id} onDenied={denyAccess} />
+                    <ReusePolicy roomId={id} onDenied={denyAccess} />
                   </div>
                   <Panel aria-label="Административный доступ">
                     <h2 className="mb-3 text-lg font-semibold">

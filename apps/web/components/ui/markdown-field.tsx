@@ -165,10 +165,14 @@ export function MarkdownField({
             <div
               role="toolbar"
               aria-label={`Форматирование: ${label}`}
-              className="flex flex-wrap gap-0.5"
+              className="flex flex-wrap items-center gap-0.5"
             >
-              <Help label={label}>
-                {hint} {'Размер изображения: ![Описание](asset:ID "width=320")'}
+              <Help label={label} align="start">
+                <span className="block">{hint}</span>
+                <span className="mt-2 block">Размер изображения</span>
+                <code className="mt-1 block whitespace-pre-wrap break-normal">
+                  {'![Описание](asset:ID\n  "width=320")'}
+                </code>
               </Help>
               <Button
                 variant="ghost"

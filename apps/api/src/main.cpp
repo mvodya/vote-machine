@@ -10,7 +10,9 @@
 #include "assets.hpp"
 #include "config.hpp"
 #include "links.hpp"
+#include "live.hpp"
 #include "questions.hpp"
+#include "results.hpp"
 #include "rooms.hpp"
 #include "voting.hpp"
 
@@ -54,7 +56,15 @@ void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
               "to_regprocedure('public.vm_participant_journey(uuid,bytea,jsonb)"
               "') IS NOT NULL AND "
               "to_regprocedure('public.vm_store_question(uuid,bytea,uuid,text,"
-              "jsonb)') IS NOT NULL AS "
+              "jsonb)') IS NOT NULL AND "
+              "to_regprocedure('public.vm_cast_ballot(uuid,uuid,bytea,boolean,"
+              "uuid,jsonb)') IS NOT NULL AND "
+              "to_regprocedure('public.vm_results(uuid,bytea,boolean,uuid,"
+              "jsonb)') IS NOT NULL AND "
+              "to_regprocedure('public.vm_event_state(uuid,bytea,boolean)') IS "
+              "NOT NULL AND "
+              "to_regprocedure('public.vm_question_presence(uuid,bytea,jsonb)')"
+              " IS NOT NULL AS "
               "schema_ready",
       [reply, hello](const drogon::orm::Result& result) {
         Json::Value body;
@@ -121,6 +131,9 @@ int main() {
                                        std::string(ReadEnv("ADMIN_LINK_KEY")));
     vote_machine::RegisterQuestionHandlers(database);
     vote_machine::RegisterVotingHandlers(database);
+    vote_machine::RegisterResultHandlers(database);
+    const auto stop_live =
+        vote_machine::RegisterLiveHandlers(database, config.database_url);
     vote_machine::RegisterAssetHandlers(
         database, std::string(ReadEnv("MEDIA_WORKER_KEY")));
 
@@ -150,6 +163,7 @@ int main() {
 
     // Stop background work before releasing connection threads
     drogon::app().getLoop()->invalidateTimer(deadline_timer);
+    stop_live();
     database->closeAll();
   } catch (const std::invalid_argument& error) {
     std::cerr << error.what() << '\n';

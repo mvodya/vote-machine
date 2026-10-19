@@ -129,7 +129,7 @@ test('personal link, rename, repeated copy, revoke and reissue across devices', 
       participant.getByRole('tablist', {name: 'Разделы комнаты'}),
     ).toHaveCount(0);
     await expect(
-      participant.getByRole('tab', {name: 'Мои ответы', exact: true}),
+      participant.getByRole('tab', {name: 'Список вопросов', exact: true}),
     ).toBeVisible();
     await expect(
       participant.getByRole('button', {name: /Скопировать|Настройки/}),
@@ -186,21 +186,22 @@ test('batch links, full copy, safe CSV, paging and list retry', async ({
     },
   });
   expect(response.status()).toBe(201);
-  await page.getByRole('button', {name: 'Обновить', exact: true}).click();
   await expect(page.getByRole('listitem')).toHaveCount(50);
   await page.getByRole('button', {name: 'Далее', exact: true}).click();
   await expect(page.getByRole('listitem')).toHaveCount(4);
   await page.getByRole('button', {name: 'Назад', exact: true}).click();
   await expect(page.getByRole('listitem')).toHaveCount(50);
-  await page.route(
-    `**/api/rooms/${room}/links?after=*`,
-    (route) => route.fulfill({status: 503, body: '{}'}),
-    {times: 1},
+  await page.route(`**/api/rooms/${room}/links?after=*`, (route) =>
+    route.fulfill({status: 503, body: '{}'}),
   );
-  await page.getByRole('button', {name: 'Обновить', exact: true}).click();
+  await page.request.patch(`/api/rooms/${room}`, {
+    headers: {Origin: new URL(page.url()).origin},
+    data: {name: 'Link list outage'},
+  });
   await expect(
     page.getByRole('alert').filter({hasText: 'Не удалось загрузить список'}),
   ).toContainText('Не удалось загрузить список');
+  await page.unroute(`**/api/rooms/${room}/links?after=*`);
   await page
     .getByRole('button', {name: 'Попробовать снова', exact: true})
     .click();

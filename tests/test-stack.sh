@@ -34,5 +34,10 @@ docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module <
 docker compose -p "$COMPOSE_PROJECT_NAME" exec -T web node --input-type=module < tests/media-api.mjs
 node tests/assets-cleanup.mjs
 node tests/lifecycle-recovery.mjs
+# Start a second API against the same database for live delivery checks
+docker compose -p "$COMPOSE_PROJECT_NAME" run -d --no-deps --name "$COMPOSE_PROJECT_NAME-api-b" api
+docker compose -p "$COMPOSE_PROJECT_NAME" exec -T -e API_B_ORIGIN="http://$COMPOSE_PROJECT_NAME-api-b:8080" web node --input-type=module < tests/realtime-api.mjs
+node tests/realtime-recovery.mjs
+docker rm -f "$COMPOSE_PROJECT_NAME-api-b"
 pnpm test:e2e
 node tests/stack.mjs

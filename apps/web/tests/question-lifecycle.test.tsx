@@ -60,3 +60,39 @@ it('preserves the exact deadline when saving settings from another tab', async (
   ).not.toBeInTheDocument();
   expect(screen.getByRole('button', {name: 'Вернуться'})).toBeVisible();
 });
+it('saves settings and closes immediately from the management action', async () => {
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      question: {
+        ...question,
+        state: 'closed',
+        shareResults: true,
+        revision: '2',
+      },
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const saved = vi.fn();
+  render(
+    <QuestionEditor
+      roomId={id}
+      question={question}
+      timeZone="UTC"
+      onSaved={saved}
+      onClose={vi.fn()}
+      onDenied={vi.fn()}
+      onReload={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('tab', {name: 'Настройки'}));
+  fireEvent.click(screen.getByLabelText('Публиковать результаты участникам'));
+  fireEvent.click(screen.getByRole('tab', {name: 'Управление'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Закрыть вопрос'}));
+  await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+  const body = JSON.parse(fetcher.mock.calls[0][1].body);
+  expect(body.state).toBe('closed');
+  expect(body.shareResults).toBe(true);
+  expect(
+    screen.queryByRole('button', {name: 'Сохранить изменения'}),
+  ).not.toBeInTheDocument();
+});

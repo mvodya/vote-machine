@@ -192,6 +192,14 @@ export async function participantProxy(
       )
         return failure(401);
       body = {token: data.token};
+      const prior = request.headers
+        .get('cookie')
+        ?.split(';')
+        .map((value) => value.trim())
+        .find((value) => value.startsWith(`${votingCookie(id)}=`))
+        ?.split('=')[1];
+      if (prior && secretPattern.test(prior))
+        outgoing.Authorization = `Bearer ${prior}`;
     } else {
       const token = request.headers
         .get('cookie')

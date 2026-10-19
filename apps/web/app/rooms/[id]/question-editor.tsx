@@ -1,4 +1,7 @@
 'use client';
+import {useLive} from '../../../lib/use-live';
+import {QuestionAction} from '../../../components/question-action';
+import {ManualVoting} from './manual-voting';
 import {markdownAssets} from '../../../lib/markdown';
 
 import {useCallback, useEffect, useId, useState, type FormEvent} from 'react';
@@ -13,6 +16,7 @@ import {
   Pencil,
   Settings,
   Play,
+  FilePenLine,
 } from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Form} from '../../../components/ui/form';
@@ -38,12 +42,7 @@ import {
   QuestionDeadline,
   type DeadlineValue,
 } from '../../../components/question-deadline';
-import {
-  formatTime,
-  localTimeZone,
-  wallTime,
-  wallTimeToInstant,
-} from '../../../lib/time';
+import {localTimeZone, wallTime, wallTimeToInstant} from '../../../lib/time';
 interface EditorChoice extends Choice {
   // Keep focus stable when unsaved options move
   localKey: string;
@@ -66,6 +65,17 @@ function deadlineValue(question: Question | null, zone: string): DeadlineValue {
     deadlineMode:
       question?.deadlineMode ?? (question?.closesAt ? 'absolute' : 'none'),
     wall: question?.closesAt ? wallTime(question.closesAt, zone) : '',
+    duration: String(seconds / unit),
+    unit: String(unit),
+  };
+}
+// Reuse the same controls for a scheduled start
+function startValue(question: Question | null, zone: string): DeadlineValue {
+  const seconds = question?.startAfterSeconds ?? 600;
+  const unit = seconds % 3600 === 0 ? 3600 : seconds % 60 === 0 ? 60 : 1;
+  return {
+    deadlineMode: question?.startMode ?? 'none',
+    wall: question?.startsAt ? wallTime(question.startsAt, zone) : '',
     duration: String(seconds / unit),
     unit: String(unit),
   };
@@ -117,10 +127,13 @@ export function QuestionEditor({
   const [deadline, setDeadline] = useState(() =>
     deadlineValue(question, timeZone),
   );
+  const [start, setStart] = useState(() => startValue(question, timeZone));
+  const live = useLive(`/api/rooms/${roomId}/events`, onDenied);
   const [section, setSection] = useState('editing');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
+  const [makeDraft, setMakeDraft] = useState(false);
   const [discard, setDiscard] = useState(false);
   const [uploads, setUploads] = useState(0);
   const uploadChanged = useCallback(
@@ -131,11 +144,17 @@ export function QuestionEditor({
   const locked = saved?.editLocked === true;
   const dirty =
     uploads > 0 ||
-    JSON.stringify([questionInput(value), state, deadlineKey(deadline)]) !==
+    JSON.stringify([
+      questionInput(value),
+      state,
+      deadlineKey(deadline),
+      deadlineKey(start),
+    ]) !==
       JSON.stringify([
         questionInput(saved ?? emptyQuestion()),
         saved?.state ?? 'draft',
         deadlineKey(deadlineValue(saved, timeZone)),
+        deadlineKey(startValue(saved, timeZone)),
       ]);
   useEffect(() => {
     onDirtyChange?.(dirty || busy);
@@ -172,6 +191,68 @@ export function QuestionEditor({
       controller.abort();
     };
   }, [roomId, value.content, value.choices]);
+  useEffect(() => {
+    if (!saved || dirty || busy || !live.version) return;
+    const controller = new AbortController();
+    async function update() {
+      try {
+        const response = await fetch(
+          `/api/rooms/${roomId}/questions/${saved!.id}`,
+          {cache: 'no-store', signal: controller.signal},
+        );
+        if (response.status === 401) {
+          onDenied();
+          return;
+        }
+        const data = await response.json();
+        if (
+          response.ok &&
+          isQuestion(data.question) &&
+          data.question.revision !== saved!.revision &&
+          !controller.signal.aborted
+        ) {
+          setSaved(data.question);
+          setState(data.question.state);
+          setValue(editorValue(data.question));
+          setDeadline(deadlineValue(data.question, timeZone));
+          setStart(startValue(data.question, timeZone));
+        }
+      } catch {}
+    }
+    void update();
+    return () => controller.abort();
+  }, [live.version, roomId, saved, dirty, busy, onDenied, timeZone]);
+  // Cancel only the armed start, keeping content and prior answers
+  async function cancelStart() {
+    if (!saved || busy || dirty) return;
+    setBusy(true);
+    try {
+      const response = await fetch(
+        `/api/rooms/${roomId}/questions/${saved.id}/lifecycle`,
+        {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            action: 'cancel_start',
+            revision: saved.revision,
+          }),
+        },
+      );
+      if (response.status === 401) {
+        onDenied();
+        return;
+      }
+      const body = await response.json();
+      if (!response.ok || !isQuestion(body.question)) throw new Error();
+      setSaved(body.question);
+      setState(body.question.state);
+      onSaved(body.question);
+    } catch {
+      setError('Не удалось отменить запуск');
+    } finally {
+      setBusy(false);
+    }
+  }
   // Change one setting without replacing other local fields
   function field<K extends keyof QuestionInput>(
     name: K,
@@ -200,14 +281,18 @@ export function QuestionEditor({
     setValue(editorValue(saved ?? emptyQuestion()));
     setState(saved?.state ?? 'draft');
     setDeadline(deadlineValue(saved, timeZone));
+    setStart(startValue(saved, timeZone));
     setError('');
     setConflict(false);
     setDiscard(false);
   }
   // Commit all tabs together, including opening and closing
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy || uploads > 0 || !dirty) return;
+  async function save(
+    event?: FormEvent<HTMLFormElement>,
+    target?: Question['state'],
+  ) {
+    event?.preventDefault();
+    if (busy || uploads > 0 || (!dirty && !target)) return;
     if (!isQuestionInput(value)) {
       setError('Проверьте размер текста, варианты и границы выбора');
       return;
@@ -233,6 +318,22 @@ export function QuestionEditor({
         )
           throw new Error('Укажите положительную длительность');
       }
+      let startsAt: string | null = null;
+      let startAfterSeconds: number | null = null;
+      if (start.deadlineMode === 'absolute')
+        startsAt =
+          saved?.startsAt && start.wall === wallTime(saved.startsAt, timeZone)
+            ? saved.startsAt
+            : wallTimeToInstant(start.wall, timeZone);
+      if (start.deadlineMode === 'duration') {
+        startAfterSeconds = Number(start.duration) * Number(start.unit);
+        if (
+          !Number.isInteger(startAfterSeconds) ||
+          startAfterSeconds < 1 ||
+          startAfterSeconds > 2147483647
+        )
+          throw new Error('Укажите положительную задержку');
+      }
       const response = await fetch(
         `/api/rooms/${roomId}/questions${saved ? `/${saved.id}` : ''}`,
         {
@@ -240,7 +341,10 @@ export function QuestionEditor({
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             ...questionInput(value),
-            state,
+            state: target ?? state,
+            startMode: start.deadlineMode,
+            startsAt,
+            startAfterSeconds,
             deadlineMode: deadline.deadlineMode,
             closesAt,
             closeAfterSeconds,
@@ -280,12 +384,51 @@ export function QuestionEditor({
       setValue(editorValue(body.question));
       setState(body.question.state);
       setDeadline(deadlineValue(body.question, timeZone));
+      setStart(startValue(body.question, timeZone));
       onSaved(body.question);
     } catch (failure) {
       setError(
         failure instanceof Error
           ? failure.message
           : 'Не удалось сохранить вопрос, попробуйте снова',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  // Reset saved answers only after the explicit destructive action
+  async function resetAnswers() {
+    if (!saved || busy || dirty) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `/api/rooms/${roomId}/questions/${saved.id}/reset`,
+        {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({revision: saved.revision}),
+        },
+      );
+      if (response.status === 401) {
+        onDenied();
+        return;
+      }
+      const body = await response.json();
+      if (!response.ok || !isQuestion(body.question))
+        throw new Error('Не удалось сделать вопрос черновиком, обновите его');
+      setSaved(body.question);
+      setValue(editorValue(body.question));
+      setState(body.question.state);
+      setDeadline(deadlineValue(body.question, timeZone));
+      setStart(startValue(body.question, timeZone));
+      setMakeDraft(false);
+      onSaved(body.question);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : 'Не удалось сбросить ответы',
       );
     } finally {
       setBusy(false);
@@ -432,19 +575,6 @@ export function QuestionEditor({
           </fieldset>
         </div>
         <div hidden={section !== 'settings'} className="space-y-6">
-          <SelectField
-            id={`${prefix}-state`}
-            label="Состояние вопроса"
-            value={state}
-            disabled={busy}
-            onChange={(event) =>
-              setState(event.target.value as Question['state'])
-            }
-          >
-            <option value="draft">Черновик</option>
-            <option value="open">Открыт</option>
-            <option value="closed">Закрыт</option>
-          </SelectField>
           <fieldset disabled={busy || locked}>
             {' '}
             <div className="grid gap-5 sm:grid-cols-3">
@@ -564,36 +694,77 @@ export function QuestionEditor({
         </div>
         <div hidden={section !== 'management'} className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="font-medium">Голосование</h3>
-            <Button
-              variant="secondary"
-              startIcon={<Play />}
-              disabled={busy || state === 'open'}
-              onClick={() => setState('open')}
-            >
-              Открыть вопрос
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <QuestionAction
+                state={state}
+                busy={busy || uploads > 0}
+                onClick={() =>
+                  void save(undefined, state === 'open' ? 'closed' : 'open')
+                }
+              />
+              {state === 'scheduled' && (
+                <Button
+                  variant="secondary"
+                  disabled={busy || dirty}
+                  onClick={() => void cancelStart()}
+                >
+                  Отменить запуск
+                </Button>
+              )}
+              {saved && saved.state !== 'draft' && (
+                <Button
+                  variant="secondary"
+                  startIcon={<FilePenLine />}
+                  disabled={busy || dirty}
+                  onClick={() => setMakeDraft(true)}
+                >
+                  Сделать черновиком
+                </Button>
+              )}
+            </div>
           </div>
+          <CheckboxField
+            id={`${prefix}-scheduled`}
+            label="Отложенный старт"
+            checked={start.deadlineMode !== 'none'}
+            disabled={busy}
+            onChange={(event) =>
+              setStart((old) => ({
+                ...old,
+                deadlineMode: event.target.checked ? 'duration' : 'none',
+              }))
+            }
+          />
+          {start.deadlineMode !== 'none' && (
+            <QuestionDeadline
+              purpose="start"
+              value={start}
+              onChange={setStart}
+              timeZone={timeZone}
+              disabled={busy}
+              at={saved?.scheduledAt}
+            />
+          )}
           <QuestionDeadline
             value={deadline}
             onChange={setDeadline}
             timeZone={timeZone}
             disabled={busy}
+            at={
+              saved?.state === 'open'
+                ? saved.closesAt
+                : saved?.state === 'scheduled'
+                  ? saved.deadlineMode === 'duration' &&
+                    saved.scheduledAt &&
+                    saved.closeAfterSeconds
+                    ? new Date(
+                        Date.parse(saved.scheduledAt) +
+                          saved.closeAfterSeconds * 1000,
+                      ).toISOString()
+                    : saved.closesAt
+                  : null
+            }
           />
-          {state === 'open' && (
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => setState('closed')}
-            >
-              Закрыть вопрос
-            </Button>
-          )}
-          {saved?.closesAt && (
-            <p className="text-xs text-muted">
-              Сохраненный срок: {formatTime(saved.closesAt, timeZone)}
-            </p>
-          )}
           {saved?.editLocked !== null && saved && (
             <p className="text-xs text-muted">
               При повторном открытии прежние голоса сохраняются
@@ -616,6 +787,25 @@ export function QuestionEditor({
           </p>
         )}
       </Form>
+      {section === 'management' && saved?.state === 'open' && !dirty && (
+        <ManualVoting
+          roomId={roomId}
+          questionId={saved.id}
+          onDenied={onDenied}
+          timeZone={timeZone}
+        />
+      )}
+      {makeDraft && (
+        <ConfirmDialog
+          title="Сделать вопрос черновиком?"
+          description="Все ответы будут удалены, вопрос будет скрыт от респондентов"
+          confirmLabel="Сделать черновиком"
+          busy={busy}
+          error={error}
+          onConfirm={() => void resetAnswers()}
+          onClose={() => setMakeDraft(false)}
+        />
+      )}
       {discard && (
         <ConfirmDialog
           title="Отменить изменения?"

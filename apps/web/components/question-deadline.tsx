@@ -3,6 +3,7 @@ import {CalendarClock, Hourglass, Infinity as InfinityIcon} from 'lucide-react';
 import {TextField} from './ui/text-field';
 import {SelectField} from './ui/select-field';
 import {SegmentedControl} from './ui/segmented-control';
+import {Countdown} from './countdown';
 import {Help} from './ui/help';
 
 export interface DeadlineValue {
@@ -20,7 +21,11 @@ export function QuestionDeadline({
   onChange,
   timeZone,
   disabled = false,
+  purpose = 'close',
+  at,
 }: {
+  purpose?: 'start' | 'close';
+  at?: string | null;
   // Unsaved deadline controls
   value: DeadlineValue;
   // Replace the current settings
@@ -30,21 +35,27 @@ export function QuestionDeadline({
   // Disable input during a save
   disabled?: boolean;
 }) {
+  const start = purpose === 'start';
+  const title = start ? 'Время открытия' : 'Срок закрытия';
   const [date = '', time = ''] = value.wall.split('T');
   return (
     <section
-      aria-label="Срок закрытия"
+      aria-label={title}
       className="space-y-5 rounded-2xl border border-border bg-page/50 p-4 sm:p-5"
     >
       <div className="flex items-center justify-between gap-3">
-        <h3 className="font-medium">Срок закрытия</h3>
-        <Help label="Срок закрытия">
-          Точное время задается в часовом поясе комнаты Отсчет длительности
-          начинается при каждом открытии вопроса
+        <h3 className="font-medium">{title}</h3>
+        <Help label={title}>
+          Точное время задается в часовом поясе комнаты
+          <span className="mt-2 block">
+            {start
+              ? 'Отсчет начинается после нажатия «Открыть вопрос»'
+              : 'Отсчет начинается при фактическом открытии вопроса'}
+          </span>
         </Help>
       </div>
       <SegmentedControl
-        label="Вид срока"
+        label={start ? 'Вид отложенного старта' : 'Вид срока'}
         value={value.deadlineMode}
         disabled={disabled}
         onChange={(mode) =>
@@ -54,16 +65,22 @@ export function QuestionDeadline({
           })
         }
         items={[
-          {id: 'none', label: 'Без срока', icon: <InfinityIcon />},
+          ...(!start
+            ? [{id: 'none', label: 'Без срока', icon: <InfinityIcon />}]
+            : []),
           {id: 'absolute', label: 'Дата и время', icon: <CalendarClock />},
-          {id: 'duration', label: 'После открытия', icon: <Hourglass />},
+          {
+            id: 'duration',
+            label: start ? 'Через время' : 'После открытия',
+            icon: <Hourglass />,
+          },
         ]}
       />
       {value.deadlineMode === 'absolute' && (
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
-            id="deadline-date"
-            label="Дата закрытия"
+            id={`${purpose}-date`}
+            label={start ? 'Дата открытия' : 'Дата закрытия'}
             type="date"
             value={date}
             disabled={disabled}
@@ -72,8 +89,8 @@ export function QuestionDeadline({
             }
           />
           <TextField
-            id="deadline-time"
-            label="Время закрытия"
+            id={`${purpose}-time`}
+            label={start ? 'Время открытия' : 'Время закрытия'}
             type="time"
             step={1}
             value={time}
@@ -90,8 +107,8 @@ export function QuestionDeadline({
       {value.deadlineMode === 'duration' && (
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
-            id="deadline-duration"
-            label="Закрыть через"
+            id={`${purpose}-duration`}
+            label={start ? 'Открыть через' : 'Закрыть через'}
             type="number"
             min={1}
             step={1}
@@ -102,8 +119,8 @@ export function QuestionDeadline({
             }
           />
           <SelectField
-            id="deadline-unit"
-            label="Единица времени"
+            id={`${purpose}-unit`}
+            label={start ? 'Единица времени открытия' : 'Единица времени'}
             value={value.unit}
             disabled={disabled}
             onChange={(event) => onChange({...value, unit: event.target.value})}
@@ -113,6 +130,16 @@ export function QuestionDeadline({
             <option value="86400">Дни</option>
             <option value="1">Секунды</option>
           </SelectField>
+        </div>
+      )}
+      {start && (
+        <p className="text-xs text-muted">
+          Вопрос не запустится, пока вы не нажмете «Открыть вопрос»
+        </p>
+      )}
+      {at && (
+        <div className="flex justify-end">
+          <Countdown at={at} kind={purpose} timeZone={timeZone} />
         </div>
       )}
     </section>

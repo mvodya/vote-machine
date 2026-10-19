@@ -1,6 +1,13 @@
 'use client';
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {ListChecks, History, RefreshCw} from 'lucide-react';
+import {
+  ListChecks,
+  MessageSquare,
+  ChartColumn,
+  Check,
+  X,
+  Repeat2,
+} from 'lucide-react';
 import {Panel} from '../../../components/ui/panel';
 import {Button} from '../../../components/ui/button';
 import {EmptyState} from '../../../components/ui/empty-state';
@@ -8,9 +15,14 @@ import {Tabs} from '../../../components/ui/tabs';
 import {Pagination} from '../../../components/ui/pagination';
 import {isJourney, type Journey} from '../../../lib/journey';
 import {markdownSummary} from '../../../lib/markdown';
+import {SelectField} from '../../../components/ui/select-field';
+import {useLive} from '../../../lib/use-live';
+import {Countdown} from '../../../components/countdown';
+import {useQuestionPresence} from '../../../lib/use-question-presence';
+import {Results} from '../../../components/results';
 import {AnswerForm} from './answer-form';
 
-// Poll snapshots until realtime delivery is added in its own stage
+// Keep snapshots fresh while the participant moves between tabs
 export function ParticipantJourney({
   linkId,
   onDenied,
@@ -20,10 +32,14 @@ export function ParticipantJourney({
   // Remove private content when the session is revoked
   onDenied: () => void;
 }) {
+  const live = useLive(`/api/vote/${linkId}/events`, onDenied);
+  const [runId, setRunId] = useState<string | null>(null);
+  const newRun = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<Journey | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [skip, setSkip] = useState<string | null>(null);
-  const [section, setSection] = useState('open');
+  const [section, setSection] = useState('question');
+  const [review, setReview] = useState(false);
   const [cursors, setCursors] = useState(['0']);
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -44,6 +60,7 @@ export function ParticipantJourney({
       if (busy) return;
       try {
         const query = new URLSearchParams({after: cursor});
+        if (runId) query.set('run', runId);
         if (selected) query.set('selected', selected);
         if (skip) query.set('skip', skip);
         const response = await fetch(`/api/vote/${linkId}/questions?${query}`, {
@@ -76,13 +93,22 @@ export function ParticipantJourney({
           );
         }
         previous.current = body.current?.id ?? null;
+        if (body.run?.id && !runId) setRunId(body.run.id);
+        if (selected && body.current?.id !== selected) {
+          setSelected(null);
+          setReview(false);
+        }
+        if (!body.resultsAvailable)
+          setSection((currentSection) =>
+            currentSection === 'results' ? 'question' : currentSection,
+          );
         setSnapshot(body);
         setFailed(false);
       } catch {
         if (!controller.signal.aborted) setFailed(true);
       } finally {
         if (!controller.signal.aborted)
-          timer = setTimeout(() => void load(), 2000);
+          timer = setTimeout(() => void load(), live.connected ? 30000 : 2000);
       }
     }
     void load();
@@ -90,31 +116,91 @@ export function ParticipantJourney({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [linkId, selected, skip, cursor, attempt, onDenied, busy]);
+  }, [
+    linkId,
+    selected,
+    skip,
+    cursor,
+    attempt,
+    onDenied,
+    busy,
+    runId,
+    live.version,
+    live.connected,
+  ]);
   // Preserve the active content while metadata pages change
-  function choose(id: string) {
+  function choose(id: string, answered: boolean) {
+    setReview(answered);
+    setSection('question');
     setSelected(id);
     setSkip(null);
     setNotice('');
   }
+  // A new request ID means an explicit additional ballot run
+  async function repeat() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      newRun.current ??= crypto.randomUUID();
+      const response = await fetch(`/api/vote/${linkId}/runs`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({requestId: newRun.current}),
+      });
+      if (response.status === 401) {
+        onDenied();
+        return;
+      }
+      const body = await response.json();
+      if (!response.ok || !body.run?.id) throw new Error();
+      newRun.current = null;
+      setRunId(body.run.id);
+      setSelected(null);
+      setReview(false);
+      setSection('question');
+      setSkip(null);
+      setCursors(['0']);
+      previous.current = null;
+      setNotice('');
+    } catch {
+      setNotice('Не удалось начать повторное голосование');
+    } finally {
+      setBusy(false);
+    }
+  }
   const current = snapshot?.current;
+  const shown = selected && current?.id !== selected ? null : current;
+  useQuestionPresence(
+    linkId,
+    section === 'question'
+      ? (shown?.id ?? snapshot?.upcoming?.id ?? null)
+      : null,
+    runId,
+    onDenied,
+  );
+  // Review and edit return to the list instead of advancing the queue
+  function closeReview() {
+    setReview(false);
+    setSelected(null);
+    setSkip(null);
+    setSection('list');
+  }
   return (
     <div className="mt-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted">
-          {snapshot
-            ? `Ответов на открытые вопросы: ${snapshot.progress.answered} из ${snapshot.progress.total}`
-            : 'Загружаем вопросы…'}
-        </p>
-        <Button
-          variant="ghost"
-          startIcon={<RefreshCw />}
-          disabled={busy}
-          onClick={() => refresh('')}
-        >
-          Обновить
-        </Button>
-      </div>
+      <Tabs
+        label="Вкладки участника"
+        value={section}
+        onChange={(next) => {
+          if (!busy) setSection(next);
+        }}
+        items={[
+          {id: 'question', label: 'Вопрос', icon: <MessageSquare />},
+          {id: 'list', label: 'Список вопросов', icon: <ListChecks />},
+          ...(snapshot?.resultsAvailable
+            ? [{id: 'results', label: 'Результаты', icon: <ChartColumn />}]
+            : []),
+        ]}
+      />
       {notice && (
         <p role="status" className="text-sm text-muted">
           {notice}
@@ -125,111 +211,199 @@ export function ParticipantJourney({
           Не удалось обновить вопросы, пробуем снова
         </p>
       )}
-      {snapshot && (
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(15rem,1fr)]">
-          <Panel aria-label="Текущий вопрос">
-            {current ? (
-              <AnswerForm
-                key={`${current.id}/${current.revision}/${snapshot.answer?.revision ?? 'new'}`}
-                timeZone={snapshot.timeZone}
-                linkId={linkId}
-                question={current}
-                answer={snapshot.answer}
-                onDenied={onDenied}
-                onBusy={setBusy}
-                onRefresh={refresh}
-                onSaved={() => {
-                  previous.current = null;
-                  setSelected(null);
-                  setSkip(null);
-                  refresh('Ответ принят');
-                }}
-                onSkip={() => {
-                  previous.current = null;
-                  setSelected(null);
-                  setSkip(current.id);
-                  setNotice(
-                    'Вопрос пропущен, к нему можно вернуться из списка',
-                  );
-                }}
+      {section === 'question' && (
+        <Panel aria-label="Текущий вопрос">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+            <p className="text-sm text-muted">
+              {snapshot
+                ? `Осталось вопросов: ${snapshot.progress.pending}`
+                : 'Загружаем вопросы…'}
+            </p>
+            <Countdown
+              at={
+                shown?.state === 'open'
+                  ? shown.closesAt
+                  : (shown?.scheduledAt ??
+                    (!shown ? snapshot?.upcoming?.scheduledAt : null))
+              }
+              kind={shown?.state === 'open' ? 'close' : 'start'}
+              timeZone={snapshot?.timeZone}
+            />
+            {review && (
+              <Button
+                variant="secondary"
+                startIcon={<X />}
+                disabled={busy}
+                onClick={closeReview}
+              >
+                Закрыть
+              </Button>
+            )}
+          </div>
+          {shown ? (
+            <AnswerForm
+              key={`${runId ?? 'personal'}/${shown.id}/${shown.revision}/${snapshot?.answer?.revision ?? 'new'}`}
+              timeZone={snapshot?.timeZone}
+              extraPayload={runId ? {runId} : undefined}
+              linkId={linkId}
+              question={shown}
+              answer={snapshot?.answer ?? null}
+              onDenied={onDenied}
+              onBusy={setBusy}
+              onRefresh={refresh}
+              onSaved={() => {
+                previous.current = null;
+                setSelected(null);
+                setSkip(null);
+                if (review) {
+                  setReview(false);
+                  setSection('list');
+                }
+                refresh('Ответ принят');
+              }}
+              onSkip={() => {
+                previous.current = null;
+                setSelected(null);
+                setSkip(shown.id);
+                setNotice('Вопрос пропущен, к нему можно вернуться из списка');
+              }}
+            />
+          ) : snapshot && !selected ? (
+            <>
+              <EmptyState
+                icon={<ListChecks />}
+                title={
+                  snapshot.upcoming
+                    ? 'Ожидание открытия вопроса'
+                    : snapshot.progress.pending
+                      ? 'Остались вопросы без ответа'
+                      : snapshot.questions.length || snapshot.progress.total
+                        ? 'Все вопросы пройдены'
+                        : 'Ожидание вопросов'
+                }
+                description={
+                  snapshot.upcoming
+                    ? markdownSummary(snapshot.upcoming.preview)
+                    : 'Ответы и пропущенные вопросы доступны в списке'
+                }
               />
-            ) : (
-              <>
-                <EmptyState
-                  icon={<ListChecks />}
-                  title="Ожидание вопросов"
-                  description={
-                    snapshot.progress.pending
-                      ? 'Можно вернуться к неотвеченным вопросам из списка'
-                      : 'Здесь появятся новые вопросы комнаты'
-                  }
-                />
-                {skip && (
+              <Button
+                variant="secondary"
+                startIcon={<ListChecks />}
+                onClick={() => setSection('list')}
+              >
+                К списку вопросов
+              </Button>
+              {snapshot.run &&
+                snapshot.repeatAllowed &&
+                !snapshot.progress.pending && (
                   <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setSkip(null);
-                      setSelected(null);
-                    }}
+                    className="ml-3"
+                    startIcon={<Repeat2 />}
+                    disabled={busy}
+                    onClick={() => void repeat()}
                   >
-                    Вернуться к вопросам
+                    Ответить еще раз
                   </Button>
                 )}
-              </>
-            )}
-          </Panel>
-          <Panel>
-            <Tabs
-              label="Вопросы участника"
-              value={section}
-              onChange={setSection}
-              items={[
-                {id: 'open', label: 'Вопросы', icon: <ListChecks />},
-                {id: 'history', label: 'Мои ответы', icon: <History />},
-              ]}
-            />
-            <ul className="mt-4 divide-y divide-border">
-              {snapshot.questions
-                .filter((item) =>
-                  section === 'history' ? item.answered : item.state === 'open',
-                )
-                .map((item) => (
-                  <li key={item.id} className="py-3">
-                    <Button
-                      variant="ghost"
-                      className="h-auto w-full justify-start text-left whitespace-normal"
-                      disabled={busy || !item.canChoose}
-                      aria-current={
-                        current?.id === item.id ? 'true' : undefined
-                      }
-                      onClick={() => choose(item.id)}
-                    >
-                      {markdownSummary(item.preview) || 'Вопрос'}
-                    </Button>
-                    <p className="mt-1 text-xs text-muted">
-                      {item.answered
-                        ? 'Ответ сохранен'
+            </>
+          ) : (
+            <p className="text-sm text-muted">Загружаем вопрос…</p>
+          )}
+        </Panel>
+      )}
+      {section === 'list' && (
+        <Panel aria-label="Список вопросов участника">
+          {snapshot?.run && (snapshot.runs?.length ?? 0) > 1 && (
+            <SelectField
+              id="voting-run"
+              label="Прохождение"
+              value={runId ?? snapshot.run.id}
+              disabled={busy}
+              onChange={(event) => {
+                setRunId(event.target.value);
+                setSelected(null);
+                setReview(false);
+                setSkip(null);
+                setCursors(['0']);
+                previous.current = null;
+              }}
+            >
+              {snapshot.runs?.map((run) => (
+                <option key={run.id} value={run.id}>
+                  {new Intl.DateTimeFormat('ru-RU', {
+                    dateStyle: 'short',
+                    timeStyle: 'medium',
+                    timeZone: snapshot.timeZone,
+                  }).format(new Date(run.createdAt))}
+                </option>
+              ))}
+            </SelectField>
+          )}
+          <ul className="divide-y divide-border">
+            {snapshot?.questions.map((item) => (
+              <li
+                key={item.id}
+                className="flex flex-wrap items-center justify-between gap-3 py-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <Button
+                    variant="ghost"
+                    className="h-auto max-w-full justify-start whitespace-normal text-left"
+                    disabled={busy || !item.canChoose}
+                    onClick={() => choose(item.id, item.answered)}
+                  >
+                    {markdownSummary(item.preview) || 'Вопрос'}
+                  </Button>
+                  <p className="mt-1 flex items-center gap-2 text-xs text-muted">
+                    {item.answered && (
+                      <Check
+                        aria-hidden="true"
+                        className="size-3.5 text-success-ink"
+                      />
+                    )}
+                    {item.answered
+                      ? 'Ответ сохранен'
+                      : item.state === 'scheduled'
+                        ? 'Ожидание открытия'
                         : item.canChoose
                           ? 'Без ответа'
                           : 'Сначала ответьте на обязательный вопрос'}
-                      {item.state === 'closed' ? ' · Закрыт' : ''}
-                    </p>
-                  </li>
-                ))}
-            </ul>
-            <Pagination
-              label="Страницы вопросов участника"
-              page={cursors.length}
-              hasNext={Boolean(snapshot.nextCursor)}
-              busy={busy}
-              onPrevious={() => setCursors((value) => value.slice(0, -1))}
-              onNext={() =>
-                snapshot.nextCursor &&
-                setCursors((value) => [...value, snapshot.nextCursor!])
-              }
-            />
-          </Panel>
-        </div>
+                    {item.state === 'closed' ? ' · Закрыт' : ''}
+                  </p>
+                </div>
+                <Countdown
+                  at={
+                    item.state === 'scheduled'
+                      ? item.scheduledAt
+                      : item.state === 'open'
+                        ? item.closesAt
+                        : null
+                  }
+                  kind={item.state === 'scheduled' ? 'start' : 'close'}
+                  timeZone={snapshot?.timeZone}
+                />
+              </li>
+            ))}
+          </ul>
+          {snapshot?.questions.length === 0 && (
+            <p className="text-sm text-muted">Вопросов пока нет</p>
+          )}
+          <Pagination
+            label="Страницы вопросов участника"
+            page={cursors.length}
+            hasNext={Boolean(snapshot?.nextCursor)}
+            busy={busy}
+            onPrevious={() => setCursors((value) => value.slice(0, -1))}
+            onNext={() =>
+              snapshot?.nextCursor &&
+              setCursors((value) => [...value, snapshot.nextCursor!])
+            }
+          />
+        </Panel>
+      )}
+      {section === 'results' && snapshot?.resultsAvailable && (
+        <Results id={linkId} admin={false} runId={runId} onDenied={onDenied} />
       )}
     </div>
   );

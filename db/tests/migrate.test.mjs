@@ -407,7 +407,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT to_regprocedure('public.vm_store_question(uuid,bytea,uuid,text,jsonb)') AS name",
+          "SELECT to_regprocedure('public.vm_admin_question_metrics(uuid)') AS name",
         )
       ).rows[0].name,
       null,
@@ -3042,14 +3042,19 @@ test('relative deadlines start at each opening and remain inactive in a draft', 
   });
 });
 
-test('returning to draft hides answers without discarding ballots or opening promises', async () => {
+test('returning to draft hides answers with erased answers and preserved opening promises', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
     const f = await personalFixture(client);
     await cast(client, f, ballotInput(f.question));
     f.question = (
-      await workspaceSave(client, f.admin, f.question, {state: 'draft'})
-    ).question;
+      await client.query('SELECT vm_reset_question($1,$2,$3,$4) AS reply', [
+        f.admin.room.id,
+        hash(f.admin.session),
+        f.question.id,
+        JSON.stringify({revision: f.question.revision}),
+      ])
+    ).rows[0].reply.question;
     assert.equal(f.question.state, 'draft');
     assert.equal(f.question.editLocked, true);
     assert.equal((await journey(client, f)).questions.length, 0);
@@ -3066,10 +3071,7 @@ test('returning to draft hides answers without discarding ballots or opening pro
     f.question = (
       await workspaceSave(client, f.admin, f.question, {state: 'open'})
     ).question;
-    assert.equal(
-      (await cast(client, f, ballotInput(f.question))).error,
-      'used',
-    );
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 200);
     assert.equal(
       (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
       '1',
@@ -3206,9 +3208,12 @@ test('workspace rollback and a blocked deletion both preserve data atomically', 
     await client.query(
       'CREATE VIEW outside_zone AS SELECT time_zone FROM rooms',
     );
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
-      code: '2BP01',
-    });
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 7}),
+      {
+        code: '2BP01',
+      },
+    );
     assert.equal(await migrationCount(client), total);
     assert.equal(
       (await questionCall(client, f.admin, 'get', {}, f.question.id)).question
@@ -3216,12 +3221,1103 @@ test('workspace rollback and a blocked deletion both preserve data atomically', 
       'open',
     );
     await client.query('DROP VIEW outside_zone');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 7});
     await runMigrations({databaseUrl});
     assert.equal(
       (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
       '1',
     );
     assert.equal((await journey(client, f)).answer, null);
+  });
+});
+
+// Give each repeat check an independent browser session and automatic first run
+async function reusableFixture(client, extra = {}) {
+  const admin = await adminRoom(client);
+  const question = (
+    await lifecycle(
+      client,
+      admin,
+      await readyQuestion(client, admin, extra),
+      'open',
+    )
+  ).question;
+  const key = linkItem('Shared', 'reusable');
+  const [link] = await addLinks(client, admin, [key]);
+  const {session} = await openLink(client, link, key.key);
+  const f = {admin, question, link, session, key};
+  const snapshot = await journey(client, f);
+  return {...f, run: snapshot.run};
+}
+// Keep a repeated run request stable across retries
+async function startRun(client, f, id = randomUUID()) {
+  return (
+    await client.query('SELECT vm_begin_run($1,$2,$3) AS reply', [
+      f.link.id,
+      hash(f.session),
+      id,
+    ])
+  ).rows[0].reply;
+}
+// Use real role checks for all new ballot sources
+async function generalCast(client, f, data, manual = false) {
+  return (
+    await client.query('SELECT vm_cast_ballot($1,$2,$3,$4,$5,$6) AS reply', [
+      manual ? f.admin.room.id : null,
+      manual ? null : f.link.id,
+      hash(manual ? f.admin.session : f.session),
+      manual,
+      f.question.id,
+      JSON.stringify(data),
+    ])
+  ).rows[0].reply;
+}
+
+test('reusable links start independently without a button and repeats require the room setting', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    assert(f.run.id);
+    assert.equal((await journey(client, f)).run.id, f.run.id);
+    assert.equal((await startRun(client, f)).error, 'repeat');
+    const second = {
+      ...f,
+      session: (await openLink(client, f.link, f.key.key)).session,
+    };
+    assert.notEqual((await journey(client, second)).run.id, f.run.id);
+    assert.equal((await journey(client, second, {run: f.run.id})).status, 404);
+    await client.query(
+      'UPDATE rooms SET allow_reusable_repeat=true WHERE id=$1',
+      [f.admin.room.id],
+    );
+    const id = randomUUID();
+    assert.equal((await startRun(client, f, id)).run.id, id);
+    assert.equal((await startRun(client, f, id)).run.id, id);
+  });
+});
+
+test('reusable run ballots are unique, retry safe and can add a later explicit vote', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    const input = ballotInput(f.question, {runId: f.run.id});
+    const first = await generalCast(client, f, input);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await generalCast(client, f, input), first);
+    assert.equal(
+      (
+        await generalCast(client, f, {
+          ...input,
+          choices: [f.question.choices[1].id],
+        })
+      ).error,
+      'idempotency',
+    );
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question, {runId: f.run.id})))
+        .error,
+      'used',
+    );
+    await client.query(
+      'UPDATE rooms SET allow_reusable_repeat=true WHERE id=$1',
+      [f.admin.room.id],
+    );
+    const next = (await startRun(client, f)).run;
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question, {runId: next.id})))
+        .status,
+      200,
+    );
+    assert.equal(
+      (
+        await client.query(
+          "SELECT count(*) FROM ballots WHERE source='reusable'",
+        )
+      ).rows[0].count,
+      '2',
+    );
+  });
+});
+
+test('manual ballots add new votes and a manual personal entry consumes the same personal right', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const input = ballotInput(f.question);
+    const first = await generalCast(client, f, input, true);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await generalCast(client, f, input, true), first);
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question), true)).status,
+      200,
+    );
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          f,
+          ballotInput(f.question, {linkId: f.link.id}),
+          true,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await cast(client, f, ballotInput(f.question))).error,
+      'used',
+    );
+    const counts = (
+      await client.query(
+        'SELECT source,count(*)::integer AS count FROM ballots GROUP BY source ORDER BY source',
+      )
+    ).rows;
+    assert.deepEqual(counts, [
+      {source: 'admin_manual', count: 2},
+      {source: 'admin_personal', count: 1},
+    ]);
+    const context = (
+      await client.query('SELECT vm_manual_context($1,$2,$3,$4) AS reply', [
+        f.admin.room.id,
+        hash(f.admin.session),
+        f.question.id,
+        f.link.id,
+      ])
+    ).rows[0].reply;
+    assert.equal(context.answered, true);
+    assert(!('answer' in context));
+    assert(!('choices' in context));
+  });
+});
+
+test('manual personal entry racing the respondent creates exactly one ballot', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const replies = await Promise.all([
+        cast(client, f, ballotInput(f.question)),
+        generalCast(
+          other,
+          f,
+          ballotInput(f.question, {linkId: f.link.id}),
+          true,
+        ),
+      ]);
+      assert.deepEqual(replies.map((reply) => reply.status).sort(), [200, 409]);
+      assert.equal(
+        (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+        '1',
+      );
+    } finally {
+      await other.end();
+    }
+  });
+});
+
+test('all new sources reject closed questions, foreign runs and participant access to admin operations', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    const other = await reusableFixture(client);
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          f,
+          ballotInput(f.question, {runId: other.run.id}),
+        )
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          {...f, admin: {...f.admin, session: f.session}},
+          ballotInput(f.question),
+          true,
+        )
+      ).status,
+      401,
+    );
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question, {runId: f.run.id})))
+        .error,
+      'closed',
+    );
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question), true)).error,
+      'closed',
+    );
+  });
+});
+
+test('explicit reset erases answers and idempotent receipts while keeping first-opening promises', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    const result = (
+      await client.query('SELECT vm_reset_question($1,$2,$3,$4) AS reply', [
+        f.admin.room.id,
+        hash(f.admin.session),
+        f.question.id,
+        JSON.stringify({revision: f.question.revision}),
+      ])
+    ).rows[0].reply;
+    assert.equal(result.question.state, 'draft');
+    assert.equal(result.question.editLocked, true);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '0',
+    );
+    assert.equal(
+      (await client.query('SELECT count(*) FROM vote_requests')).rows[0].count,
+      '0',
+    );
+    assert.equal((await journey(client, f)).questions.length, 0);
+  });
+});
+
+test('session exchange reuses a valid browser session without accepting a wrong link key', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    const opened = await client.query(
+      'SELECT * FROM vm_exchange_voting_session($1,$2,$3,$4)',
+      [
+        f.link.id,
+        hash(f.key.key),
+        hash(randomBytes(32).toString('hex')),
+        hash(f.session),
+      ],
+    );
+    assert.equal(opened.rows[0].reused, true);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT * FROM vm_exchange_voting_session($1,$2,$3,$4)',
+          [
+            f.link.id,
+            hash('wrong'),
+            hash(randomBytes(32).toString('hex')),
+            hash(f.session),
+          ],
+        )
+      ).rowCount,
+      0,
+    );
+  });
+});
+
+test('rollback refuses new ballot sources and restores old schema after their explicit removal', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    await generalCast(client, f, ballotInput(f.question, {runId: f.run.id}));
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 9}),
+    );
+    assert.equal(await migrationCount(client), total);
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          f.admin,
+          'delete',
+          {revision: f.question.revision},
+          f.question.id,
+        )
+      ).status,
+      200,
+    );
+    await runMigrations({databaseUrl, direction: 'down', count: total - 9});
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '0',
+    );
+  });
+});
+
+// Read results through the same role gate used by JSON and CSV
+async function results(
+  client,
+  f,
+  admin = false,
+  question = f.question.id,
+  data = {},
+) {
+  return (
+    await client.query('SELECT vm_results($1,$2,$3,$4,$5) AS reply', [
+      admin ? f.admin.room.id : f.link.id,
+      hash(admin ? f.admin.session : f.session),
+      admin,
+      question,
+      JSON.stringify(data),
+    ])
+  ).rows[0].reply;
+}
+
+test('result publication gates answered, non-voter and admin views without hidden fields', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      shareResults: true,
+      publication: 'after_answer',
+    });
+    assert.deepEqual((await results(client, f)).result, {
+      id: f.question.id,
+      available: false,
+    });
+    assert.equal((await results(client, f, true)).result.total, 0);
+    await cast(client, f, ballotInput(f.question));
+    const participant = (await results(client, f)).result;
+    assert.equal(participant.total, 1);
+    assert(!('people' in participant));
+    assert(!('sources' in participant));
+    const key = linkItem();
+    const [link] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const nonVoter = {...f, link, session};
+    assert.equal((await results(client, nonVoter)).result.available, false);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    assert.equal((await results(client, nonVoter)).result.total, 1);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'settings', {
+        shareResults: false,
+        publication: 'after_close',
+      })
+    ).question;
+    assert.equal((await results(client, nonVoter)).status, 404);
+    assert.equal((await results(client, f, true)).result.total, 1);
+  });
+});
+
+test('multiple choice percentages use ballots and anonymous admin results contain only aggregates', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      anonymous: true,
+      choiceMode: 'multiple',
+      minChoices: 1,
+      maxChoices: 2,
+    });
+    await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: f.question.choices.map((choice) => choice.id),
+      }),
+    );
+    const result = (await results(client, f, true)).result;
+    assert.equal(result.total, 1);
+    assert.deepEqual(
+      result.options.map((option) => option.percent),
+      [100, 100],
+    );
+    assert.equal(result.sources.personal, 1);
+    assert(!('people' in result));
+    assert(!('nextPeopleCursor' in result));
+    assert(!JSON.stringify(result).includes(f.link.id));
+    assert(!JSON.stringify(result).includes(f.session));
+    assert(!JSON.stringify(result).includes('createdAt'));
+  });
+});
+
+test('hidden results stay empty through open, close and reopen with every source', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      hideResultsUntilEnd: true,
+      shareResults: true,
+      publication: 'after_answer',
+    });
+    await cast(client, f, ballotInput(f.question));
+    for (const admin of [true, false])
+      assert.deepEqual((await results(client, f, admin)).result, {
+        id: f.question.id,
+        available: false,
+      });
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    assert.equal((await results(client, f, true)).result.total, 1);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'open')
+    ).question;
+    assert.equal((await results(client, f, true)).result.available, false);
+  });
+});
+
+test('anonymous history and retries reveal a choice only to the current writing session', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      anonymous: true,
+      allowAnswerChange: true,
+    });
+    const body = ballotInput(f.question);
+    const first = await cast(client, f, body);
+    const session = randomBytes(32).toString('hex');
+    await client.query(
+      'INSERT INTO voting_sessions(link_id,generation,secret_hash) SELECT id,generation,$2 FROM voting_links WHERE id=$1',
+      [f.link.id, hash(session)],
+    );
+    const other = {...f, session};
+    assert.equal(
+      (await journey(client, f, {selected: f.question.id})).answer.id,
+      first.answer.id,
+    );
+    const hidden = (await journey(client, other, {selected: f.question.id}))
+      .answer;
+    assert.deepEqual(hidden, {
+      questionId: f.question.id,
+      revision: first.answer.revision,
+      choices: [],
+      hidden: true,
+    });
+    assert.deepEqual((await cast(client, other, body)).answer, hidden);
+    const changed = await cast(
+      client,
+      other,
+      ballotInput(f.question, {
+        ballotRevision: hidden.revision,
+        choices: [f.question.choices[1].id],
+      }),
+    );
+    assert.equal(changed.status, 200);
+    assert.equal(
+      (await journey(client, f, {selected: f.question.id})).answer.hidden,
+      true,
+    );
+    assert.deepEqual(
+      (await journey(client, other, {selected: f.question.id})).answer.choices,
+      [f.question.choices[1].id],
+    );
+  });
+});
+
+test('reusable results require an answer in the selected session-owned run before closing', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client, {
+      shareResults: true,
+      publication: 'after_answer',
+    });
+    await generalCast(client, f, ballotInput(f.question, {runId: f.run.id}));
+    assert.equal(
+      (await results(client, f, false, f.question.id, {run: f.run.id})).result
+        .total,
+      1,
+    );
+    await client.query(
+      'UPDATE rooms SET allow_reusable_repeat=true WHERE id=$1',
+      [f.admin.room.id],
+    );
+    const next = await startRun(client, f);
+    assert.equal(
+      (await results(client, f, false, f.question.id, {run: next.run.id}))
+        .result.available,
+      false,
+    );
+    assert.equal(
+      (await results(client, f, false, f.question.id, {run: randomUUID()}))
+        .status,
+      404,
+    );
+  });
+});
+
+test('results isolate rooms and individual pages and survive rollback and reapply', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const other = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    assert.equal(
+      (await results(client, other, true, f.question.id)).status,
+      404,
+    );
+    const result = (await results(client, f, true)).result;
+    assert.equal(result.people[0].linkId, f.link.id);
+    assert.equal(result.people[0].name, f.link.name);
+    await runMigrations({databaseUrl, direction: 'down', count: total - 10});
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM ballots WHERE question_id=$1',
+          [f.question.id],
+        )
+      ).rows[0].count,
+      '1',
+    );
+    await runMigrations({databaseUrl});
+    assert.equal((await results(client, f, true)).result.total, 1);
+  });
+});
+
+// This opaque version covers only the caller's visible data
+async function eventState(client, f, admin = false) {
+  return (
+    await client.query('SELECT vm_event_state($1,$2,$3) AS reply', [
+      admin ? f.admin.room.id : f.link.id,
+      hash(admin ? f.admin.session : f.session),
+      admin,
+    ])
+  ).rows[0].reply;
+}
+
+test('live versions show answer progress without disclosing hidden choices', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {hideResultsUntilEnd: true});
+    const before = await eventState(client, f, true);
+    await cast(client, f, ballotInput(f.question));
+    assert.notEqual(
+      (await eventState(client, f, true)).version,
+      before.version,
+    );
+    assert.match(before.version, /^[0-9a-f]{32}$/);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    assert.notEqual(
+      (await eventState(client, f, true)).version,
+      before.version,
+    );
+    assert.equal(
+      (await eventState(client, {...f, session: 'wrong'})).status,
+      401,
+    );
+  });
+});
+
+test('live versions cover reusable session history and block revoked access', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    const before = await eventState(client, f);
+    await generalCast(client, f, ballotInput(f.question, {runId: f.run.id}));
+    assert.notEqual((await eventState(client, f)).version, before.version);
+    await client.query(
+      'UPDATE voting_links SET revoked_at=clock_timestamp() WHERE id=$1',
+      [f.link.id],
+    );
+    assert.deepEqual(await eventState(client, f), {status: 401});
+  });
+});
+
+test('live signals are delivered only on commit and snapshots recover missed notifications', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const listener = new pg.Client({connectionString: databaseUrl});
+    await listener.connect();
+    const seen = [];
+    listener.on('notification', (message) => seen.push(message.payload));
+    try {
+      await listener.query('LISTEN live_changes');
+      const before = await eventState(client, f, true);
+      await client.query('BEGIN');
+      await client.query('UPDATE rooms SET name=$2 WHERE id=$1', [
+        f.admin.room.id,
+        'rolled back',
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      assert.equal(seen.length, 0);
+      await client.query('ROLLBACK');
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      assert.equal(seen.length, 0);
+      assert.equal((await eventState(client, f, true)).version, before.version);
+      await client.query('UPDATE rooms SET name=$2 WHERE id=$1', [
+        f.admin.room.id,
+        'committed',
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      assert.deepEqual(seen, [f.admin.room.id]);
+      await listener.query('UNLISTEN *');
+      const changed = await eventState(client, f, true);
+      await cast(client, f, ballotInput(f.question));
+      assert.notEqual(
+        (await eventState(client, f, true)).version,
+        changed.version,
+      );
+    } finally {
+      await listener.end();
+    }
+  });
+});
+
+test('live rollback and reapply keep answers and restore signal triggers', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    await runMigrations({databaseUrl, direction: 'down', count: total - 11});
+    assert.equal((await results(client, f, true)).result.total, 1);
+    await runMigrations({databaseUrl});
+    assert.equal((await eventState(client, f, true)).status, 200);
+    assert.equal(
+      (
+        await client.query(
+          "SELECT count(*) FROM pg_trigger WHERE tgname='live_signal'",
+        )
+      ).rows[0].count,
+      '9',
+    );
+  });
+});
+
+test('anonymous retries preserve their original receipt after another allowed edit in the same session', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      anonymous: true,
+      allowAnswerChange: true,
+    });
+    const body = ballotInput(f.question);
+    const first = await cast(client, f, body);
+    const changed = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        ballotRevision: first.answer.revision,
+        choices: [f.question.choices[1].id],
+      }),
+    );
+    assert.equal(changed.status, 200);
+    assert.deepEqual(await cast(client, f, body), first);
+    assert.deepEqual(
+      (await journey(client, f, {selected: f.question.id})).answer.choices,
+      [f.question.choices[1].id],
+    );
+  });
+});
+
+// Save the same full document that the editor uses
+async function reviewSave(client, f, extra = {}) {
+  const current = (
+    await client.query('SELECT vm_question_data($1) AS q', [f.question.id])
+  ).rows[0].q;
+  return questionCall(
+    client,
+    f.admin,
+    'save',
+    {
+      ...current,
+      state: current.state,
+      deadlineMode: current.deadlineMode,
+      ...extra,
+    },
+    current.id,
+  );
+}
+// A view lease has a per-tab sequence so a late cleanup cannot erase a new view
+async function presence(
+  client,
+  f,
+  tab = randomUUID(),
+  sequence = 1,
+  question = f.question.id,
+) {
+  return (
+    await client.query('SELECT vm_question_presence($1,$2,$3) AS reply', [
+      f.link.id,
+      hash(f.session),
+      JSON.stringify({
+        tabId: tab,
+        sequence,
+        questionId: question,
+        ...(f.run ? {runId: f.run.id} : {}),
+      }),
+    ])
+  ).rows[0].reply;
+}
+
+test('scheduled starts need an explicit open and capture promises only when due', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const question = await readyQuestion(client, admin);
+    const f = {admin, question};
+    let reply = await reviewSave(client, f, {
+      startMode: 'duration',
+      startAfterSeconds: 1,
+      deadlineMode: 'duration',
+      closeAfterSeconds: 20,
+    });
+    assert.equal(reply.status, 200);
+    assert.equal(reply.question.state, 'draft');
+    assert.equal(reply.question.scheduledAt, null);
+    reply = await lifecycle(client, admin, reply.question, 'open');
+    assert.equal(reply.question.state, 'scheduled');
+    assert.equal(reply.question.editLocked, null);
+    assert.equal(reply.question.openedAt, null);
+    const key = linkItem();
+    const [link] = await addLinks(client, admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const voter = {...f, question: reply.question, link, session};
+    assert.equal(
+      (await cast(client, voter, ballotInput(voter.question))).status,
+      409,
+    );
+    const snapshot = await journey(client, voter);
+    assert.equal(snapshot.current, null);
+    assert.equal(snapshot.upcoming.id, question.id);
+    assert.equal(snapshot.questions[0].state, 'scheduled');
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await client.query('SELECT vm_close_due()');
+    const opened = (
+      await client.query('SELECT vm_question_data($1) AS q', [question.id])
+    ).rows[0].q;
+    assert.equal(opened.state, 'open');
+    assert.equal(opened.editLocked, true);
+    assert.equal(opened.scheduledAt, null);
+    assert.equal(
+      Date.parse(opened.closesAt) - Date.parse(opened.openedAt),
+      20000,
+    );
+  });
+});
+
+test('scheduled start validation is atomic and absolute closing must follow opening', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const question = await readyQuestion(client, admin);
+    const f = {admin, question};
+    const start = new Date(Date.now() + 60000).toISOString();
+    assert.equal(
+      (
+        await reviewSave(client, f, {
+          state: 'open',
+          startMode: 'absolute',
+          startsAt: start,
+          deadlineMode: 'absolute',
+          closesAt: new Date(Date.now() + 10000).toISOString(),
+        })
+      ).error,
+      'deadline',
+    );
+    assert.equal(
+      (
+        await reviewSave(client, f, {
+          state: 'open',
+          startMode: 'absolute',
+          startsAt: start,
+          content: '',
+          deadlineMode: 'none',
+        })
+      ).error,
+      'ready',
+    );
+    assert.equal(
+      (
+        await client.query('SELECT content FROM questions WHERE id=$1', [
+          question.id,
+        ])
+      ).rows[0].content,
+      question.content,
+    );
+    const scheduled = await reviewSave(client, f, {
+      state: 'open',
+      startMode: 'absolute',
+      startsAt: start,
+      deadlineMode: 'none',
+    });
+    assert.equal(Date.parse(scheduled.question.scheduledAt), Date.parse(start));
+  });
+});
+
+test('scheduled cancel, reopen and reset keep the agreed rights and clear armed work', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    const scheduled = await reviewSave(client, f, {
+      state: 'open',
+      startMode: 'duration',
+      startAfterSeconds: 60,
+    });
+    assert.equal(scheduled.question.state, 'scheduled');
+    assert.equal(
+      (await lifecycle(client, f.admin, f.question, 'cancel_start')).error,
+      'conflict',
+    );
+    f.question = (
+      await lifecycle(client, f.admin, scheduled.question, 'cancel_start')
+    ).question;
+    assert.equal(f.question.state, 'closed');
+    assert.equal((await results(client, f, true)).result.total, 1);
+    const waiting = await lifecycle(client, f.admin, f.question, 'open');
+    const reset = (
+      await client.query('SELECT vm_reset_question($1,$2,$3,$4) AS reply', [
+        f.admin.room.id,
+        hash(f.admin.session),
+        f.question.id,
+        JSON.stringify({revision: waiting.question.revision}),
+      ])
+    ).rows[0].reply;
+    assert.equal(reset.question.state, 'draft');
+    assert.equal(reset.question.scheduledAt, null);
+    assert.equal(reset.question.editLocked, true);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM ballots')).rows[0].count,
+      '0',
+    );
+  });
+});
+
+test('two workers open a due question once and missed absolute windows never accept votes', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    await reviewSave(client, f, {
+      state: 'open',
+      startMode: 'duration',
+      startAfterSeconds: 1,
+      deadlineMode: 'duration',
+      closeAfterSeconds: 60,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const runs = await Promise.all([
+        client.query('SELECT vm_close_due() AS n'),
+        other.query('SELECT vm_close_due() AS n'),
+      ]);
+      assert.equal(
+        runs.reduce((n, r) => n + r.rows[0].n, 0),
+        1,
+      );
+    } finally {
+      await other.end();
+    }
+    const current = (
+      await client.query('SELECT vm_question_data($1) AS q', [f.question.id])
+    ).rows[0].q;
+    assert.equal(current.state, 'open');
+    f.question = (await lifecycle(client, f.admin, current, 'close')).question;
+    const start = new Date(Date.now() + 1000).toISOString();
+    const end = new Date(Date.now() + 1500).toISOString();
+    const armed = await reviewSave(client, f, {
+      state: 'open',
+      startMode: 'absolute',
+      startsAt: start,
+      deadlineMode: 'absolute',
+      closesAt: end,
+    });
+    assert.equal(armed.status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    await client.query('SELECT vm_close_due()');
+    const missed = (
+      await client.query('SELECT vm_question_data($1) AS q', [f.question.id])
+    ).rows[0].q;
+    assert.equal(missed.state, 'closed');
+    assert.equal(missed.closedReason, 'deadline');
+  });
+});
+
+test('presence counts visitors once across tabs and ignores stale updates', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const a = randomUUID(),
+      b = randomUUID();
+    assert.equal((await presence(client, f, a)).status, 200);
+    await presence(client, f, b);
+    assert.equal(
+      (
+        await client.query('SELECT vm_question_viewers($1) AS n', [
+          f.question.id,
+        ])
+      ).rows[0].n,
+      '1',
+    );
+    await presence(client, f, a, 3, null);
+    await presence(client, f, a, 2);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT question_id FROM question_views WHERE tab_id=$1',
+          [a],
+        )
+      ).rows[0].question_id,
+      null,
+    );
+    await presence(client, f, b, 2, null);
+    assert.equal(
+      (
+        await client.query('SELECT vm_question_viewers($1) AS n', [
+          f.question.id,
+        ])
+      ).rows[0].n,
+      '0',
+    );
+  });
+});
+
+test('shared-link viewers are independent and expired views do not expire sessions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    await presence(client, f);
+    const opened = await openLink(client, f.link, f.key.key);
+    const other = {...f, session: opened.session};
+    other.run = (await journey(client, other)).run;
+    await presence(client, other);
+    assert.equal(
+      (
+        await client.query('SELECT vm_question_viewers($1) AS n', [
+          f.question.id,
+        ])
+      ).rows[0].n,
+      '2',
+    );
+    await client.query(
+      "UPDATE question_views SET seen_at=clock_timestamp()-interval '36 seconds'",
+    );
+    await client.query('SELECT vm_close_due()');
+    assert.equal(
+      (await client.query('SELECT count(*) FROM question_views')).rows[0].count,
+      '0',
+    );
+    assert.equal((await journey(client, f)).status, 200);
+  });
+});
+
+test('admin live counters do not disclose answer choices or participant identities', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      hideResultsUntilEnd: true,
+      anonymous: true,
+    });
+    const before = await eventState(client, f, true);
+    await presence(client, f);
+    await cast(client, f, ballotInput(f.question));
+    const page = await questionCall(client, f.admin, 'list', {after: '0'});
+    assert.equal(page.questions[0].answerCount, 1);
+    assert.equal(page.questions[0].viewerCount, 1);
+    assert.notEqual(
+      (await eventState(client, f, true)).version,
+      before.version,
+    );
+    assert.equal((await results(client, f, true)).result.available, false);
+    const snapshot = await journey(client, f, {selected: f.question.id});
+    assert(!('viewerCount' in snapshot.current));
+    assert(!('answerCount' in snapshot.questions[0]));
+    const other = await personalFixture(client);
+    assert.equal(
+      (await presence(client, other, randomUUID(), 1, f.question.id)).status,
+      404,
+    );
+    assert.equal((await presence(client, {...f, session: 'bad'})).status, 401);
+  });
+});
+
+test('review rollback refuses armed starts, then preserves votes after cancellation and reapply', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    const waiting = await reviewSave(client, f, {
+      state: 'open',
+      startMode: 'duration',
+      startAfterSeconds: 60,
+    });
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}));
+    assert.equal(await migrationCount(client), total);
+    await lifecycle(client, f.admin, waiting.question, 'cancel_start');
+    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl});
+    assert.equal((await results(client, f, true)).result.total, 1);
+  });
+});
+
+test('manual entry through a personal link has one personal counter and no separate public source', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          f,
+          ballotInput(f.question, {linkId: f.link.id}),
+          true,
+        )
+      ).status,
+      200,
+    );
+    const result = (await results(client, f, true)).result;
+    assert.equal(result.sources.personal, 1);
+    assert(!('admin_personal' in result.sources));
+    assert.equal(result.people[0].source, 'personal');
+  });
+});
+
+test('participant live versions do not reveal other hidden votes or view counters', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {hideResultsUntilEnd: true});
+    const key = linkItem();
+    const [link] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const other = {...f, link, session};
+    const before = await eventState(client, other);
+    await presence(client, f);
+    await cast(client, f, ballotInput(f.question));
+    assert.deepEqual(await eventState(client, other), before);
+  });
+});
+
+test('cancel racing a due start produces one complete state', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    const armed = await reviewSave(client, f, {
+      state: 'open',
+      startMode: 'duration',
+      startAfterSeconds: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const [cancel] = await Promise.all([
+        lifecycle(client, f.admin, armed.question, 'cancel_start'),
+        other.query('SELECT vm_close_due()'),
+      ]);
+      const current = (
+        await client.query('SELECT vm_question_data($1) AS q', [f.question.id])
+      ).rows[0].q;
+      assert.equal(current.scheduledAt, null);
+      assert.equal(current.state, cancel.status === 200 ? 'closed' : 'open');
+      assert([200, 409].includes(cancel.status));
+    } finally {
+      await other.end();
+    }
   });
 });

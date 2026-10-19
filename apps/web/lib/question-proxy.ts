@@ -23,6 +23,7 @@ export async function questionProxy(
   id?: string,
   policy = false,
   lifecycle = false,
+  reset = false,
 ) {
   if (!roomIdPattern.test(room) || (id && !roomIdPattern.test(id)))
     return failure(401);
@@ -46,13 +47,26 @@ export async function questionProxy(
       const data: unknown = JSON.parse(text);
       if (!isRecord(data)) return failure(400);
       if ((id || policy) && !validCursor(data.revision)) return failure(400);
-      if (lifecycle) {
-        if (!['open', 'close', 'settings'].includes(String(data.action)))
+      if (reset) {
+        body = {revision: data.revision};
+      } else if (lifecycle) {
+        if (
+          !['open', 'close', 'settings', 'cancel_start'].includes(
+            String(data.action),
+          )
+        )
           return failure(400);
         body = {
           action: data.action,
           revision: data.revision,
           ...(data.closesAt !== undefined ? {closesAt: data.closesAt} : {}),
+          ...(data.startMode !== undefined
+            ? {
+                startMode: data.startMode,
+                startsAt: data.startsAt,
+                startAfterSeconds: data.startAfterSeconds,
+              }
+            : {}),
           shareResults: data.shareResults,
           allowSkip: data.allowSkip,
           publication: data.publication,
@@ -66,6 +80,13 @@ export async function questionProxy(
         if (!isQuestionInput(data)) return failure(400);
         body = {
           ...questionInput(data),
+          ...(data.startMode !== undefined
+            ? {
+                startMode: data.startMode,
+                startsAt: data.startsAt,
+                startAfterSeconds: data.startAfterSeconds,
+              }
+            : {}),
           ...(data.state !== undefined ? {state: data.state} : {}),
           ...(data.deadlineMode !== undefined
             ? {
@@ -82,7 +103,7 @@ export async function questionProxy(
     }
   }
   try {
-    const path = `/api/rooms/${room}/${policy ? 'question-policy' : `questions${id ? `/${id}${lifecycle ? '/lifecycle' : ''}` : `?${new URLSearchParams({after})}`}`}`;
+    const path = `/api/rooms/${room}/${policy ? 'question-policy' : `questions${id ? `/${id}${reset ? '/reset' : lifecycle ? '/lifecycle' : ''}` : `?${new URLSearchParams({after})}`}`}`;
     const upstream = await fetch(
       new URL(path, process.env.API_ORIGIN ?? 'http://api:8080'),
       {

@@ -306,23 +306,31 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           return;
         }
         const auto token = NewSecret();
+        const auto authorization = request->getHeader("Authorization");
+        const auto prior = authorization.starts_with("Bearer ") &&
+                                   IsSecret(authorization.substr(7))
+                               ? authorization.substr(7)
+                               : std::string();
         database->execSqlAsync(
-            "SELECT * FROM vm_open_voting_session($1::uuid, decode($2,'hex'), "
-            "decode($3,'hex'))",
-            [reply, token](const drogon::orm::Result& result) {
+            "SELECT * FROM vm_exchange_voting_session($1::uuid, "
+            "decode($2,'hex'), "
+            "decode($3,'hex'),decode($4,'hex'))",
+            [reply, token, prior](const drogon::orm::Result& result) {
               if (result.empty()) {
                 Error(reply, drogon::k401Unauthorized, "Link access required");
                 return;
               }
               Json::Value body;
               body["participant"] = Participant(result[0]);
-              body["sessionToken"] = token;
+              body["sessionToken"] =
+                  result[0]["reused"].as<bool>() ? prior : token;
               Send(reply, body);
             },
             [reply](const drogon::orm::DrogonDbException&) {
               Unavailable(reply);
             },
-            id, HashSecret((*input)["token"].asString()), HashSecret(token));
+            id, HashSecret((*input)["token"].asString()), HashSecret(token),
+            prior.empty() ? std::string() : HashSecret(prior));
       },
       {drogon::Post});
 

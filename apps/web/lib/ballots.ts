@@ -3,7 +3,9 @@ import {isRecord, validCursor} from './voting-links';
 
 export interface Answer {
   // Stable ballot identity
-  id: string;
+  id?: string;
+  // Another session may know the answer exists without seeing its choice
+  hidden?: boolean;
   // Question answered by this link
   questionId: string;
   // Version used for safe answer changes
@@ -11,19 +13,30 @@ export interface Answer {
   // Selected stable option IDs
   choices: string[];
   // Database times in UTC
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 // Check only the owner's answer, with no respondent identity fields
 export function isAnswer(value: unknown): value is Answer {
+  if (
+    !isRecord(value) ||
+    typeof value.questionId !== 'string' ||
+    !roomIdPattern.test(value.questionId) ||
+    !validCursor(value.revision) ||
+    !Array.isArray(value.choices)
+  )
+    return false;
+  if (value.hidden === true)
+    return (
+      value.choices.length === 0 &&
+      value.id === undefined &&
+      value.createdAt === undefined &&
+      value.updatedAt === undefined
+    );
   return (
-    isRecord(value) &&
+    value.hidden === undefined &&
     typeof value.id === 'string' &&
     roomIdPattern.test(value.id) &&
-    typeof value.questionId === 'string' &&
-    roomIdPattern.test(value.questionId) &&
-    validCursor(value.revision) &&
-    Array.isArray(value.choices) &&
     value.choices.length >= 1 &&
     value.choices.length <= 100 &&
     value.choices.every(
@@ -38,6 +51,13 @@ export function isAnswer(value: unknown): value is Answer {
 }
 // Drop any future storage-only fields at the web boundary
 export function publicAnswer(value: Answer): Answer {
+  if (value.hidden)
+    return {
+      questionId: value.questionId,
+      revision: value.revision,
+      choices: [],
+      hidden: true,
+    };
   return {
     id: value.id,
     questionId: value.questionId,

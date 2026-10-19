@@ -63,6 +63,9 @@ export async function ballotProxy(
         questionRevision: data.questionRevision,
         ballotRevision: data.ballotRevision,
         choices: data.choices,
+        ...(typeof data.runId === 'string' && roomIdPattern.test(data.runId)
+          ? {runId: data.runId}
+          : {}),
       };
     } catch {
       return failure(400);
@@ -71,7 +74,7 @@ export async function ballotProxy(
   try {
     const response = await fetch(
       new URL(
-        `/api/vote/${link}/answers/${question}`,
+        `/api/vote/${link}/answers/${question}${request.method === 'GET' && roomIdPattern.test(new URL(request.url).searchParams.get('run') ?? '') ? `?run=${new URL(request.url).searchParams.get('run')}` : ''}`,
         process.env.API_ORIGIN ?? 'http://api:8080',
       ),
       {

@@ -166,7 +166,6 @@ test('two editors reject old revisions and keep unsaved text until explicit relo
 }) => {
   const room = await setup(page);
   const q = await create(page, room, 'Shared draft');
-  await page.getByRole('button', {name: 'Обновить', exact: true}).click();
   await page
     .getByRole('listitem', {name: 'Shared draft', exact: true})
     .getByRole('button', {name: 'Редактировать', exact: true})
@@ -260,7 +259,6 @@ test('metadata pages survive a deleted boundary and a failed list request', asyn
   const drafts = [];
   for (let index = 0; index < 52; index++)
     drafts.push(await create(page, room, `Draft ${index}`));
-  await page.getByRole('button', {name: 'Обновить', exact: true}).click();
   await expect(page.getByRole('listitem')).toHaveCount(50);
   const boundary = drafts[49];
   const deleted = await page.request.delete(
@@ -275,15 +273,17 @@ test('metadata pages survive a deleted boundary and a failed list request', asyn
   await expect(page.getByRole('listitem')).toHaveCount(2);
   await page.getByRole('button', {name: 'Назад', exact: true}).click();
   await expect(page.getByRole('listitem')).toHaveCount(50);
-  await page.route(
-    `**/api/rooms/${room}/questions?after=*`,
-    (route) => route.fulfill({status: 503, json: {error: 'Unavailable'}}),
-    {times: 1},
+  await page.route(`**/api/rooms/${room}/questions?after=*`, (route) =>
+    route.fulfill({status: 503, json: {error: 'Unavailable'}}),
   );
-  await page.getByRole('button', {name: 'Обновить', exact: true}).click();
+  await page.request.patch(`/api/rooms/${room}`, {
+    headers: {Origin: new URL(page.url()).origin},
+    data: {name: 'List outage'},
+  });
   await expect(
     page.getByText('Не удалось загрузить вопросы', {exact: true}),
   ).toBeVisible();
+  await page.unroute(`**/api/rooms/${room}/questions?after=*`);
   await page
     .getByRole('button', {name: 'Попробовать снова', exact: true})
     .click();
@@ -410,9 +410,7 @@ test('question tabs save one document and quick controls use its relative deadli
   await page.getByLabel('Вариант 2', {exact: true}).fill('No');
   const tabs = page.getByRole('tablist', {name: 'Разделы вопроса'});
   await tabs.getByRole('tab', {name: 'Настройки', exact: true}).click();
-  await page
-    .getByLabel('Состояние вопроса', {exact: true})
-    .selectOption('open');
+
   await page.getByLabel('Разрешить пропуск вопроса', {exact: true}).check();
   await tabs.getByRole('tab', {name: 'Управление', exact: true}).click();
   await page.getByRole('button', {name: 'После открытия', exact: true}).click();
@@ -423,9 +421,7 @@ test('question tabs save one document and quick controls use its relative deadli
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === `/api/rooms/${room}/questions`,
   );
-  await page
-    .getByRole('button', {name: 'Сохранить изменения', exact: true})
-    .click();
+  await page.getByRole('button', {name: 'Открыть вопрос', exact: true}).click();
   const response = await saved;
   expect(response.status()).toBe(201);
   const {question} = await response.json();

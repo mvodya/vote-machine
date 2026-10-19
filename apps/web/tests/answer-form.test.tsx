@@ -81,3 +81,28 @@ it('does not submit a selection outside the question bounds', async () => {
   );
   expect(fetcher).not.toHaveBeenCalled();
 });
+
+it('sends the selected reusable run and keeps it on a network retry', async () => {
+  const fetcher = vi.fn().mockRejectedValue(new Error('Offline'));
+  vi.stubGlobal('fetch', fetcher);
+  const {container} = render(
+    <AnswerForm
+      linkId={id}
+      question={question}
+      answer={null}
+      extraPayload={{runId: option}}
+      onSaved={vi.fn()}
+      onRefresh={vi.fn()}
+      onDenied={vi.fn()}
+      onSkip={vi.fn()}
+      onBusy={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('radio', {name: 'Yes'}));
+  fireEvent.submit(container.querySelector('form')!);
+  await screen.findByRole('alert');
+  fireEvent.submit(container.querySelector('form')!);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(fetcher.mock.calls[0][1].body).runId).toBe(option);
+  expect(fetcher.mock.calls[1][1].body).toBe(fetcher.mock.calls[0][1].body);
+});

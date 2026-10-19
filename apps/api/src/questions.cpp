@@ -48,7 +48,10 @@ void RequestQuestion(const drogon::orm::DbClientPtr& database,
   Json::StreamWriterBuilder writer;
   writer["indentation"] = "";
   database->execSqlAsync(
-      action == "lifecycle"
+      action == "reset" ? "SELECT "
+                          "vm_reset_question($1::uuid,decode($2,'hex'),$3::"
+                          "uuid,$5::jsonb)::text AS response WHERE $4 = 'reset'"
+      : action == "lifecycle"
           ? "SELECT "
             "vm_question_lifecycle($1::uuid,decode($2,'hex'),$3::uuid,$5::"
             "jsonb)::text AS response WHERE $4 = 'lifecycle'"
@@ -83,6 +86,15 @@ void RegisterQuestionHandlers(const drogon::orm::DbClientPtr& database) {
                         request->method() == drogon::Get ? "list" : "create");
       },
       {drogon::Get, drogon::Post});
+  drogon::app().registerHandler(
+      "/api/rooms/{1}/questions/{2}/reset",
+      [database](const drogon::HttpRequestPtr& request, Reply&& reply,
+                 // Route fields follow the URL order
+                 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+                 const std::string& room, const std::string& id) {
+        RequestQuestion(database, request, reply, room, id, "reset");
+      },
+      {drogon::Post});
   drogon::app().registerHandler(
       "/api/rooms/{1}/questions/{2}/lifecycle",
       [database](const drogon::HttpRequestPtr& request, Reply&& reply,

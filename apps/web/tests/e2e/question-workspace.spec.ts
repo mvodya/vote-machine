@@ -126,6 +126,19 @@ test('Markdown help is hidden until requested and closes with Escape', async ({
   await button.click();
   await expect(page.getByRole('tooltip')).toContainText('До 20 000 символов');
   await expect(page.getByRole('tooltip')).toContainText('width=320');
+  const tooltip = await page.getByRole('tooltip').boundingBox();
+  expect(tooltip!.x).toBeGreaterThanOrEqual(0);
+  expect(tooltip!.x + tooltip!.width).toBeLessThanOrEqual(
+    page.viewportSize()!.width,
+  );
+  const help = await button.boundingBox();
+  const bold = await page
+    .getByRole('button', {name: 'Жирный текст: Текст вопроса', exact: true})
+    .boundingBox();
+  expect(
+    Math.abs(help!.y + help!.height / 2 - bold!.y - bold!.height / 2),
+  ).toBeLessThanOrEqual(2);
+
   await button.press('Escape');
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(
@@ -151,10 +164,10 @@ test('deleting an open question with a personal answer removes it from both view
       .getByRole('button', {name: 'Отправить ответ', exact: true})
       .click();
     await expect(
-      participant.getByRole('heading', {name: 'Ожидание вопросов'}),
+      participant.getByRole('heading', {name: 'Все вопросы пройдены'}),
     ).toBeVisible();
     await participant
-      .getByRole('tab', {name: 'Мои ответы', exact: true})
+      .getByRole('tab', {name: 'Список вопросов', exact: true})
       .click();
     await expect(
       participant.getByRole('button', {name: 'Choose a result', exact: true}),

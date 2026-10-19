@@ -2,6 +2,12 @@ import type {ComponentProps, ReactNode} from 'react';
 
 // Shared button styles
 const variants = {
+  positive:
+    'min-h-10 border border-green-700/20 bg-green-50 px-3 py-2 text-sm text-green-800 hover:bg-green-100',
+  negative:
+    'min-h-10 border border-red-700/20 bg-red-50 px-3 py-2 text-sm text-red-800 hover:bg-red-100',
+  waiting:
+    'min-h-10 border border-amber-700/20 bg-amber-50 px-3 py-2 text-sm text-amber-800',
   primary:
     'min-h-11 border border-ink bg-ink px-4 py-2.5 text-sm text-white shadow-xs hover:bg-ink/90',
   secondary:

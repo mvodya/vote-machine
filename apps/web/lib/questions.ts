@@ -39,7 +39,15 @@ export interface QuestionSummary {
   // Short source text for the list
   preview: string;
   // Current lifecycle state
-  state: 'draft' | 'open' | 'closed';
+  state: 'draft' | 'scheduled' | 'open' | 'closed';
+  // Saved start settings and armed start instant
+  startMode?: 'none' | 'absolute' | 'duration';
+  startsAt?: string | null;
+  startAfterSeconds?: number | null;
+  scheduledAt?: string | null;
+  // Only admin snapshots include live counters
+  answerCount?: number;
+  viewerCount?: number;
   // Optional deadline and close details from the database
   closesAt?: string | null;
   closedAt?: string | null;
@@ -142,7 +150,24 @@ export function isQuestionSummary(value: unknown): value is QuestionSummary {
     typeof value.roomId === 'string' &&
     roomIdPattern.test(value.roomId) &&
     validText(value.preview, 240) &&
-    ['draft', 'open', 'closed'].includes(String(value.state)) &&
+    ['draft', 'scheduled', 'open', 'closed'].includes(String(value.state)) &&
+    (value.startMode === undefined ||
+      ['none', 'absolute', 'duration'].includes(String(value.startMode))) &&
+    [value.startsAt, value.scheduledAt].every(
+      (at) =>
+        at === undefined ||
+        at === null ||
+        (typeof at === 'string' && Number.isFinite(Date.parse(at))),
+    ) &&
+    (value.state !== 'scheduled' ||
+      (typeof value.scheduledAt === 'string' &&
+        value.startMode !== 'none' &&
+        value.startMode !== undefined)) &&
+    [value.answerCount, value.viewerCount].every(
+      (count) =>
+        count === undefined ||
+        (Number.isSafeInteger(count) && Number(count) >= 0),
+    ) &&
     validCursor(value.ordinal) &&
     value.ordinal !== '0' &&
     validCursor(value.revision) &&
@@ -202,6 +227,17 @@ export function questionInput(value: QuestionInput): QuestionInput {
 // Keep storage-only data out of editor replies
 export function publicSummary(value: QuestionSummary): QuestionSummary {
   return {
+    ...(value.startMode !== undefined
+      ? {
+          startMode: value.startMode,
+          startsAt: value.startsAt,
+          startAfterSeconds: value.startAfterSeconds,
+          scheduledAt: value.scheduledAt,
+        }
+      : {}),
+    ...(value.answerCount !== undefined
+      ? {answerCount: value.answerCount, viewerCount: value.viewerCount}
+      : {}),
     ...(value.closesAt !== undefined
       ? {
           closesAt: value.closesAt,

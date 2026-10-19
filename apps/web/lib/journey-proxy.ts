@@ -19,7 +19,7 @@ export async function journeyProxy(request: Request, id: string) {
   const query = new URLSearchParams({after: input.get('after') ?? '0'});
   if (!validQuestionCursor(query.get('after')))
     return NextResponse.json({error: 'Invalid page'}, {status: 400, headers});
-  for (const key of ['selected', 'skip']) {
+  for (const key of ['selected', 'skip', 'run']) {
     const value = input.get(key);
     if (value !== null) {
       if (!roomIdPattern.test(value))
@@ -47,7 +47,7 @@ export async function journeyProxy(request: Request, id: string) {
       return NextResponse.json(
         {error: 'Snapshot unavailable'},
         {
-          status: [400, 401, 409].includes(response.status)
+          status: [400, 401, 404, 409].includes(response.status)
             ? response.status
             : 503,
           headers,

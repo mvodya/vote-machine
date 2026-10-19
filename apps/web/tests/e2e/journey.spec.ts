@@ -58,18 +58,29 @@ test('personal journey keeps selections through updates, advances, edits history
     await expect(
       current.getByRole('button', {name: 'Пропустить вопрос'}),
     ).toHaveCount(0);
+    await participant
+      .getByRole('tab', {name: 'Список вопросов', exact: true})
+      .click();
     await expect(
       participant.getByRole('button', {name: 'Second question', exact: true}),
     ).toBeDisabled();
+    await participant
+      .getByRole('button', {name: 'First question', exact: true})
+      .click();
     await current.getByText('Yes', {exact: true}).click();
     await expect(
       current.getByRole('radio', {name: 'Yes', exact: true}),
     ).toBeChecked();
-    await participant.waitForResponse(
+    const refreshed = participant.waitForResponse(
       (response) =>
         response.url().includes('/questions?') &&
         response.request().method() === 'GET',
     );
+    await page.request.patch(`/api/rooms/${f.room.id}`, {
+      headers: {Origin: f.origin},
+      data: {name: 'Live selection'},
+    });
+    await refreshed;
     await expect(
       current.getByRole('radio', {name: 'Yes', exact: true}),
     ).toBeChecked();
@@ -84,10 +95,10 @@ test('personal journey keeps selections through updates, advances, edits history
       .getByRole('button', {name: 'Отправить ответ', exact: true})
       .click();
     await expect(
-      participant.getByRole('heading', {name: 'Ожидание вопросов'}),
+      participant.getByRole('heading', {name: 'Все вопросы пройдены'}),
     ).toBeVisible();
     await participant
-      .getByRole('tab', {name: 'Мои ответы', exact: true})
+      .getByRole('tab', {name: 'Список вопросов', exact: true})
       .click();
     await participant
       .getByRole('button', {name: 'First question', exact: true})
@@ -100,8 +111,8 @@ test('personal journey keeps selections through updates, advances, edits history
       .getByRole('button', {name: 'Изменить ответ', exact: true})
       .click();
     await expect(
-      participant.getByRole('heading', {name: 'Ожидание вопросов'}),
-    ).toBeVisible();
+      participant.getByRole('tab', {name: 'Список вопросов', exact: true}),
+    ).toHaveAttribute('aria-selected', 'true');
     const answer = await (
       await participant.request.get(
         `${f.origin}/api/vote/${f.link.id}/answers/${f.question.id}`,
@@ -109,6 +120,9 @@ test('personal journey keeps selections through updates, advances, edits history
     ).json();
     expect(answer.answer.choices).toEqual([f.question.choices[1].id]);
     await later(page, f.room.id, 'Next day question', {anonymous: true});
+    await participant
+      .getByRole('button', {name: 'Next day question', exact: true})
+      .click();
     await expect(
       current.getByText('Next day question', {exact: true}),
     ).toBeVisible({timeout: 10000});
@@ -150,9 +164,7 @@ test('skip is shown only when allowed and does not count as an answer', async ({
     await expect(
       current.getByText('Required question', {exact: true}),
     ).toBeVisible();
-    await expect(
-      participant.getByText('Ответов на открытые вопросы: 0 из 2'),
-    ).toBeVisible();
+    await expect(participant.getByText('Осталось вопросов: 2')).toBeVisible();
     expect(
       (
         await (
@@ -162,6 +174,9 @@ test('skip is shown only when allowed and does not count as an answer', async ({
         ).json()
       ).answer,
     ).toBeNull();
+    await participant
+      .getByRole('tab', {name: 'Список вопросов', exact: true})
+      .click();
     await participant
       .getByRole('button', {name: 'Optional question', exact: true})
       .click();
@@ -268,10 +283,10 @@ test('multiple answers validate bounds and show a fixed own answer after saving'
       .getByRole('button', {name: 'Отправить ответ', exact: true})
       .click();
     await expect(
-      participant.getByRole('heading', {name: 'Ожидание вопросов'}),
+      participant.getByRole('heading', {name: 'Все вопросы пройдены'}),
     ).toBeVisible();
     await participant
-      .getByRole('tab', {name: 'Мои ответы', exact: true})
+      .getByRole('tab', {name: 'Список вопросов', exact: true})
       .click();
     await participant
       .getByRole('button', {name: 'Choose a result', exact: true})
