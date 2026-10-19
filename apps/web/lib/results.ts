@@ -19,6 +19,9 @@ export interface VoteResult {
   // A hidden result carries only identity and availability
   id: string;
   available: boolean;
+  closesAt?: string | null;
+  scheduledAt?: string | null;
+  answerCount?: number;
   roomId?: string;
   content?: string;
   state?: string;
@@ -73,6 +76,7 @@ export function resultPage(value: unknown): ResultPage | null {
 export function publicResult(
   value: unknown,
   admin: boolean,
+  projector = false,
 ): VoteResult | null {
   if (
     !isRecord(value) ||
@@ -81,7 +85,26 @@ export function publicResult(
     typeof value.available !== 'boolean'
   )
     return null;
-  if (!value.available) return {id: value.id, available: false};
+  if (!value.available)
+    return {
+      id: value.id,
+      available: false,
+      ...(projector &&
+      typeof value.content === 'string' &&
+      ['draft', 'scheduled', 'open', 'closed'].includes(String(value.state))
+        ? {
+            content: value.content,
+            state: String(value.state),
+            closesAt:
+              typeof value.closesAt === 'string' ? value.closesAt : null,
+            scheduledAt:
+              typeof value.scheduledAt === 'string' ? value.scheduledAt : null,
+            answerCount: count(value.answerCount)
+              ? value.answerCount
+              : undefined,
+          }
+        : {}),
+    };
   if (
     typeof value.roomId !== 'string' ||
     !roomIdPattern.test(value.roomId) ||
@@ -119,6 +142,13 @@ export function publicResult(
   const result: VoteResult = {
     id: value.id,
     available: true,
+    ...(projector
+      ? {
+          closesAt: typeof value.closesAt === 'string' ? value.closesAt : null,
+          scheduledAt:
+            typeof value.scheduledAt === 'string' ? value.scheduledAt : null,
+        }
+      : {}),
     roomId: value.roomId,
     content: value.content,
     state: String(value.state),
@@ -127,7 +157,7 @@ export function publicResult(
     total: value.total,
     options,
   };
-  if (admin) {
+  if (admin && !projector) {
     if (
       !isRecord(value.sources) ||
       !sources.every(

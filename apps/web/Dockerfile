@@ -31,4 +31,4 @@ COPY --from=build --chown=node:node /app/apps/web/scripts ./apps/web/scripts
 COPY --from=build --chown=node:node /app/apps/web/lib/server ./apps/web/lib/server
 USER node
 EXPOSE 3000
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "apps/web/scripts/web-server.mjs"]

@@ -1,9 +1,13 @@
 import {spawn} from 'node:child_process';
 
-const child = spawn('pnpm', ['--filter', '@vote-machine/web', 'dev'], {
-  stdio: 'inherit',
-  env: process.env,
-});
+const child = spawn(
+  process.execPath,
+  ['apps/web/scripts/web-server.mjs', '--dev'],
+  {
+    stdio: 'inherit',
+    env: process.env,
+  },
+);
 // Forward shutdown to the development server
 function stop(signal) {
   child.kill(signal);

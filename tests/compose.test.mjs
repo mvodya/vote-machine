@@ -12,6 +12,7 @@ function config(files) {
         ...process.env,
         WORKSPACE_DB_PORT: '15432',
         ADMIN_LINK_KEY: '1'.repeat(64),
+        API_GATEWAY_KEY: '6'.repeat(64),
         MEDIA_WORKER_KEY: '2'.repeat(64),
         GARAGE_RPC_SECRET: '3'.repeat(64),
         S3_ACCESS_KEY: 'GK' + '4'.repeat(32),
@@ -33,6 +34,8 @@ test('normal stack keeps PostgreSQL private and waits for migrations', () => {
     services.migrate.depends_on.postgres.condition,
     'service_healthy',
   );
+  // Browser traffic must pass through the trusted web ingress
+  assert.deepEqual(services.api.ports ?? [], []);
   assert.deepEqual(services.garage.ports ?? [], []);
   assert.deepEqual(services.garage.profiles, ['local-storage']);
   assert.equal(services.web.depends_on.garage.required, false);

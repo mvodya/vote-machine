@@ -28,6 +28,9 @@ export interface QuestionInput {
   anonymous: boolean;
   // Allow a temporary skip without recording an answer
   allowSkip?: boolean;
+  // Completion is optional, electorate IDs belong only to admin replies
+  closeWhenAllAnswered?: boolean;
+  expectedLinkIds?: string[];
   // Options in their display order
   choices: Choice[];
 }
@@ -46,12 +49,14 @@ export interface QuestionSummary {
   startAfterSeconds?: number | null;
   scheduledAt?: string | null;
   // Only admin snapshots include live counters
+  expectedTotal?: number;
+  expectedAnswered?: number;
   answerCount?: number;
   viewerCount?: number;
   // Optional deadline and close details from the database
   closesAt?: string | null;
   closedAt?: string | null;
-  closedReason?: 'manual' | 'deadline' | null;
+  closedReason?: 'manual' | 'deadline' | 'all_voted' | null;
   // Saved deadline mode and relative duration
   deadlineMode?: 'none' | 'absolute' | 'duration';
   closeAfterSeconds?: number | null;
@@ -124,6 +129,15 @@ export function isQuestionInput(value: unknown): value is QuestionInput {
       'allowAnswerChange',
       'anonymous',
     ].every((field) => typeof value[field] === 'boolean') &&
+    (value.closeWhenAllAnswered === undefined ||
+      typeof value.closeWhenAllAnswered === 'boolean') &&
+    (value.expectedLinkIds === undefined ||
+      (Array.isArray(value.expectedLinkIds) &&
+        value.expectedLinkIds.every(
+          (id) => typeof id === 'string' && roomIdPattern.test(id),
+        ) &&
+        new Set(value.expectedLinkIds).size ===
+          value.expectedLinkIds.length)) &&
     (value.allowSkip === undefined || typeof value.allowSkip === 'boolean') &&
     (value.publication === 'after_answer' ||
       value.publication === 'after_close')
@@ -163,7 +177,12 @@ export function isQuestionSummary(value: unknown): value is QuestionSummary {
       (typeof value.scheduledAt === 'string' &&
         value.startMode !== 'none' &&
         value.startMode !== undefined)) &&
-    [value.answerCount, value.viewerCount].every(
+    [
+      value.answerCount,
+      value.viewerCount,
+      value.expectedTotal,
+      value.expectedAnswered,
+    ].every(
       (count) =>
         count === undefined ||
         (Number.isSafeInteger(count) && Number(count) >= 0),
@@ -218,6 +237,12 @@ export function questionInput(value: QuestionInput): QuestionInput {
     allowAnswerChange: value.allowAnswerChange,
     anonymous: value.anonymous,
     allowSkip: value.allowSkip ?? false,
+    ...(value.closeWhenAllAnswered !== undefined
+      ? {closeWhenAllAnswered: value.closeWhenAllAnswered}
+      : {}),
+    ...(value.expectedLinkIds !== undefined
+      ? {expectedLinkIds: [...value.expectedLinkIds]}
+      : {}),
     choices: value.choices.map((choice) => ({
       ...(choice.id ? {id: choice.id} : {}),
       content: choice.content,
@@ -233,6 +258,12 @@ export function publicSummary(value: QuestionSummary): QuestionSummary {
           startsAt: value.startsAt,
           startAfterSeconds: value.startAfterSeconds,
           scheduledAt: value.scheduledAt,
+        }
+      : {}),
+    ...(value.expectedTotal !== undefined
+      ? {
+          expectedTotal: value.expectedTotal,
+          expectedAnswered: value.expectedAnswered,
         }
       : {}),
     ...(value.answerCount !== undefined

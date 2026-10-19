@@ -5,6 +5,10 @@ import {setTimeout as delay} from 'node:timers/promises';
 // Use only the test project
 const project = process.env.COMPOSE_PROJECT_NAME;
 assert.match(project ?? '', /^vote-machine-check-[0-9]+$/);
+let phase = 'startup';
+process.on('uncaughtExceptionMonitor', () =>
+  console.error(`Stack phase: ${phase}`),
+);
 const baseUrl = process.env.TEST_BASE_URL;
 assert.ok(baseUrl);
 
@@ -302,6 +306,7 @@ compose(
 
 // Check the error reply while the database is down
 try {
+  phase = 'database outage';
   compose('stop', 'postgres');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
   await adminRoom(503);
@@ -312,6 +317,7 @@ try {
 } finally {
   compose('start', 'postgres');
 }
+phase = 'service recovery';
 await waitForReady();
 await adminRoom(200);
 await participantAccess(200);
@@ -334,6 +340,7 @@ assert.equal(
 
 // Check the error reply while the API is down
 try {
+  phase = 'API outage';
   compose('stop', 'api');
   assert.deepEqual(await hello(503), {error: 'Service is unavailable'});
   await adminRoom(503);
@@ -342,6 +349,7 @@ try {
 } finally {
   compose('start', 'api');
 }
+phase = 'service recovery';
 await waitForReady();
 await adminRoom(200);
 await participantAccess(200);

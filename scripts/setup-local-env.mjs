@@ -1,4 +1,4 @@
-import {randomBytes} from 'node:crypto';
+import {createHash, randomBytes} from 'node:crypto';
 import {readFile, writeFile, chmod} from 'node:fs/promises';
 
 const path = new URL('../.env', import.meta.url);
@@ -18,6 +18,15 @@ function ensure(name, value, allowEmpty = false) {
 }
 ensure('COMPOSE_PROFILES', 'local-storage', true);
 ensure('ADMIN_LINK_KEY', randomBytes(32).toString('hex'));
+ensure(
+  'API_GATEWAY_KEY',
+  createHash('sha256')
+    .update(
+      'vote-machine:gateway:' +
+        source.match(/^ADMIN_LINK_KEY=(.*)$/m)[1].trim(),
+    )
+    .digest('hex'),
+);
 ensure('MEDIA_WORKER_KEY', randomBytes(32).toString('hex'));
 ensure('GARAGE_RPC_SECRET', randomBytes(32).toString('hex'));
 ensure('S3_ACCESS_KEY', `GK${randomBytes(16).toString('hex')}`);

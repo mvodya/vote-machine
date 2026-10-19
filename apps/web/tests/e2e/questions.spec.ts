@@ -450,6 +450,10 @@ test('question tabs save one document and quick controls use its relative deadli
   await row
     .getByRole('button', {name: 'Открыть вопрос: Lifecycle', exact: true})
     .click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', {name: 'Открыть вопрос', exact: true})
+    .click();
   await expect(row).toContainText('Открыт');
   await row
     .getByRole('button', {name: 'Удалить вопрос: Lifecycle', exact: true})

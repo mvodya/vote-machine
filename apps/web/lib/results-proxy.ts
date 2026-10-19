@@ -40,6 +40,8 @@ export async function resultsProxy(
       return NextResponse.json({error: 'Invalid page'}, {status: 400, headers});
     query.set('after', input.get('after')!);
   }
+  const projector = admin && input.get('view') === 'projector';
+  if (projector) query.set('view', 'projector');
   try {
     const response = await fetch(
       new URL(
@@ -66,7 +68,7 @@ export async function resultsProxy(
     const data: unknown = await response.json();
     const result =
       isRecord(data) && query.has('question')
-        ? publicResult(data.result, admin)
+        ? publicResult(data.result, admin, projector)
         : null;
     if (query.has('question')) {
       if (!result || result.id !== query.get('question')) throw new Error();

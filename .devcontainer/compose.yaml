@@ -24,6 +24,7 @@ services:
     environment:
       DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
       ADMIN_LINK_KEY: ${ADMIN_LINK_KEY:?Set ADMIN_LINK_KEY in .env}
+      API_GATEWAY_KEY: ${API_GATEWAY_KEY:?Run node scripts/setup-local-env.mjs}
       API_ORIGIN: http://127.0.0.1:8080
       MEDIA_WORKER_KEY: ${MEDIA_WORKER_KEY:?Run node scripts/setup-local-env.mjs}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://garage:3900}

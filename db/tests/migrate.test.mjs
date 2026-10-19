@@ -18,6 +18,13 @@ const total = (await readdir(source)).filter((file) =>
   file.endsWith('.mjs'),
 ).length;
 
+// Keep synthetic upgrades after every real migration
+const fixtureStamp = Math.max(
+  ...(await readdir(source))
+    .filter((file) => file.endsWith('.mjs'))
+    .map((file) => Number(file.split('-')[0])),
+);
+
 // Give each check its own real database
 async function withDatabase(check) {
   const name = `vote_machine_test_${randomUUID().replaceAll('-', '')}`;
@@ -108,7 +115,7 @@ test('empty database, repeat run and upgrade keep existing room data', async () 
       const {room} = await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1794000000010-upgrade',
+        `${fixtureStamp + 10}-upgrade`,
         'ALTER TABLE rooms ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       assert.equal((await runMigrations({databaseUrl, dir})).length, 1);
@@ -212,12 +219,12 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       await adminRoom(client, 'kept');
       await addMigration(
         dir,
-        '1794000000010-probe',
+        `${fixtureStamp + 10}-probe`,
         'CREATE TABLE migration_probe (id integer); INSERT INTO migration_probe VALUES (1);',
       );
       await addMigration(
         dir,
-        '1794000000011-failure',
+        `${fixtureStamp + 11}-failure`,
         "UPDATE rooms SET name = 'lost'; SELECT 1 / 0;",
       );
       await assert.rejects(runMigrations({databaseUrl, dir}));
@@ -237,7 +244,7 @@ test('failed upgrades roll back the whole batch and can be retried', async () =>
       // Only failed migrations may be fixed in place
       await addMigration(
         dir,
-        '1794000000011-failure',
+        `${fixtureStamp + 11}-failure`,
         'ALTER TABLE migration_probe ADD COLUMN checked boolean NOT NULL DEFAULT true;',
       );
       // A new container must load the fixed file again
@@ -372,7 +379,7 @@ test('dates keep their instant across time zones and migration sessions use UTC'
     await withMigrations(async (dir) => {
       await addMigration(
         dir,
-        '1794000000010-time-zone',
+        `${fixtureStamp + 10}-time-zone`,
         "CREATE TABLE migration_zone AS SELECT current_setting('TimeZone') AS zone;",
       );
       await runMigrations({databaseUrl, dir});
@@ -407,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT to_regprocedure('public.vm_admin_question_metrics(uuid)') AS name",
+          "SELECT to_regprocedure('public.vm_take_rate(text,bytea,integer,integer)') AS name",
         )
       ).rows[0].name,
       null,
@@ -4244,10 +4251,12 @@ test('review rollback refuses armed starts, then preserves votes after cancellat
       startMode: 'duration',
       startAfterSeconds: 60,
     });
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}));
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 13}),
+    );
     assert.equal(await migrationCount(client), total);
     await lifecycle(client, f.admin, waiting.question, 'cancel_start');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 13});
     await runMigrations({databaseUrl});
     assert.equal((await results(client, f, true)).result.total, 1);
   });
@@ -4318,6 +4327,542 @@ test('cancel racing a due start produces one complete state', async () => {
       assert([200, 409].includes(cancel.status));
     } finally {
       await other.end();
+    }
+  });
+});
+
+// Configure a concrete electorate before opening the question
+async function completionFixture(client, extra = {}) {
+  const admin = await adminRoom(client);
+  const question = await readyQuestion(client, admin, {
+    hideResultsUntilEnd: true,
+    ...extra,
+  });
+  const keys = [linkItem('First'), linkItem('Second')];
+  const links = await addLinks(client, admin, keys);
+  const sessions = await Promise.all(
+    links.map((link, index) => openLink(client, link, keys[index].key)),
+  );
+  const saved = await reviewSave(
+    client,
+    {admin, question},
+    {closeWhenAllAnswered: true, expectedLinkIds: links.map((link) => link.id)},
+  );
+  const opened = await lifecycle(client, admin, saved.question, 'open');
+  assert.equal(opened.status, 200);
+  return {
+    admin,
+    question: opened.question,
+    link: links[0],
+    session: sessions[0].session,
+    links,
+    sessions,
+    keys,
+  };
+}
+
+test('completion closes on the last expected personal answer and releases only saved results', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client, {
+      choiceMode: 'multiple',
+      minChoices: 2,
+      maxChoices: 2,
+    });
+    assert.equal(
+      (
+        await cast(
+          client,
+          f,
+          ballotInput(f.question, {
+            choices: f.question.choices.map((choice) => choice.id),
+          }),
+        )
+      ).status,
+      200,
+    );
+    assert.equal((await results(client, f, true)).result.available, false);
+    const second = {...f, link: f.links[1], session: f.sessions[1].session};
+    const body = ballotInput(f.question, {
+      choices: f.question.choices.map((choice) => choice.id),
+    });
+    const reply = await cast(client, second, body);
+    assert.equal(reply.status, 200);
+    assert.deepEqual(await cast(client, second, body), reply);
+    const stored = (
+      await client.query('SELECT vm_question_data($1) AS q', [f.question.id])
+    ).rows[0].q;
+    assert.equal(stored.state, 'closed');
+    assert.equal(stored.closedReason, 'all_voted');
+    assert.equal((await results(client, f, true)).result.total, 2);
+    assert(!('expectedLinkIds' in stored));
+    assert(
+      !JSON.stringify(
+        await journey(client, second, {selected: f.question.id}),
+      ).includes(f.links[0].id),
+    );
+  });
+});
+
+test('unrelated manual and reusable ballots never satisfy the expected personal set', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client);
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question), true)).status,
+      200,
+    );
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          f,
+          ballotInput(f.question, {linkId: f.link.id}),
+          true,
+        )
+      ).status,
+      200,
+    );
+    const sharedKey = linkItem('Shared', 'reusable');
+    const [sharedLink] = await addLinks(client, f.admin, [sharedKey]);
+    const {session} = await openLink(client, sharedLink, sharedKey.key);
+    const shared = {...f, link: sharedLink, session};
+    const run = (await journey(client, shared)).run;
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          shared,
+          ballotInput(f.question, {runId: run.id}),
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await client.query('SELECT state FROM questions WHERE id=$1', [
+          f.question.id,
+        ])
+      ).rows[0].state,
+      'open',
+    );
+    const second = {...f, link: f.links[1], session: f.sessions[1].session};
+    assert.equal(
+      (await cast(client, second, ballotInput(f.question))).status,
+      200,
+    );
+    assert.equal((await results(client, f, true)).result.total, 4);
+  });
+});
+
+test('electorate validation rejects empty, foreign and reusable links atomically', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    const other = await reusableFixture(client);
+    for (const ids of [[], [other.link.id], [f.link.id, f.link.id]])
+      assert.equal(
+        (
+          await reviewSave(client, f, {
+            closeWhenAllAnswered: true,
+            expectedLinkIds: ids,
+            state: 'open',
+          })
+        ).status,
+        400,
+      );
+    assert.equal(
+      (
+        await client.query('SELECT state FROM questions WHERE id=$1', [
+          f.question.id,
+        ])
+      ).rows[0].state,
+      'closed',
+    );
+  });
+});
+
+test('revocation and new links cannot silently shrink or enlarge a running electorate', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    await editLink(client, f.admin, f.links[1], 'revoke');
+    await addLinks(client, f.admin, [linkItem('Later')]);
+    assert.equal(
+      (
+        await client.query('SELECT state FROM questions WHERE id=$1', [
+          f.question.id,
+        ])
+      ).rows[0].state,
+      'open',
+    );
+    assert.equal(
+      (await reviewSave(client, f, {expectedLinkIds: [f.link.id]})).error,
+      'electorate_locked',
+    );
+    const closed = await lifecycle(client, f.admin, f.question, 'close');
+    assert.equal(closed.question.closedReason, 'manual');
+  });
+});
+
+test('reopening refuses an already completed set and allows an explicit disabled rule', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    await cast(
+      client,
+      {...f, link: f.links[1], session: f.sessions[1].session},
+      ballotInput(f.question),
+    );
+    f.question = (
+      await client.query('SELECT vm_question_data($1) AS q', [f.question.id])
+    ).rows[0].q;
+    assert.equal(
+      (await lifecycle(client, f.admin, f.question, 'open')).error,
+      'complete',
+    );
+    const reopened = await reviewSave(client, f, {
+      closeWhenAllAnswered: false,
+      state: 'open',
+    });
+    assert.equal(reopened.question.state, 'open');
+    assert.equal((await results(client, f, true)).result.available, false);
+  });
+});
+
+test('last personal answers racing on two database connections close once', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client);
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const replies = await Promise.all([
+        cast(client, f, ballotInput(f.question)),
+        cast(
+          other,
+          {...f, link: f.links[1], session: f.sessions[1].session},
+          ballotInput(f.question),
+        ),
+      ]);
+      assert(replies.every((reply) => reply.status === 200));
+      assert.equal((await results(client, f, true)).result.total, 2);
+      assert.equal(
+        (
+          await client.query(
+            'SELECT closed_reason FROM questions WHERE id=$1',
+            [f.question.id],
+          )
+        ).rows[0].closed_reason,
+        'all_voted',
+      );
+    } finally {
+      await other.end();
+    }
+  });
+});
+
+test('hidden-result promises apply even when room editing is enabled', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {hideResultsUntilEnd: true}, true);
+    assert.equal(
+      (await reviewSave(client, f, {hideResultsUntilEnd: false})).error,
+      'locked',
+    );
+    await assert.rejects(
+      client.query(
+        'UPDATE questions SET hide_results_until_end=false WHERE id=$1',
+        [f.question.id],
+      ),
+    );
+  });
+});
+
+test('completion rollback is atomic and preserves unrelated questions after explicit recovery', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client);
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 14}),
+    );
+    assert.equal(await migrationCount(client), total);
+    const current = (
+      await client.query('SELECT vm_question_data($1) AS q', [f.question.id])
+    ).rows[0].q;
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          f.admin,
+          'delete',
+          {revision: current.revision},
+          current.id,
+        )
+      ).status,
+      200,
+    );
+    await runMigrations({databaseUrl, direction: 'down', count: total - 14});
+    await runMigrations({databaseUrl});
+  });
+});
+
+test('a new question can save its content and electorate and open in one operation', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const [link] = await addLinks(client, admin, [linkItem()]);
+    const reply = await questionCall(client, admin, 'create', {
+      ...questionDocument({
+        content: 'New completion',
+        choices: [{content: 'A'}, {content: 'B'}],
+      }),
+      state: 'open',
+      deadlineMode: 'none',
+      closeWhenAllAnswered: true,
+      expectedLinkIds: [link.id],
+    });
+    assert.equal(reply.status, 201);
+    assert.equal(reply.question.state, 'open');
+    assert.equal(
+      (await client.query('SELECT count(*) FROM question_expected_links'))
+        .rows[0].count,
+      '1',
+    );
+  });
+});
+test('hidden results can be configured for the next opening only after closing', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {hideResultsUntilEnd: true});
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    const saved = await reviewSave(client, f, {hideResultsUntilEnd: false});
+    assert.equal(saved.status, 200);
+    assert.equal(saved.question.hideResultsUntilEnd, false);
+  });
+});
+test('direct snapshot edits cannot remove an expected participant during voting', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client);
+    await assert.rejects(
+      client.query('DELETE FROM question_expected_links WHERE question_id=$1', [
+        f.question.id,
+      ]),
+    );
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM question_expected_links WHERE question_id=$1',
+          [f.question.id],
+        )
+      ).rows[0].count,
+      '2',
+    );
+  });
+});
+
+// Request only the respondents shown on the active admin page
+async function online(client, f, ids = [f.link.id], session = f.admin.session) {
+  return (
+    await client.query('SELECT vm_admin_presence($1,$2,$3) AS reply', [
+      f.admin.room.id,
+      hash(session),
+      JSON.stringify(ids),
+    ])
+  ).rows[0].reply;
+}
+test('admin online pages return view labels without sessions or answer data', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {anonymous: true});
+    await presence(client, f);
+    const reply = await online(client, f);
+    assert.equal(reply.links[0].online, 1);
+    assert.equal(reply.links[0].questions[0].id, f.question.id);
+    assert(!JSON.stringify(reply).includes(f.session));
+    assert(!JSON.stringify(reply).includes('choices'));
+    assert.equal((await online(client, f, [f.link.id], f.session)).status, 401);
+    const other = await personalFixture(client);
+    assert.equal((await online(client, f, [other.link.id])).links.length, 0);
+  });
+});
+test('online changes between respondents change the admin version even when viewer totals stay equal', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const tab = randomUUID();
+    await presence(client, f, tab);
+    const key = linkItem();
+    const [link] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const before = await eventState(client, f, true);
+    await client.query('BEGIN');
+    await presence(client, f, tab, 2, null);
+    await presence(client, {...f, link, session});
+    await client.query('COMMIT');
+    assert.notEqual(
+      (await eventState(client, f, true)).version,
+      before.version,
+    );
+  });
+});
+test('projector snapshots never include identities and keep hidden distributions private', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {hideResultsUntilEnd: true});
+    await cast(client, f, ballotInput(f.question));
+    let reply = await results(client, f, true, f.question.id, {
+      view: 'projector',
+    });
+    assert.equal(reply.result.available, false);
+    assert.equal(reply.result.answerCount, 1);
+    assert(!('options' in reply.result));
+    f.question = (
+      await lifecycle(client, f.admin, f.question, 'close')
+    ).question;
+    reply = await results(client, f, true, f.question.id, {view: 'projector'});
+    assert.equal(reply.result.total, 1);
+    assert(!('people' in reply.result));
+    assert(!('sources' in reply.result));
+    assert(!JSON.stringify(reply).includes(f.link.id));
+    await runMigrations({databaseUrl, direction: 'down', count: total - 15});
+    await runMigrations({databaseUrl});
+    assert.equal((await results(client, f, true)).result.total, 1);
+  });
+});
+
+const ratePolicy = {
+  network: 100000,
+  create: 1000,
+  read: 5,
+  write: 5,
+  room: 100000,
+};
+// Use server-selected limits with real shared row locks
+async function admit(
+  client,
+  f,
+  action = 'write',
+  network = hash('test network'),
+  policy = ratePolicy,
+) {
+  return (
+    await client.query(
+      'SELECT vm_request_admission($1,$2,$3,$4,$5,$6) AS reply',
+      [
+        network,
+        f?.link.id ?? null,
+        f ? hash(f.session) : null,
+        f ? 'vote' : 'public',
+        action,
+        JSON.stringify(policy),
+      ],
+    )
+  ).rows[0].reply;
+}
+test('request budgets are shared across replicas and do not allow a last-token race', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const replies = await Promise.all(
+        Array.from({length: 10}, (_, index) =>
+          admit(index % 2 ? client : other, f),
+        ),
+      );
+      assert.equal(replies.filter((reply) => reply.allowed).length, 5);
+      assert(
+        replies
+          .filter((reply) => !reply.allowed)
+          .every((reply) => reply.retryAfter > 0),
+      );
+    } finally {
+      await other.end();
+    }
+  });
+});
+test('one shared network does not consume another participant session budget', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    const session = (await openLink(client, f.link, f.key.key)).session;
+    const second = {...f, session};
+    for (let i = 0; i < 5; i++)
+      assert.equal((await admit(client, f)).allowed, true);
+    assert.equal((await admit(client, f)).allowed, false);
+    assert.equal((await admit(client, second)).allowed, true);
+  });
+});
+test('room creation has a separate configurable network budget and old entries are cleaned', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const policy = {...ratePolicy, create: 1};
+    assert.equal(
+      (await admit(client, null, 'create', hash('one'), policy)).allowed,
+      true,
+    );
+    assert.equal(
+      (await admit(client, null, 'create', hash('one'), policy)).allowed,
+      false,
+    );
+    assert.equal(
+      (await admit(client, null, 'read', hash('one'), policy)).allowed,
+      true,
+    );
+    await client.query(
+      "UPDATE request_limits SET updated_at=clock_timestamp()-interval '3 days'",
+    );
+    await client.query('SELECT vm_security_cleanup()');
+    assert.equal(
+      (await client.query('SELECT count(*) FROM request_limits')).rows[0].count,
+      '0',
+    );
+    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl});
+  });
+});
+test('request budget rollback preserves room and voting sessions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await admit(client, f);
+    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl});
+    assert.equal((await journey(client, f)).status, 200);
+  });
+});
+
+// The list and results tabs still belong to an active visitor
+test('online presence stays active outside a question and clears on leaving', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const tab = randomUUID();
+    for (const [sequence, active] of [
+      [1, true],
+      [2, false],
+    ]) {
+      const response = (
+        await client.query('SELECT vm_question_presence($1,$2,$3) AS reply', [
+          f.link.id,
+          hash(f.session),
+          JSON.stringify({tabId: tab, sequence, questionId: null, active}),
+        ])
+      ).rows[0].reply;
+      assert.equal(response.status, 200);
+      const result = await online(client, f);
+      assert.equal(result.links[0].online, active ? 1 : 0);
+      assert.deepEqual(result.links[0].questions, []);
     }
   });
 });

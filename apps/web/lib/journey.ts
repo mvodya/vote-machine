@@ -106,6 +106,12 @@ export function isJourney(value: unknown): value is Journey {
     ) && Number(answered) + Number(pending) === total
   );
 }
+// Never forward an admin electorate through participant snapshots
+function participantInput(value: Question) {
+  const input = questionInput(value);
+  delete input.expectedLinkIds;
+  return input;
+}
 // Keep storage data and other respondents out of browser snapshots
 export function publicJourney(value: Journey): Journey {
   return {
@@ -144,7 +150,7 @@ export function publicJourney(value: Journey): Journey {
     })),
     nextCursor: value.nextCursor,
     current: value.current
-      ? {...publicSummary(value.current), ...questionInput(value.current)}
+      ? {...publicSummary(value.current), ...participantInput(value.current)}
       : null,
     answer: value.answer ? publicAnswer(value.answer) : null,
     progress: {

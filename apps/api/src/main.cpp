@@ -7,6 +7,7 @@
 #include <memory>
 #include <string_view>
 
+#include "access.hpp"
 #include "assets.hpp"
 #include "config.hpp"
 #include "links.hpp"
@@ -14,6 +15,7 @@
 #include "questions.hpp"
 #include "results.hpp"
 #include "rooms.hpp"
+#include "security.hpp"
 #include "voting.hpp"
 
 namespace {
@@ -64,7 +66,9 @@ void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
               "to_regprocedure('public.vm_event_state(uuid,bytea,boolean)') IS "
               "NOT NULL AND "
               "to_regprocedure('public.vm_question_presence(uuid,bytea,jsonb)')"
-              " IS NOT NULL AS "
+              " IS NOT NULL AND "
+              "to_regprocedure('public.vm_request_admission(bytea,uuid,bytea,"
+              "text,text,jsonb)') IS NOT NULL AS "
               "schema_ready",
       [reply, hello](const drogon::orm::Result& result) {
         Json::Value body;
@@ -132,6 +136,13 @@ int main() {
     vote_machine::RegisterQuestionHandlers(database);
     vote_machine::RegisterVotingHandlers(database);
     vote_machine::RegisterResultHandlers(database);
+    const auto gateway_key = ReadEnv("API_GATEWAY_KEY");
+    vote_machine::RegisterSecurityHandlers(
+        database,
+        gateway_key.empty()
+            ? vote_machine::HashSecret("vote-machine:gateway:" +
+                                       std::string(ReadEnv("ADMIN_LINK_KEY")))
+            : std::string(gateway_key));
     const auto stop_live =
         vote_machine::RegisterLiveHandlers(database, config.database_url);
     vote_machine::RegisterAssetHandlers(
@@ -140,18 +151,20 @@ int main() {
     // Every replica can resume overdue work after a restart
     std::weak_ptr<drogon::orm::DbClient> deadline_database = database;
     trantor::TimerId deadline_timer = trantor::InvalidTimerId;
-    drogon::app().registerBeginningAdvice([deadline_database,
-                                           &deadline_timer]() {
-      deadline_timer =
-          drogon::app().getLoop()->runEvery(1.0, [deadline_database]() {
-            // The global timer must not keep database threads alive at shutdown
-            if (auto client = deadline_database.lock()) {
-              client->execSqlAsync(
-                  "SELECT vm_close_due()", [](const drogon::orm::Result&) {},
-                  [](const drogon::orm::DrogonDbException&) {});
-            }
-          });
-    });
+    drogon::app().registerBeginningAdvice(
+        [deadline_database, &deadline_timer]() {
+          deadline_timer =
+              drogon::app().getLoop()->runEvery(1.0, [deadline_database]() {
+                // The global timer must not keep database threads alive at
+                // shutdown
+                if (auto client = deadline_database.lock()) {
+                  client->execSqlAsync(
+                      "SELECT vm_close_due(), vm_security_cleanup()",
+                      [](const drogon::orm::Result&) {},
+                      [](const drogon::orm::DrogonDbException&) {});
+                }
+              });
+        });
 
     // Run app
     drogon::app()

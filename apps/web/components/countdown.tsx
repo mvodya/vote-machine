@@ -35,11 +35,11 @@ export function Countdown({
       role="timer"
       aria-label={kind === 'start' ? 'До открытия' : 'До закрытия'}
       title={formatTime(at, timeZone)}
-      className={`inline-flex items-center gap-1.5 text-xs tabular-nums ${kind === 'start' ? 'text-amber-700' : urgent ? 'text-error-ink' : 'text-muted'} ${ending ? 'motion-safe:animate-pulse' : ''}`}
+      className={`inline-flex items-center gap-1.5 text-xs tabular-nums ${kind === 'start' ? 'text-amber-700' : urgent ? 'text-error-ink' : 'text-muted'} ${ending ? 'motion-safe:animate-deadline-blink' : ''}`}
     >
       <Hourglass
         aria-hidden="true"
-        className="size-3.5 shrink-0 motion-safe:animate-[spin_8s_linear_infinite]"
+        className="size-3.5 shrink-0 motion-safe:animate-hourglass-turn"
       />
       <span>
         {kind === 'start' ? 'До открытия: ' : ''}

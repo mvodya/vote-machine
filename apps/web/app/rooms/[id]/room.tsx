@@ -31,6 +31,16 @@ type State = 'loading' | 'ready' | 'denied' | 'error';
 // Show the room and its admin tools
 export default function AdminRoom({id}: {id: string}) {
   // Loading and access state of the page
+  const [projector] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const question = params.get('question');
+    return params.get('projector') === '1' &&
+      question &&
+      roomIdPattern.test(question)
+      ? question
+      : null;
+  });
   const [state, setState] = useState<State>('loading');
   // Room data returned by the API
   const [room, setRoom] = useState<Room | null>(null);
@@ -221,6 +231,18 @@ export default function AdminRoom({id}: {id: string}) {
     }
   }
 
+  if (projector && state === 'ready')
+    return (
+      <main className="min-h-screen bg-page">
+        <Results
+          id={id}
+          admin
+          projector
+          initialQuestion={projector}
+          onDenied={denyAccess}
+        />
+      </main>
+    );
   return (
     <main className="min-h-svh bg-page text-ink">
       <div className="mx-auto max-w-6xl px-4 pb-10 sm:px-8">

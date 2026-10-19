@@ -29,6 +29,7 @@ export async function presenceProxy(request: Request, id: string) {
       (data.questionId !== null &&
         (typeof data.questionId !== 'string' ||
           !roomIdPattern.test(data.questionId))) ||
+      (data.active !== undefined && typeof data.active !== 'boolean') ||
       (data.runId !== undefined &&
         (typeof data.runId !== 'string' || !roomIdPattern.test(data.runId)))
     )
@@ -48,6 +49,7 @@ export async function presenceProxy(request: Request, id: string) {
           tabId: data.tabId,
           sequence: data.sequence,
           questionId: data.questionId,
+          ...(data.active !== undefined ? {active: data.active} : {}),
           ...(data.runId ? {runId: data.runId} : {}),
         }),
         cache: 'no-store',

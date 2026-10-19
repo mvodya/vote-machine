@@ -55,6 +55,7 @@ it('forwards view order and returns no internal session or respondent data', asy
         sequence: 2,
         questionId: null,
         secret: 'discard',
+        active: true,
       }),
     ),
     id,
@@ -65,6 +66,7 @@ it('forwards view order and returns no internal session or respondent data', asy
     tabId: id,
     sequence: 2,
     questionId: null,
+    active: true,
   });
   expect(response.headers.get('cache-control')).toContain('no-store');
 });

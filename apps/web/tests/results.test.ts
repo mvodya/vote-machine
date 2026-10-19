@@ -55,3 +55,8 @@ it('merges manual personal entry into the regular personal source', () => {
   expect(value.sources?.personal).toBe(3);
   expect(value.sources).not.toHaveProperty('admin_personal');
 });
+it('uses a minimal projector projection even if the upstream includes identities', () => {
+  const value = publicResult({...result, anonymous: false}, true, true)!;
+  expect(value.people).toBeUndefined();
+  expect(value.sources).toBeUndefined();
+});

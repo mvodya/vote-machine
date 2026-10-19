@@ -57,6 +57,7 @@ export function Questions({
   // A stable editor session keeps its selected tab after saving
   const [editorSession, setEditorSession] = useState(0);
   // Draft selected for deletion
+  const [reopening, setReopening] = useState<QuestionSummary | null>(null);
   const [deleting, setDeleting] = useState<QuestionSummary | null>(null);
   // Result or error shown below the current panel
   const [notice, setNotice] = useState('');
@@ -326,7 +327,11 @@ export function Questions({
                       busy={busy}
                       compact
                       name={markdownSummary(item.preview) || 'Без текста'}
-                      onClick={() => void toggle(item)}
+                      onClick={() => {
+                        if (item.state !== 'open' && item.editLocked !== null)
+                          setReopening(item);
+                        else void toggle(item);
+                      }}
                     />
                     <Button
                       variant="secondary"
@@ -369,6 +374,19 @@ export function Questions({
       <p role="status" className="mt-4 text-sm text-muted">
         {notice}
       </p>
+      {reopening && (
+        <ConfirmDialog
+          title="Открыть вопрос повторно?"
+          description="Прежние ответы сохранятся Если включено скрытие результатов, они снова будут недоступны до окончания Уже увиденные итоги отозвать нельзя"
+          confirmLabel="Открыть вопрос"
+          busy={busy}
+          error={notice}
+          onClose={() => setReopening(null)}
+          onConfirm={() => {
+            void toggle(reopening).then(() => setReopening(null));
+          }}
+        />
+      )}
       {deleting && (
         <ConfirmDialog
           title="Удалить вопрос?"

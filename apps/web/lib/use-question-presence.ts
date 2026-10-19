@@ -22,6 +22,7 @@ export function useQuestionPresence(
           tabId: tab.current,
           sequence: ++sequence.current,
           questionId,
+          active: !clear && document.visibilityState === 'visible',
           ...(run ? {runId: run} : {}),
         }),
         keepalive: true,

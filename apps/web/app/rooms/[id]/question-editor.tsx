@@ -1,6 +1,7 @@
 'use client';
 import {useLive} from '../../../lib/use-live';
 import {QuestionAction} from '../../../components/question-action';
+import {ExpectedLinks} from '../../../components/expected-links';
 import {ManualVoting} from './manual-voting';
 import {markdownAssets} from '../../../lib/markdown';
 
@@ -135,6 +136,8 @@ export function QuestionEditor({
   const [conflict, setConflict] = useState(false);
   const [makeDraft, setMakeDraft] = useState(false);
   const [discard, setDiscard] = useState(false);
+  const [electorateLoading, setElectorateLoading] = useState(false);
+  const [reopen, setReopen] = useState(false);
   const [uploads, setUploads] = useState(0);
   const uploadChanged = useCallback(
     (delta: number) => setUploads((count) => Math.max(0, count + delta)),
@@ -244,6 +247,7 @@ export function QuestionEditor({
       }
       const body = await response.json();
       if (!response.ok || !isQuestion(body.question)) throw new Error();
+      setReopen(false);
       setSaved(body.question);
       setState(body.question.state);
       onSaved(body.question);
@@ -292,7 +296,17 @@ export function QuestionEditor({
     target?: Question['state'],
   ) {
     event?.preventDefault();
-    if (busy || uploads > 0 || (!dirty && !target)) return;
+    if (busy || uploads > 0 || electorateLoading || (!dirty && !target)) return;
+    if (
+      target === 'open' &&
+      saved?.editLocked !== null &&
+      saved &&
+      value.hideResultsUntilEnd &&
+      !reopen
+    ) {
+      setReopen(true);
+      return;
+    }
     if (!isQuestionInput(value)) {
       setError('Проверьте размер текста, варианты и границы выбора');
       return;
@@ -361,25 +375,32 @@ export function QuestionEditor({
       if (!response.ok) {
         setConflict(body.error === 'conflict');
         throw new Error(
-          body.error === 'used_options'
-            ? 'Нельзя удалить вариант, за который уже голосовали'
-            : body.error === 'ballots'
-              ? 'Новые границы выбора нарушают сохраненные ответы'
-              : body.error === 'asset'
-                ? 'Файл удален или недоступен, загрузите его снова'
-                : body.error === 'locked'
-                  ? 'Редактирование содержимого этого вопроса запрещено'
-                  : body.error === 'ready'
-                    ? 'Для открытия нужен текст вопроса и минимум два непустых варианта'
-                    : body.error === 'deadline'
-                      ? 'Укажите будущий срок или уберите его'
-                      : body.error === 'conflict'
-                        ? 'Вопрос изменен в другой вкладке, ваши правки не сохранены'
-                        : 'Не удалось сохранить вопрос, попробуйте снова',
+          body.error === 'complete'
+            ? 'Все выбранные участники уже ответили, измените состав или выключите автозавершение'
+            : body.error === 'electorate_locked'
+              ? 'Состав фиксирован на время открытия'
+              : body.error === 'electorate'
+                ? 'Выберите действующие персональные ссылки'
+                : body.error === 'used_options'
+                  ? 'Нельзя удалить вариант, за который уже голосовали'
+                  : body.error === 'ballots'
+                    ? 'Новые границы выбора нарушают сохраненные ответы'
+                    : body.error === 'asset'
+                      ? 'Файл удален или недоступен, загрузите его снова'
+                      : body.error === 'locked'
+                        ? 'Редактирование содержимого этого вопроса запрещено'
+                        : body.error === 'ready'
+                          ? 'Для открытия нужен текст вопроса и минимум два непустых варианта'
+                          : body.error === 'deadline'
+                            ? 'Укажите будущий срок или уберите его'
+                            : body.error === 'conflict'
+                              ? 'Вопрос изменен в другой вкладке, ваши правки не сохранены'
+                              : 'Не удалось сохранить вопрос, попробуйте снова',
         );
       }
       if (!isQuestion(body.question))
         throw new Error('Не удалось сохранить вопрос');
+      setReopen(false);
       setSaved(body.question);
       setValue(editorValue(body.question));
       setState(body.question.state);
@@ -417,6 +438,7 @@ export function QuestionEditor({
       const body = await response.json();
       if (!response.ok || !isQuestion(body.question))
         throw new Error('Не удалось сделать вопрос черновиком, обновите его');
+      setReopen(false);
       setSaved(body.question);
       setValue(editorValue(body.question));
       setState(body.question.state);
@@ -444,14 +466,14 @@ export function QuestionEditor({
                 type="submit"
                 form={`${prefix}-form`}
                 startIcon={<Save />}
-                disabled={busy || uploads > 0}
+                disabled={busy || uploads > 0 || electorateLoading}
               >
                 {busy ? 'Сохраняем…' : 'Сохранить изменения'}
               </Button>
               <Button
                 variant="secondary"
                 startIcon={<Undo2 />}
-                disabled={busy || uploads > 0}
+                disabled={busy || uploads > 0 || electorateLoading}
                 onClick={() => setDiscard(true)}
               >
                 Отменить
@@ -657,7 +679,7 @@ export function QuestionEditor({
                 </SelectField>
               )}
               <CheckboxField
-                disabled={locked}
+                disabled={busy || state === 'open' || state === 'scheduled'}
                 id={`${prefix}-hide`}
                 label="Скрывать результаты до окончания голосования, включая администратора"
                 checked={value.hideResultsUntilEnd}
@@ -697,7 +719,7 @@ export function QuestionEditor({
             <div className="flex flex-wrap gap-2">
               <QuestionAction
                 state={state}
-                busy={busy || uploads > 0}
+                busy={busy || uploads > 0 || electorateLoading}
                 onClick={() =>
                   void save(undefined, state === 'open' ? 'closed' : 'open')
                 }
@@ -723,6 +745,36 @@ export function QuestionEditor({
               )}
             </div>
           </div>
+          <CheckboxField
+            id={`${prefix}-auto-complete`}
+            label="Закрыть, когда ответят все выбранные участники"
+            checked={value.closeWhenAllAnswered ?? false}
+            disabled={busy || state === 'open' || state === 'scheduled'}
+            onChange={(event) =>
+              field('closeWhenAllAnswered', event.target.checked)
+            }
+          />
+          {value.closeWhenAllAnswered && (
+            <ExpectedLinks
+              roomId={roomId}
+              selected={value.expectedLinkIds ?? []}
+              disabled={busy || state === 'open' || state === 'scheduled'}
+              onChange={(ids) => field('expectedLinkIds', ids)}
+              onBusy={setElectorateLoading}
+              onDenied={onDenied}
+            />
+          )}
+          {saved?.closedReason === 'all_voted' && (
+            <p className="text-sm text-muted">
+              Все выбранные участники ответили
+            </p>
+          )}
+          {saved?.expectedTotal !== undefined && saved.expectedTotal > 0 && (
+            <p className="text-sm text-muted">
+              Ответили по выбранным ссылкам: {saved.expectedAnswered} из{' '}
+              {saved.expectedTotal}
+            </p>
+          )}
           <CheckboxField
             id={`${prefix}-scheduled`}
             label="Отложенный старт"
@@ -793,6 +845,17 @@ export function QuestionEditor({
           questionId={saved.id}
           onDenied={onDenied}
           timeZone={timeZone}
+        />
+      )}
+      {reopen && (
+        <ConfirmDialog
+          title="Открыть вопрос повторно?"
+          description="Результаты снова будут скрыты до окончания Уже увиденные и скачанные итоги отозвать нельзя"
+          confirmLabel="Открыть вопрос"
+          busy={busy}
+          error={error}
+          onClose={() => setReopen(false)}
+          onConfirm={() => void save(undefined, 'open')}
         />
       )}
       {makeDraft && (

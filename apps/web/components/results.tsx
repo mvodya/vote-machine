@@ -1,7 +1,8 @@
 'use client';
 import {useEffect, useState} from 'react';
-import {ChartColumn, Download} from 'lucide-react';
+import {ChartColumn, Download, Expand, Minimize, Monitor} from 'lucide-react';
 import {useLive} from '../lib/use-live';
+import {Countdown} from './countdown';
 import {Panel} from './ui/panel';
 import {Button} from './ui/button';
 import {Pagination} from './ui/pagination';
@@ -26,7 +27,11 @@ export function Results({
   admin,
   runId,
   onDenied,
+  projector = false,
+  initialQuestion,
 }: {
+  projector?: boolean;
+  initialQuestion?: string;
   id: string;
   admin: boolean;
   runId?: string | null;
@@ -37,7 +42,9 @@ export function Results({
     onDenied,
   );
   const [page, setPage] = useState<ResultPage | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    initialQuestion ?? null,
+  );
   const [result, setResult] = useState<VoteResult | null>(null);
   const [cursors, setCursors] = useState(['0']);
   const [peopleCursors, setPeopleCursors] = useState<string[]>(['']);
@@ -51,6 +58,7 @@ export function Results({
     async function load() {
       try {
         const query = new URLSearchParams({after: cursor});
+        if (projector) query.set('view', 'projector');
         if (runId) query.set('run', runId);
         const response = await fetch(`${path}?${query}`, {
           cache: 'no-store',
@@ -75,7 +83,7 @@ export function Results({
             return;
           }
           if (item.status !== 404) {
-            detail = publicResult((await item.json()).result, admin);
+            detail = publicResult((await item.json()).result, admin, projector);
             if (!item.ok || !detail) throw new Error();
           }
         }
@@ -109,6 +117,7 @@ export function Results({
     onDenied,
     live.version,
     live.connected,
+    projector,
   ]);
   // Download a fresh authorized snapshot rather than a stale browser copy
   async function download() {
@@ -133,57 +142,114 @@ export function Results({
     }
   }
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
-      <Panel>
-        <h2 className="text-lg font-semibold">Результаты</h2>
-        {page?.questions.length === 0 && (
-          <EmptyState
-            icon={<ChartColumn />}
-            title="Результатов пока нет"
-            description="Здесь появятся результаты голосования"
+    <div
+      className={
+        projector
+          ? 'mx-auto max-w-6xl space-y-5 p-4 sm:p-8 text-lg [&_p]:text-2xl'
+          : 'grid items-start gap-5 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]'
+      }
+    >
+      {projector && (
+        <div className="flex justify-end gap-3">
+          <Button
+            variant="ghost"
+            startIcon={<Expand />}
+            onClick={() => {
+              void document.documentElement
+                .requestFullscreen?.()
+                .catch(() => {});
+            }}
+          >
+            На весь экран
+          </Button>
+          <a
+            className="inline-flex items-center gap-2 rounded-xl px-3 text-sm"
+            href={`/rooms/${id}`}
+          >
+            <Minimize className="size-4" />
+            Вернуться в комнату
+          </a>
+        </div>
+      )}
+      {!projector && (
+        <Panel>
+          <h2 className="text-lg font-semibold">Результаты</h2>
+          {page?.questions.length === 0 && (
+            <EmptyState
+              icon={<ChartColumn />}
+              title="Результатов пока нет"
+              description="Здесь появятся результаты голосования"
+            />
+          )}
+          <ul className="mt-4 divide-y divide-border">
+            {page?.questions.map((question) => (
+              <li key={question.id} className="py-2">
+                <Button
+                  variant="ghost"
+                  className="h-auto w-full justify-start whitespace-normal text-left"
+                  aria-label={`Результаты: ${markdownSummary(question.content) || 'Вопрос'}`}
+                  aria-current={selected === question.id ? 'true' : undefined}
+                  onClick={() => {
+                    setSelected(question.id);
+                    setPeopleCursors(['']);
+                    setResult(null);
+                  }}
+                >
+                  {markdownSummary(question.content) || 'Вопрос'}
+                </Button>
+                {!question.available && (
+                  <p className="text-xs text-muted">
+                    Результаты пока недоступны
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          <Pagination
+            label="Страницы результатов"
+            page={cursors.length}
+            hasNext={Boolean(page?.nextCursor)}
+            busy={false}
+            onPrevious={() => setCursors((value) => value.slice(0, -1))}
+            onNext={() =>
+              page?.nextCursor &&
+              setCursors((value) => [...value, page.nextCursor!])
+            }
           />
-        )}
-        <ul className="mt-4 divide-y divide-border">
-          {page?.questions.map((question) => (
-            <li key={question.id} className="py-2">
-              <Button
-                variant="ghost"
-                className="h-auto w-full justify-start whitespace-normal text-left"
-                aria-label={`Результаты: ${markdownSummary(question.content) || 'Вопрос'}`}
-                aria-current={selected === question.id ? 'true' : undefined}
-                onClick={() => {
-                  setSelected(question.id);
-                  setPeopleCursors(['']);
-                  setResult(null);
-                }}
-              >
-                {markdownSummary(question.content) || 'Вопрос'}
-              </Button>
-              {!question.available && (
-                <p className="text-xs text-muted">Результаты пока недоступны</p>
-              )}
-            </li>
-          ))}
-        </ul>
-        <Pagination
-          label="Страницы результатов"
-          page={cursors.length}
-          hasNext={Boolean(page?.nextCursor)}
-          busy={false}
-          onPrevious={() => setCursors((value) => value.slice(0, -1))}
-          onNext={() =>
-            page?.nextCursor &&
-            setCursors((value) => [...value, page.nextCursor!])
-          }
-        />
-      </Panel>
+        </Panel>
+      )}
       <Panel aria-label="Итоги вопроса">
         {failed && (
           <p role="alert" className="text-sm text-error-ink">
             Не удалось обновить результаты
           </p>
         )}
+        {!projector && admin && selected && result && !result.available && (
+          <a
+            href={`/rooms/${id}?projector=1&question=${selected}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex items-center gap-2 text-sm"
+          >
+            <Monitor className="size-4" />
+            Открыть проектор
+          </a>
+        )}
         {!selected && <p className="text-sm text-muted">Выберите вопрос</p>}
+        {projector && result?.content && !result.available && (
+          <>
+            <h1 className="text-2xl font-semibold">
+              {markdownSummary(result.content)}
+            </h1>
+            <div className="my-6 flex justify-between gap-4">
+              <span>Ответы: {result.answerCount ?? 0}</span>
+              <Countdown
+                at={result.scheduledAt ?? result.closesAt}
+                kind={result.scheduledAt ? 'start' : 'close'}
+              />
+            </div>
+          </>
+        )}
         {result && !result.available && (
           <p className="text-sm text-muted">Результаты пока недоступны</p>
         )}
@@ -230,14 +296,28 @@ export function Results({
                 Проценты от числа ответов, сумма может превышать 100%
               </p>
             )}
-            <Button
-              className="mt-5"
-              variant="secondary"
-              startIcon={<Download />}
-              onClick={() => void download()}
-            >
-              Скачать CSV
-            </Button>
+            {!projector && (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button
+                  variant="secondary"
+                  startIcon={<Download />}
+                  onClick={() => void download()}
+                >
+                  Скачать CSV
+                </Button>
+                {admin && (
+                  <a
+                    href={`/rooms/${id}?projector=1&question=${selected}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm"
+                  >
+                    <Monitor className="size-4" />
+                    Открыть проектор
+                  </a>
+                )}
+              </div>
+            )}
             {result.sources && (
               <dl className="mt-5 space-y-2 text-sm">
                 {Object.entries(result.sources).map(([source, count]) => (

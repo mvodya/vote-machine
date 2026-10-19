@@ -22,7 +22,7 @@ void ReadResults(const drogon::orm::DbClientPtr& database,
     return;
   }
   Json::Value data(Json::objectValue);
-  for (const auto* key : {"after", "peopleAfter", "run"}) {
+  for (const auto* key : {"after", "peopleAfter", "run", "view"}) {
     const auto value = request->getParameter(key);
     if (!value.empty()) data[key] = value;
   }
@@ -41,6 +41,36 @@ void ReadResults(const drogon::orm::DbClientPtr& database,
 }  // namespace
 // Keep role selection in the route rather than a client field
 void RegisterResultHandlers(const drogon::orm::DbClientPtr& database) {
+  drogon::app().registerHandler(
+      "/api/rooms/{1}/presence",
+      [database](const drogon::HttpRequestPtr& request, Reply&& reply,
+                 const std::string& room) {
+        const auto session = Session(request);
+        if (!IsRoomId(room) || session.empty()) {
+          Error(reply, drogon::k401Unauthorized, "Access required");
+          return;
+        }
+        const auto body = request->getJsonObject();
+        if (!body || !body->isObject() || !(*body)["ids"].isArray() ||
+            (*body)["ids"].size() > 50) {
+          Error(reply, drogon::k400BadRequest, "Invalid links");
+          return;
+        }
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        database->execSqlAsync(
+            "SELECT "
+            "vm_admin_presence($1::uuid,decode($2,'hex'),$3::jsonb)::text AS "
+            "response",
+            [reply](const drogon::orm::Result& result) {
+              DatabaseReply(result, reply);
+            },
+            [reply](const drogon::orm::DrogonDbException&) {
+              Unavailable(reply);
+            },
+            room, session, Json::writeString(writer, (*body)["ids"]));
+      },
+      {drogon::Post});
   drogon::app().registerHandler(
       "/api/rooms/{1}/results",
       [database](const drogon::HttpRequestPtr& request, Reply&& reply,

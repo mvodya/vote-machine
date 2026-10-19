@@ -11,5 +11,34 @@
   --color-success-bg: #e7f1dc;
   --color-error-ink: #852b24;
   --color-error-bg: #fce9e1;
+  --animate-hourglass-turn: hourglass-turn 4s infinite;
+  --animate-deadline-blink: deadline-blink 600ms steps(1, end) infinite;
   --font-sans: Arial, Helvetica, sans-serif;
+}
+
+/* Pause upright while the sand would be falling */
+@keyframes hourglass-turn {
+  0%,
+  38% {
+    transform: rotate(0deg);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  50%,
+  88% {
+    transform: rotate(180deg);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+@keyframes deadline-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.25;
+  }
 }

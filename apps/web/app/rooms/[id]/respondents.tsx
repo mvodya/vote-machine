@@ -1,5 +1,6 @@
 'use client';
 
+import {markdownSummary} from '../../../lib/markdown';
 import {useLive} from '../../../lib/use-live';
 import {useEffect, useState, type FormEvent} from 'react';
 import {
@@ -51,6 +52,9 @@ export function Respondents({
   onDenied: () => void;
 }) {
   // Links on the current page
+  const [online, setOnline] = useState<
+    Record<string, {online: number; questions: {id: string; preview: string}[]}>
+  >({});
   const [links, setLinks] = useState<VotingLink[]>([]);
   // Page history for back navigation
   const [cursors, setCursors] = useState(['0']);
@@ -133,6 +137,37 @@ export function Respondents({
     return () => controller.abort();
   }, [base, cursor, attempt, onDenied, live.version]);
 
+  useEffect(() => {
+    if (!links.length) return;
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const response = await fetch(
+          `/api/rooms/${roomId}/presence?ids=${links.map((link) => link.id).join(',')}`,
+          {cache: 'no-store', signal: controller.signal},
+        );
+        if (response.status === 401) {
+          onDenied();
+          return;
+        }
+        const data = await response.json();
+        if (response.ok && !controller.signal.aborted)
+          setOnline(
+            Object.fromEntries(
+              data.links.map(
+                (item: {
+                  id: string;
+                  online: number;
+                  questions: {id: string; preview: string}[];
+                }) => [item.id, item],
+              ),
+            ),
+          );
+      } catch {}
+    }
+    void load();
+    return () => controller.abort();
+  }, [links, roomId, onDenied, live.version]);
   // Refresh the page after a saved change
   function reload() {
     setAttempt((value) => value + 1);
@@ -520,6 +555,23 @@ export function Respondents({
                         {link.revoked ? 'Отозвана' : 'Действует'}
                       </span>
                     </div>
+                    {online[link.id] && (
+                      <div className="mt-2 text-xs text-muted">
+                        <p>
+                          {link.mode === 'reusable'
+                            ? `Сейчас онлайн: ${online[link.id].online}`
+                            : online[link.id].online
+                              ? 'Онлайн'
+                              : 'Не в сети'}
+                        </p>
+                        {online[link.id].questions.map((question) => (
+                          <p key={question.id}>
+                            Смотрит:{' '}
+                            {markdownSummary(question.preview) || 'Вопрос'}
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-1">
                     {!link.revoked && (

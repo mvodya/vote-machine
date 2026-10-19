@@ -134,6 +134,9 @@ export async function questionProxy(
           'state',
           'used_options',
           'ballots',
+          'electorate',
+          'electorate_locked',
+          'complete',
         ].includes(String(data.error))
           ? String(data.error)
           : 'Request failed';
