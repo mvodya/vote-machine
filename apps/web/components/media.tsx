@@ -58,14 +58,19 @@ export function Media({
     );
   if (!asset || asset.id !== id)
     return <span className="text-sm text-muted">Загружаем файл…</span>;
+  // Scale both sides together so rounded corners touch the actual picture
+  const width = Math.min(
+    displayWidth ?? asset.width,
+    (480 * asset.width) / asset.height,
+  );
   return (
     <span
-      className="my-3 block max-w-full text-left"
-      style={displayWidth ? {width: displayWidth} : undefined}
+      className={`my-3 block max-w-full overflow-hidden rounded-xl text-left ${asset.kind === 'video' ? 'border border-border bg-panel' : ''}`}
+      style={{width}}
     >
       {asset.kind === 'video' ? (
         <video
-          className="mr-auto ml-0 block h-auto max-h-120 w-auto max-w-full rounded-xl object-left"
+          className="block h-auto w-full"
           controls
           onError={() => setFailed(true)}
           playsInline
@@ -81,8 +86,7 @@ export function Media({
         // Private images use the viewer cookie and cannot go through a public optimizer
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          className="mr-auto ml-0 block h-auto max-h-120 max-w-full rounded-xl object-contain object-left"
-          style={{width: displayWidth ?? 'auto'}}
+          className="block h-auto w-full"
           src={path}
           alt={alt || 'Изображение'}
           width={asset.width}

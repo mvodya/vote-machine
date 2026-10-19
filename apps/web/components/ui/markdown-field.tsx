@@ -249,7 +249,7 @@ export function MarkdownField({
       {readOnly || preview ? (
         <section
           aria-label={`Предпросмотр: ${label}`}
-          className="min-h-28 rounded-xl border border-border bg-white px-4 py-2"
+          className="min-h-28 rounded-xl border border-border bg-panel px-4 py-2"
         >
           <Markdown source={value} viewer={{roomId}} />
         </section>

@@ -1,5 +1,7 @@
 import {act, render, screen} from '@testing-library/react';
 import {expect, it, vi} from 'vitest';
+import {playSound} from '../lib/audio';
+vi.mock('../lib/audio', () => ({playSound: vi.fn()}));
 import {Countdown, countdownText} from '../components/countdown';
 it('turns red at a minute and blinks only during the last ten seconds', () => {
   vi.useFakeTimers();
@@ -10,9 +12,17 @@ it('turns red at a minute and blinks only during the last ten seconds', () => {
     expect(timer).not.toHaveClass('text-error-ink');
     act(() => vi.advanceTimersByTime(1000));
     expect(timer).toHaveClass('text-error-ink');
+    expect(playSound).toHaveBeenCalledWith(
+      'minute',
+      `${Date.parse('2026-10-26T00:01:01Z')}:minute`,
+    );
     expect(timer).not.toHaveClass('motion-safe:animate-deadline-blink');
     act(() => vi.advanceTimersByTime(50000));
     expect(timer).toHaveClass('motion-safe:animate-deadline-blink');
+    expect(playSound).toHaveBeenCalledWith(
+      'tick',
+      `${Date.parse('2026-10-26T00:01:01Z')}:tick:10`,
+    );
     act(() => vi.advanceTimersByTime(10000));
     expect(timer).toHaveTextContent('00:00:00');
     expect(timer).not.toHaveClass('motion-safe:animate-deadline-blink');

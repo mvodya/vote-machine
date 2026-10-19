@@ -414,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT to_regprocedure('public.vm_take_rate(text,bytea,integer,integer)') AS name",
+          "SELECT to_regprocedure('public.vm_room_experience(uuid,bytea,boolean,jsonb)') AS name",
         )
       ).rows[0].name,
       null,
@@ -4827,7 +4827,7 @@ test('room creation has a separate configurable network budget and old entries a
       (await client.query('SELECT count(*) FROM request_limits')).rows[0].count,
       '0',
     );
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 16});
     await runMigrations({databaseUrl});
   });
 });
@@ -4836,7 +4836,7 @@ test('request budget rollback preserves room and voting sessions', async () => {
     await runMigrations({databaseUrl});
     const f = await personalFixture(client);
     await admit(client, f);
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 16});
     await runMigrations({databaseUrl});
     assert.equal((await journey(client, f)).status, 200);
   });
@@ -4864,5 +4864,103 @@ test('online presence stays active outside a question and clears on leaving', as
       assert.equal(result.links[0].online, active ? 1 : 0);
       assert.deepEqual(result.links[0].questions, []);
     }
+  });
+});
+
+// Public cursors must not reveal hidden answer events
+async function experience(client, f, admin = true, data = {}) {
+  return (
+    await client.query('SELECT vm_room_experience($1,$2,$3,$4) AS reply', [
+      admin ? f.admin.room.id : f.link.id,
+      hash(admin ? f.admin.session : f.session),
+      admin,
+      JSON.stringify(data),
+    ])
+  ).rows[0].reply;
+}
+test('room accents share access checks and update both live versions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const before = await eventState(client, f, false);
+    assert.equal(
+      (await experience(client, f, true, {accent: 'violet'})).accent,
+      'violet',
+    );
+    assert.equal((await experience(client, f, false)).accent, 'violet');
+    assert.notEqual(
+      (await eventState(client, f, false)).version,
+      before.version,
+    );
+    assert.equal(
+      (await experience(client, f, false, {accent: 'blue'})).status,
+      403,
+    );
+    assert.equal(
+      (await experience(client, f, true, {accent: 'fake'})).status,
+      400,
+    );
+    const other = await personalFixture(client);
+    assert.equal(
+      (
+        await experience(client, {
+          ...f,
+          admin: {...f.admin, session: other.admin.session},
+        })
+      ).status,
+      401,
+    );
+  });
+});
+test('sound events hide answer activity from participant cursors and survive reconnect', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {hideResultsUntilEnd: true});
+    const admin = await experience(client, f);
+    const voter = await experience(client, f, false);
+    assert.deepEqual(admin.events, []);
+    assert.deepEqual(voter.events, []);
+    await cast(client, f, ballotInput(f.question));
+    assert.equal(
+      (await experience(client, f, true, {after: admin.cursor})).events[0].kind,
+      'answer',
+    );
+    const unchanged = await experience(client, f, false, {after: voter.cursor});
+    assert.deepEqual(unchanged.events, []);
+    assert.equal(unchanged.cursor, voter.cursor);
+    await lifecycle(client, f.admin, f.question, 'close');
+    const closed = await experience(client, f, false, {after: voter.cursor});
+    assert.equal(closed.events[0].kind, 'close');
+    assert.deepEqual(
+      (await experience(client, f, false, {after: closed.cursor})).events,
+      [],
+    );
+  });
+});
+test('appearance rollback and reapply preserve rooms and answers', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal(
+      (
+        await client.query(
+          "SELECT to_regclass('room_sound_events') IS NULL AS absent",
+        )
+      ).rows[0].absent,
+      true,
+    );
+    await runMigrations({databaseUrl});
+    assert.equal((await journey(client, f)).status, 200);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM ballots WHERE question_id=$1',
+          [f.question.id],
+        )
+      ).rows[0].count,
+      '1',
+    );
   });
 });

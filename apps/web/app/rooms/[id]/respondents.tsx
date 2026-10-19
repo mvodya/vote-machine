@@ -549,7 +549,7 @@ export function Respondents({
                       </span>
                       <span
                         className={
-                          link.revoked ? 'text-red-700' : 'text-green-800'
+                          link.revoked ? 'text-error-ink' : 'text-success-ink'
                         }
                       >
                         {link.revoked ? 'Отозвана' : 'Действует'}

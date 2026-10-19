@@ -68,7 +68,9 @@ void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
               "to_regprocedure('public.vm_question_presence(uuid,bytea,jsonb)')"
               " IS NOT NULL AND "
               "to_regprocedure('public.vm_request_admission(bytea,uuid,bytea,"
-              "text,text,jsonb)') IS NOT NULL AS "
+              "text,text,jsonb)') IS NOT NULL AND "
+              "to_regprocedure('public.vm_room_experience(uuid,bytea,boolean,"
+              "jsonb)') IS NOT NULL AS "
               "schema_ready",
       [reply, hello](const drogon::orm::Result& result) {
         Json::Value body;

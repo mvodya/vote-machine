@@ -284,7 +284,7 @@ export function Results({
                     aria-hidden="true"
                   >
                     <div
-                      className="h-full rounded-full bg-ink"
+                      className="h-full rounded-full bg-primary"
                       style={{width: `${option.percent}%`}}
                     />
                   </div>

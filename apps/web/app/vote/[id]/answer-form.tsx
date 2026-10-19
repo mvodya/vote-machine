@@ -1,4 +1,5 @@
 'use client';
+import {playSound} from '../../../lib/audio';
 import {useId, useRef, useState, type FormEvent} from 'react';
 import {Check, SkipForward} from 'lucide-react';
 import {formatTime, localTimeZone} from '../../../lib/time';
@@ -129,6 +130,7 @@ export function AnswerForm({
       )
         throw new Error();
       pending.current = null;
+      playSound('submit', `submit:${crypto.randomUUID()}`);
       onSaved();
     } catch {
       setError('Не удалось подтвердить сохранение, попробуйте отправить снова');

@@ -1,7 +1,9 @@
 'use client';
+import {RoomExperience} from '../../../components/room-experience';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import Link from 'next/link';
 import {Brand} from '../../../components/brand';
+import {Preferences} from '../../../components/preferences';
 import {Panel} from '../../../components/ui/panel';
 import {Button} from '../../../components/ui/button';
 import {ParticipantJourney} from './journey';
@@ -96,52 +98,62 @@ export default function VotingEntry({id}: {id: string}) {
     return () => controller.abort();
   }, [id, attempt]);
   return (
-    <main className="min-h-svh bg-page px-4 py-6 text-ink">
-      <div className="mx-auto max-w-5xl">
-        <Link href="/" aria-label="На главную">
-          <Brand />
-        </Link>
-        {state === 'loading' && (
-          <p role="status" className="mt-8">
-            Проверяем ссылку…
-          </p>
-        )}
-        {state === 'denied' && (
-          <Panel className="mt-8">
-            <h1 className="text-2xl font-semibold">Ссылка недействительна</h1>
-            <p className="mt-4 text-sm text-muted">
-              Запросите действующую ссылку у администратора
+    <RoomExperience
+      id={id}
+      admin={false}
+      active={state === 'ready'}
+      onDenied={denyAccess}
+    >
+      <main className="min-h-svh bg-page px-4 py-6 text-ink">
+        <div className="mx-auto max-w-5xl">
+          <header className="flex items-center justify-between gap-3">
+            <Link href="/" aria-label="На главную">
+              <Brand />
+            </Link>
+            <Preferences />
+          </header>
+          {state === 'loading' && (
+            <p role="status" className="mt-8">
+              Проверяем ссылку…
             </p>
-          </Panel>
-        )}
-        {state === 'error' && (
-          <Panel className="mt-8">
-            <h1 className="text-2xl font-semibold">
-              Не удалось открыть комнату
-            </h1>
-            <Button
-              className="mt-5"
-              onClick={() => setAttempt((value) => value + 1)}
-            >
-              Попробовать снова
-            </Button>
-          </Panel>
-        )}
-        {state === 'ready' && participant && (
-          <>
-            <h1 className="mt-8 text-2xl font-semibold">
-              {participant.roomName}
-            </h1>
-            <p className="mt-3 text-sm text-muted">
-              {participant.name} ·{' '}
-              {participant.mode === 'personal'
-                ? 'Персональная ссылка'
-                : 'Многоразовая ссылка'}
-            </p>
-            <ParticipantJourney linkId={id} onDenied={denyAccess} />
-          </>
-        )}
-      </div>
-    </main>
+          )}
+          {state === 'denied' && (
+            <Panel className="mt-8">
+              <h1 className="text-2xl font-semibold">Ссылка недействительна</h1>
+              <p className="mt-4 text-sm text-muted">
+                Запросите действующую ссылку у администратора
+              </p>
+            </Panel>
+          )}
+          {state === 'error' && (
+            <Panel className="mt-8">
+              <h1 className="text-2xl font-semibold">
+                Не удалось открыть комнату
+              </h1>
+              <Button
+                className="mt-5"
+                onClick={() => setAttempt((value) => value + 1)}
+              >
+                Попробовать снова
+              </Button>
+            </Panel>
+          )}
+          {state === 'ready' && participant && (
+            <>
+              <h1 className="mt-8 text-2xl font-semibold">
+                {participant.roomName}
+              </h1>
+              <p className="mt-3 text-sm text-muted">
+                {participant.name} ·{' '}
+                {participant.mode === 'personal'
+                  ? 'Персональная ссылка'
+                  : 'Многоразовая ссылка'}
+              </p>
+              <ParticipantJourney linkId={id} onDenied={denyAccess} />
+            </>
+          )}
+        </div>
+      </main>
+    </RoomExperience>
   );
 }

@@ -35,7 +35,7 @@ export function ChoiceField({
         checked={checked}
         disabled={disabled}
         onChange={onChange}
-        className="mt-[calc(0.75rem+0.25rem)] size-5 shrink-0 accent-ink focus-visible:outline-2 focus-visible:outline-offset-3"
+        className="mt-[calc(0.75rem+0.25rem)] size-5 shrink-0 accent-primary focus-visible:outline-2 focus-visible:outline-offset-3"
       />
       <div className="min-w-0 flex-1">
         <label htmlFor={id} className="block cursor-pointer">

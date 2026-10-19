@@ -61,7 +61,7 @@ export function Help({
         <span
           id={id}
           role="tooltip"
-          className={`absolute top-full ${align === 'start' ? 'left-0' : 'right-0'} z-30 mt-2 block w-64 max-w-[calc(100vw-3rem)] rounded-xl border border-border bg-white p-4 whitespace-normal text-left text-xs leading-5 font-normal break-words text-ink shadow-lg`}
+          className={`absolute top-full ${align === 'start' ? 'left-0' : 'right-0'} z-30 mt-2 block w-64 max-w-[calc(100vw-3rem)] rounded-xl border border-border bg-panel p-4 whitespace-normal text-left text-xs leading-5 font-normal break-words text-ink shadow-lg`}
         >
           {children}
         </span>

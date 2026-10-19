@@ -88,7 +88,8 @@ export function ExpectedLinks({
         </Button>
       </div>
       <p className="text-xs text-muted">
-        Многоразовые и безымянные ручные ответы не заменяют выбранных участников, завершение закроет прием всех ответов
+        Многоразовые и безымянные ручные ответы не заменяют выбранных
+        участников, завершение закроет прием всех ответов
       </p>
       <div className="max-h-72 space-y-2 overflow-y-auto">
         {links.map((link) => (

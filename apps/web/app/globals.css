@@ -1,19 +1,43 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-page: #f6f7f1;
-  --color-surface: #fbfcf8;
-  --color-accent: #e9eedf;
-  --color-ink: #183e35;
-  --color-muted: #718073;
-  --color-border: #dce1d6;
-  --color-success-ink: #245442;
-  --color-success-bg: #e7f1dc;
-  --color-error-ink: #852b24;
-  --color-error-bg: #fce9e1;
+@theme inline {
+  --color-page: var(--app-page);
+  --color-panel: var(--app-panel);
+  --color-primary: var(--app-primary);
+  --color-on-primary: var(--app-on-primary);
+  --color-surface: var(--app-surface);
+  --color-accent: var(--app-accent);
+  --color-selected: var(--app-selected);
+  --color-ink: var(--app-ink);
+  --color-muted: var(--app-muted);
+  --color-border: var(--app-border);
+  --color-success-ink: var(--app-success-ink);
+  --color-success-bg: var(--app-success-bg);
+  --color-error-ink: var(--app-error-ink);
+  --color-error-bg: var(--app-error-bg);
+  --color-warning-ink: var(--app-warning-ink);
+  --color-warning-bg: var(--app-warning-bg);
   --animate-hourglass-turn: hourglass-turn 4s infinite;
   --animate-deadline-blink: deadline-blink 600ms steps(1, end) infinite;
   --font-sans: Arial, Helvetica, sans-serif;
+}
+:root {
+  --app-page: color-mix(in oklab, var(--app-primary) 4%, #fafbf8);
+  --app-panel: color-mix(in oklab, var(--app-primary) 1.5%, #ffffff);
+  --app-primary: var(--brand-light, #245442);
+  --app-on-primary: #ffffff;
+  --app-surface: color-mix(in oklab, var(--app-primary) 2.5%, #ffffff);
+  --app-accent: color-mix(in oklab, var(--app-primary) 12%, var(--app-surface));
+  --app-selected: color-mix(in oklab, var(--app-primary) 24%, var(--app-panel));
+  --app-ink: color-mix(in oklab, var(--app-primary) 30%, #192229);
+  --app-muted: color-mix(in oklab, var(--app-primary) 15%, #626e72);
+  --app-border: color-mix(in oklab, var(--app-primary) 22%, #e1e6e7);
+  --app-success-ink: #245442;
+  --app-success-bg: #e7f1dc;
+  --app-error-ink: #852b24;
+  --app-error-bg: #fce9e1;
+  --app-warning-ink: #854d0e;
+  --app-warning-bg: #fef3c7;
 }
 
 /* Pause upright while the sand would be falling */
@@ -41,4 +65,94 @@
   100% {
     opacity: 0.25;
   }
+}
+
+:root {
+  color-scheme: light;
+}
+body {
+  margin: 0;
+}
+.theme-sun {
+  display: none;
+}
+:root[data-theme='dark'] .theme-sun {
+  display: block;
+}
+:root[data-theme='dark'] .theme-moon {
+  display: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .theme-changing *,
+  .theme-changing *::before,
+  .theme-changing *::after {
+    transition-property:
+      background-color, color, border-color, fill, stroke, box-shadow;
+    transition-duration: 300ms;
+    transition-timing-function: ease;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --app-page: color-mix(in oklab, var(--app-primary) 6%, #0b1014);
+  --app-surface: color-mix(in oklab, var(--app-primary) 8%, #11171b);
+  --app-panel: color-mix(in oklab, var(--app-primary) 10%, #171e23);
+  --app-ink: color-mix(in oklab, var(--app-primary) 10%, #eef2f5);
+  --app-muted: color-mix(in oklab, var(--app-primary) 18%, #a8b3ba);
+  --app-border: color-mix(in oklab, var(--app-primary) 24%, #28343c);
+  --app-primary: var(--brand-dark, #81d5a8);
+  --app-on-primary: #111b20;
+  --app-success-ink: #9edbb6;
+  --app-success-bg: #203d2c;
+  --app-error-ink: #ffb4a9;
+  --app-error-bg: #482a27;
+  --app-warning-ink: #edcd7a;
+  --app-warning-bg: #40351c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --app-page: color-mix(in oklab, var(--app-primary) 6%, #0b1014);
+    --app-surface: color-mix(in oklab, var(--app-primary) 8%, #11171b);
+    --app-panel: color-mix(in oklab, var(--app-primary) 10%, #171e23);
+    --app-ink: color-mix(in oklab, var(--app-primary) 10%, #eef2f5);
+    --app-muted: color-mix(in oklab, var(--app-primary) 18%, #a8b3ba);
+    --app-border: color-mix(in oklab, var(--app-primary) 24%, #28343c);
+    --app-primary: var(--brand-dark, #81d5a8);
+    --app-on-primary: #111b20;
+    --app-success-ink: #9edbb6;
+    --app-success-bg: #203d2c;
+    --app-error-ink: #ffb4a9;
+    --app-error-bg: #482a27;
+    --app-warning-ink: #edcd7a;
+    --app-warning-bg: #40351c;
+  }
+}
+:root[data-accent='green'] {
+  --brand-light: #245442;
+  --brand-dark: #81d5a8;
+}
+:root[data-accent='blue'] {
+  --brand-light: #2458a4;
+  --brand-dark: #90baff;
+}
+:root[data-accent='violet'] {
+  --brand-light: #6840a4;
+  --brand-dark: #c6a3f5;
+}
+:root[data-accent='rose'] {
+  --brand-light: #a33461;
+  --brand-dark: #ffa1c3;
+}
+:root[data-accent='orange'] {
+  --brand-light: #a34615;
+  --brand-dark: #ffba8f;
+}
+:root[data-accent='amber'] {
+  --brand-light: #8b5c0c;
+  --brand-dark: #e8cc79;
+}
+:root[data-accent='teal'] {
+  --brand-light: #14676b;
+  --brand-dark: #7ad3d5;
 }

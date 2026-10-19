@@ -28,7 +28,7 @@ export function Tabs({
 }) {
   return (
     <div
-      className="flex min-w-0 gap-1 rounded-2xl border border-border bg-white p-1.5 shadow-xs"
+      className="flex min-w-0 gap-1 rounded-2xl border border-border bg-panel p-1.5 shadow-xs"
       role="tablist"
       aria-label={label}
     >

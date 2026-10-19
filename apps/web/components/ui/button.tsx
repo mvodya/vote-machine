@@ -2,18 +2,20 @@ import type {ComponentProps, ReactNode} from 'react';
 
 // Shared button styles
 const variants = {
+  swatch:
+    'size-10 min-h-10 border border-border bg-panel p-1.5 text-ink hover:border-primary aria-pressed:border-primary aria-pressed:ring-2 aria-pressed:ring-primary/30',
   positive:
-    'min-h-10 border border-green-700/20 bg-green-50 px-3 py-2 text-sm text-green-800 hover:bg-green-100',
+    'min-h-10 border border-success-ink/20 bg-success-bg px-3 py-2 text-sm text-success-ink hover:bg-success-bg/80',
   negative:
-    'min-h-10 border border-red-700/20 bg-red-50 px-3 py-2 text-sm text-red-800 hover:bg-red-100',
+    'min-h-10 border border-error-ink/20 bg-error-bg px-3 py-2 text-sm text-error-ink hover:bg-error-bg/80',
   waiting:
-    'min-h-10 border border-amber-700/20 bg-amber-50 px-3 py-2 text-sm text-amber-800',
+    'min-h-10 border border-warning-ink/20 bg-warning-bg px-3 py-2 text-sm text-warning-ink',
   primary:
-    'min-h-11 border border-ink bg-ink px-4 py-2.5 text-sm text-white shadow-xs hover:bg-ink/90',
+    'min-h-11 border border-ink bg-primary px-4 py-2.5 text-sm text-on-primary shadow-xs hover:bg-primary/90',
   secondary:
-    'min-h-11 border border-border bg-white px-4 py-2.5 text-sm text-ink shadow-xs hover:border-ink/25 hover:bg-page',
+    'min-h-11 border border-border bg-panel px-4 py-2.5 text-sm text-ink shadow-xs hover:border-ink/25 hover:bg-page',
   switch:
-    'min-h-10 flex-1 px-3 py-2.5 text-sm text-ink/60 hover:text-ink aria-pressed:bg-white aria-pressed:text-ink aria-pressed:shadow-xs',
+    'min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-ink/60 hover:text-ink aria-pressed:border-primary/35 aria-pressed:bg-selected aria-pressed:text-ink aria-pressed:shadow-xs',
   ghost: 'min-h-10 p-2.5 text-sm text-ink/65 hover:bg-ink/5 hover:text-ink',
   tab: 'min-w-0 flex-1 flex-col px-1.5 py-3 text-[11px] text-ink/60 hover:bg-page aria-selected:bg-accent aria-selected:text-ink sm:flex-none sm:flex-row sm:px-5 sm:text-sm',
 };

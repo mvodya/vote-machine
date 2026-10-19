@@ -45,14 +45,14 @@ export function ConfirmDialog({
         event.preventDefault();
         if (!busy) onClose();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-border bg-white p-6 text-ink shadow-xl backdrop:bg-ink/25"
+      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-border bg-panel p-6 text-ink shadow-xl backdrop:bg-black/50"
     >
       <h2 id={heading} className="text-xl font-semibold">
         {title}
       </h2>
       <p className="mt-3 text-sm leading-6 text-muted">{description}</p>
       {error && (
-        <p role="alert" className="mt-3 text-sm text-red-700">
+        <p role="alert" className="mt-3 text-sm text-error-ink">
           {error}
         </p>
       )}

@@ -63,7 +63,7 @@ test('home uses the desktop split and a compact mobile entry', async ({
     expect(right!.x).toBeCloseTo(left!.width, 1);
   } else {
     await expect(story).toBeHidden();
-    await expect(page.locator('.mobile-brand')).toBeVisible();
+    await expect(page.locator('main > header')).toBeVisible();
   }
   await page.getByRole('button', {name: 'Войти', exact: true}).click();
   await expect(page.getByLabel('Ссылка на комнату')).toBeVisible();

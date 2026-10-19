@@ -20,7 +20,7 @@ export function CheckboxField({
         <input
           id={id}
           type="checkbox"
-          className="mt-1 size-4 shrink-0 accent-ink focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ink disabled:opacity-50"
+          className="mt-1 size-4 shrink-0 accent-primary focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ink disabled:opacity-50"
           aria-describedby={fieldDescription(id, hint, error, describedBy)}
           aria-invalid={error ? true : undefined}
           {...props}

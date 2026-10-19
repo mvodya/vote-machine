@@ -5,7 +5,7 @@ import {useRouter} from 'next/navigation';
 import CreateRoom from './create-room';
 import {roomDestination} from '../lib/rooms';
 import Link from 'next/link';
-import {ArrowUpRight, Trash2} from 'lucide-react';
+import {ArrowUpRight, Trash2, Plus, LogIn} from 'lucide-react';
 import {Button} from '../components/ui/button';
 import {TextField} from '../components/ui/text-field';
 import {Form} from '../components/ui/form';
@@ -86,6 +86,7 @@ export default function RoomEntry() {
       >
         <Button
           variant="switch"
+          startIcon={<Plus />}
           aria-pressed={mode === 'create'}
           onClick={() => {
             setMode('create');
@@ -96,6 +97,7 @@ export default function RoomEntry() {
         </Button>
         <Button
           variant="switch"
+          startIcon={<LogIn />}
           aria-pressed={mode === 'join'}
           onClick={() => setMode('join')}
         >
@@ -121,7 +123,7 @@ export default function RoomEntry() {
               {rooms.map((room) => (
                 <li
                   key={room.id}
-                  className="flex min-w-0 items-center gap-1 rounded-xl border border-border bg-white p-1 transition-colors hover:border-ink/25"
+                  className="flex min-w-0 items-center gap-1 rounded-xl border border-border bg-panel p-1 transition-colors hover:border-ink/25"
                 >
                   <Link
                     className="min-w-0 flex-1 truncate rounded-lg px-3 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ink"

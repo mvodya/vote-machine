@@ -1,4 +1,5 @@
 'use client';
+import {useDeadlineSounds} from '../lib/use-deadline-sounds';
 import {useEffect, useState} from 'react';
 import {Hourglass} from 'lucide-react';
 import {formatTime, localTimeZone} from '../lib/time';
@@ -26,6 +27,7 @@ export function Countdown({
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
   }, []);
+  useDeadlineSounds(at && kind === 'close' ? [at] : []);
   if (!at || !Number.isFinite(Date.parse(at))) return null;
   const remaining = Math.max(0, Math.ceil((Date.parse(at) - now) / 1000));
   const urgent = kind === 'close' && remaining <= 60;
@@ -35,7 +37,7 @@ export function Countdown({
       role="timer"
       aria-label={kind === 'start' ? 'До открытия' : 'До закрытия'}
       title={formatTime(at, timeZone)}
-      className={`inline-flex items-center gap-1.5 text-xs tabular-nums ${kind === 'start' ? 'text-amber-700' : urgent ? 'text-error-ink' : 'text-muted'} ${ending ? 'motion-safe:animate-deadline-blink' : ''}`}
+      className={`inline-flex items-center gap-1.5 text-xs tabular-nums ${kind === 'start' ? 'text-warning-ink' : urgent ? 'text-error-ink' : 'text-muted'} ${ending ? 'motion-safe:animate-deadline-blink' : ''}`}
     >
       <Hourglass
         aria-hidden="true"
