@@ -144,3 +144,201 @@ test('dot waves animate behind the layout and stop for reduced motion', async ({
   });
   expect(errors).toEqual([]);
 });
+
+// Bands use separate directions and react only while the pointer moves
+test('five icon ribbons accelerate on contact and pause for reduced motion', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const bands = page.locator('[data-ribbon]');
+  await expect(bands).toHaveCount(5);
+  await expect
+    .poll(() =>
+      bands
+        .first()
+        .evaluate(
+          (element) => element.firstElementChild!.getAnimations().length,
+        ),
+    )
+    .toBe(1);
+  const directions = await bands.evaluateAll((elements) =>
+    elements.map(
+      (element) =>
+        (
+          element.firstElementChild!.getAnimations()[0].effect as KeyframeEffect
+        ).getTiming().direction,
+    ),
+  );
+  expect(directions).toEqual([
+    'normal',
+    'reverse',
+    'normal',
+    'reverse',
+    'normal',
+  ]);
+  const contact = await bands.evaluateAll((elements) => {
+    for (let index = 0; index < elements.length; index++) {
+      const box = elements[index].getBoundingClientRect();
+      const x = innerWidth * 0.25;
+      const y =
+        box.top +
+        box.height / 2 +
+        Math.tan(-Math.PI / 6) * (x - box.left - box.width / 2);
+      if (y > 120 && y < innerHeight - 180) return {index, x, y};
+    }
+    return null;
+  });
+  expect(contact).not.toBeNull();
+  await page.mouse.move(contact!.x - 15, contact!.y);
+  await page.mouse.move(contact!.x + 15, contact!.y, {steps: 3});
+  const speed = () =>
+    bands
+      .nth(contact!.index)
+      .evaluate(
+        (element) => element.firstElementChild!.getAnimations()[0].playbackRate,
+      );
+  await expect.poll(speed).toBeGreaterThan(1.1);
+  const boosted = await speed();
+  await expect.poll(speed).toBeLessThan(boosted);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await expect
+    .poll(() =>
+      bands.evaluateAll((elements) =>
+        elements.every(
+          (element) =>
+            element.firstElementChild!.getAnimations()[0].playState ===
+            'paused',
+        ),
+      ),
+    )
+    .toBe(true);
+  await expect(
+    page.getByRole('button', {name: 'Создать комнату', exact: true}),
+  ).toBeEnabled();
+});
+
+// The typing slot keeps its size while complete phrases are held and erased
+test('home caption types and changes phrases without moving the form', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/');
+  const caption = page.locator('[data-home-caption]');
+  const form = page.getByRole('region', {name: 'Создание комнаты и вход'});
+  const before = await form.boundingBox();
+  const slot = await caption.boundingBox();
+  await page.clock.runFor(2800);
+  await expect(caption).toHaveText('Система организации голосований');
+  await page.clock.runFor(3500);
+  await expect(caption).toHaveText('Система организации голосований');
+  await page.clock.runFor(5000);
+  await expect(caption).not.toHaveText('Система организации голосований');
+  expect(await form.boundingBox()).toEqual(before);
+  expect(await caption.boundingBox()).toEqual(slot);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await expect(caption).toHaveText('Система организации голосований');
+  await page.clock.runFor(15000);
+  await expect(caption).toHaveText('Система организации голосований');
+});
+
+// Crossing either end must keep the visible icons in the same positions
+test('ribbon copies meet at the exact repeat boundary in both directions', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const bands = page.locator('[data-ribbon]');
+  await expect
+    .poll(() =>
+      bands
+        .first()
+        .evaluate(
+          (element) => element.firstElementChild!.getAnimations().length,
+        ),
+    )
+    .toBe(1);
+  const jumps = await bands.evaluateAll((elements) =>
+    elements.map((band) => {
+      const track = band.firstElementChild as HTMLElement;
+      const animation = track.getAnimations()[0];
+      animation.pause();
+      animation.playbackRate = 4;
+      const duration = Number(animation.effect!.getTiming().duration);
+      const area = band.closest('[aria-hidden]')!.getBoundingClientRect();
+      // Compare only icons inside the clipped illustration
+      const points = () =>
+        Array.from(track.querySelectorAll('svg'))
+          .map((icon) => {
+            const box = icon.getBoundingClientRect();
+            return {
+              x: box.left + box.width / 2,
+              y: box.top + box.height / 2,
+              name: icon.getAttribute('class'),
+            };
+          })
+          .filter(
+            (point) =>
+              point.x > area.left + 30 &&
+              point.x < area.right - 30 &&
+              point.y > area.top + 30 &&
+              point.y < area.bottom - 30,
+          );
+      animation.currentTime = duration * 3 - 0.01;
+      const before = points();
+      animation.currentTime = duration * 3 + 0.01;
+      const after = points();
+      return {
+        count: before.length,
+        distance: Math.max(
+          0,
+          ...before.map((point) =>
+            Math.min(
+              ...after
+                .filter((other) => point.name === other.name)
+                .map((other) =>
+                  Math.hypot(point.x - other.x, point.y - other.y),
+                ),
+            ),
+          ),
+        ),
+      };
+    }),
+  );
+  for (const jump of jumps) {
+    expect(jump.count).toBeGreaterThan(0);
+    expect(jump.distance).toBeLessThan(0.1);
+  }
+});
+
+test('every page has a quiet footer with year and a real short revision', async ({
+  page,
+}) => {
+  for (const path of [
+    '/',
+    '/rooms/not-a-room',
+    '/vote/not-a-link',
+    '/page-not-found',
+  ]) {
+    await page.goto(path);
+    const footer = page.getByRole('contentinfo');
+    await expect(footer).toHaveText(
+      new RegExp(`^${new Date().getFullYear()} · Vote Machine · [a-f0-9]{7}$`),
+    );
+    await expect(footer).toHaveCSS('font-size', '10px');
+    await expect(footer).toHaveCSS('text-align', 'right');
+    await expect(footer).toHaveCSS('position', 'absolute');
+    const positions = await footer.evaluate((element) => ({
+      bottom: element.getBoundingClientRect().bottom,
+      page: document.body.getBoundingClientRect().bottom,
+      background: getComputedStyle(element).backgroundColor,
+      height: document.documentElement.scrollHeight,
+      mainHeight:
+        document.querySelector('main')?.getBoundingClientRect().height ??
+        innerHeight,
+    }));
+    expect(positions.page - positions.bottom).toBeCloseTo(8, 0);
+    expect(positions.background).toBe('rgba(0, 0, 0, 0)');
+    expect(positions.height).toBeLessThanOrEqual(
+      Math.ceil(Math.max(page.viewportSize()!.height, positions.mainHeight)),
+    );
+  }
+});

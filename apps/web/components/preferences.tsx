@@ -2,7 +2,7 @@
 import {useEffect, useState} from 'react';
 import {Moon, Sun, Volume2, VolumeX} from 'lucide-react';
 import {Button} from './ui/button';
-import {setSoundEnabled} from '../lib/audio';
+import {prepareSounds, setSoundEnabled, unlockSound} from '../lib/audio';
 let themeTimer: ReturnType<typeof setTimeout> | undefined;
 // Only changes after the first paint need a transition
 function applyTheme(next: 'light' | 'dark') {
@@ -19,6 +19,9 @@ function applyTheme(next: 'light' | 'dark') {
 export function Preferences() {
   const [sound, setSound] = useState(false);
   useEffect(() => {
+    void prepareSounds();
+    window.addEventListener('pointerdown', unlockSound);
+    window.addEventListener('keydown', unlockSound);
     const media = matchMedia('(prefers-color-scheme: dark)');
     const sync = () => {
       try {
@@ -45,6 +48,8 @@ export function Preferences() {
     media.addEventListener('change', sync);
     window.addEventListener('storage', sync);
     return () => {
+      window.removeEventListener('pointerdown', unlockSound);
+      window.removeEventListener('keydown', unlockSound);
       media.removeEventListener('change', sync);
       window.removeEventListener('storage', sync);
     };

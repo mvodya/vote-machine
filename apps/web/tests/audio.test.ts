@@ -1,38 +1,121 @@
-import {expect, it, vi} from 'vitest';
-// Keep actual audio out of unit tests, browser files have separate checks
-it('keeps audio off by default and never replays a repeated or muted event', async () => {
-  vi.resetModules();
-  const instances: {
-    src: string;
-    play: ReturnType<typeof vi.fn>;
-    pause: ReturnType<typeof vi.fn>;
+import {beforeEach, expect, it, vi} from 'vitest';
+
+// Use decoded sample stubs without a speaker or browser gesture
+function audioEngine() {
+  const sources: {
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
   }[] = [];
-  class Player {
-    play = vi.fn(() => Promise.resolve());
-    pause = vi.fn();
-    currentTime = 0;
-    volume = 1;
-    constructor(public src: string) {
-      instances.push(this);
-    }
+  class Engine {
+    state = 'suspended';
+    destination = {};
+    decodeAudioData = vi.fn(async () => ({duration: 1}));
+    resume = vi.fn(async () => {
+      this.state = 'running';
+    });
+    createGain = vi.fn(() => ({
+      gain: {value: 1},
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    }));
+    createBufferSource = vi.fn(() => {
+      const source = {
+        buffer: null,
+        onended: null,
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+      };
+      sources.push(source);
+      return source;
+    });
   }
-  vi.stubGlobal('Audio', Player);
-  const {playSound, setSoundEnabled} = await import('../lib/audio');
+  const engine = new Engine();
+  vi.stubGlobal(
+    'AudioContext',
+    vi.fn(function () {
+      return engine;
+    }),
+  );
+  const fetcher = vi.fn<
+    (url: string, options?: RequestInit) => Promise<Response>
+  >(async () => new Response(new Uint8Array([1, 2, 3])));
+  vi.stubGlobal('fetch', fetcher);
+  return {engine, sources, fetcher};
+}
+beforeEach(() => {
+  vi.resetModules();
+  vi.unstubAllGlobals();
+});
+
+it('downloads and decodes all sounds while muted and shares pending loads', async () => {
+  const {engine, sources, fetcher} = audioEngine();
+  const {prepareSounds} = await import('../lib/audio');
+  await Promise.all([prepareSounds(), prepareSounds()]);
+  await prepareSounds();
+  expect(fetcher).toHaveBeenCalledTimes(6);
+  expect(fetcher.mock.calls.map((call) => call[0])).toEqual(
+    expect.arrayContaining(['/sounds/open.mp3', '/sounds/submit.mp3']),
+  );
+  expect(engine.decodeAudioData).toHaveBeenCalledTimes(6);
+  expect(engine.resume).not.toHaveBeenCalled();
+  expect(sources).toHaveLength(0);
+});
+
+it('starts ready samples without fetch or decode and never replays muted events', async () => {
+  const {engine, sources, fetcher} = audioEngine();
+  const {prepareSounds, playSound, setSoundEnabled} =
+    await import('../lib/audio');
+  await prepareSounds();
   playSound('open', 'muted');
-  expect(instances).toHaveLength(0);
+  expect(sources).toHaveLength(0);
   setSoundEnabled(true, true);
-  expect(instances).toHaveLength(6);
-  const open = instances.find((item) => item.src.endsWith('/open.wav'))!;
-  expect(open.play).toHaveBeenCalledTimes(1);
+  await Promise.resolve();
+  expect(sources).toHaveLength(1);
   playSound('open', 'muted');
-  expect(open.play).toHaveBeenCalledTimes(1);
   playSound('open', 'new');
   playSound('open', 'new');
-  expect(open.play).toHaveBeenCalledTimes(2);
+  playSound('answer', 'overlap');
+  expect(sources).toHaveLength(3);
+  expect(sources.every((source) => source.start.mock.calls.length === 1)).toBe(
+    true,
+  );
+  expect(fetcher).toHaveBeenCalledTimes(6);
+  expect(engine.decodeAudioData).toHaveBeenCalledTimes(6);
   setSoundEnabled(false);
-  expect(open.pause).toHaveBeenCalled();
+  expect(sources.every((source) => source.stop.mock.calls.length === 1)).toBe(
+    true,
+  );
   playSound('answer', 'late');
-  expect(
-    instances.find((item) => item.src.endsWith('/answer.wav'))!.play,
-  ).not.toHaveBeenCalled();
+  expect(sources).toHaveLength(3);
+});
+
+it('retries a failed file without replaying an event from before it was ready', async () => {
+  const {fetcher, sources} = audioEngine();
+  fetcher.mockRejectedValueOnce(new Error('Offline'));
+  const {prepareSounds, playSound, setSoundEnabled} =
+    await import('../lib/audio');
+  await prepareSounds();
+  playSound('open', 'missed');
+  await prepareSounds();
+  expect(fetcher).toHaveBeenCalledTimes(7);
+  setSoundEnabled(true);
+  await Promise.resolve();
+  playSound('open', 'missed');
+  expect(sources).toHaveLength(0);
+  playSound('open', 'fresh');
+  expect(sources).toHaveLength(1);
+});
+
+it('keeps the page usable when browser audio is unavailable', async () => {
+  vi.stubGlobal('AudioContext', undefined);
+  const {prepareSounds, playSound, setSoundEnabled} =
+    await import('../lib/audio');
+  await prepareSounds();
+  expect(() => {
+    setSoundEnabled(true, true);
+    playSound('open', 'event');
+    setSoundEnabled(false);
+  }).not.toThrow();
 });

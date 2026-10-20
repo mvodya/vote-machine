@@ -14,7 +14,10 @@ RUN --mount=type=cache,id=vote-machine-pnpm,target=/pnpm/store \
 # For building WEB app
 FROM deps AS build
 COPY apps/web/ apps/web/
-RUN pnpm --filter @vote-machine/web build
+ARG GIT_COMMIT
+# Read public revision metadata during build, do not copy Git into the image
+RUN --mount=type=bind,source=.,target=/source \
+    BUILD_SOURCE_ROOT=/source pnpm --filter @vote-machine/web build
 # Standalone tracing keeps packages but omits direct links used by the worker
 RUN mkdir -p apps/web/.next/standalone/apps/web/node_modules/@aws-sdk \
     && cp -P apps/web/node_modules/sharp apps/web/.next/standalone/apps/web/node_modules/ \

@@ -1,6 +1,16 @@
 import type {NextConfig} from 'next';
+import {fileURLToPath} from 'node:url';
+import {buildCommit} from './lib/server/build-version.mjs';
 
 const config: NextConfig = {
+  // Resolve once while building, the runtime image does not need Git
+  env: {
+    NEXT_PUBLIC_GIT_COMMIT: buildCommit(
+      process.env.BUILD_SOURCE_ROOT ??
+        fileURLToPath(new URL('../..', import.meta.url)),
+      process.env.GIT_COMMIT ?? process.env.GITHUB_SHA,
+    ),
+  },
   // Build a server for the web container
   output: 'standalone',
   // The cleanup worker shares these server packages

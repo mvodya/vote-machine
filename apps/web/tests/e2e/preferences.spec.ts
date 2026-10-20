@@ -3,17 +3,50 @@ import {votingFixture} from './voting-helpers';
 // Record audio calls without depending on speakers on the test machine
 async function recordSounds(context: BrowserContext) {
   await context.addInitScript(() => {
-    const scope = window as unknown as {sounds: string[]; Audio: unknown};
+    const scope = window as unknown as {
+      sounds: string[];
+      decodedSounds: string[];
+    };
     scope.sounds = [];
-    scope.Audio = class {
-      currentTime = 0;
-      volume = 1;
-      constructor(public src: string) {}
-      play() {
-        scope.sounds.push(this.src);
-        return Promise.resolve();
+    scope.decodedSounds = [];
+    const bytes = new WeakMap<ArrayBuffer, string>();
+    const samples = new WeakMap<AudioBuffer, string>();
+    const fetcher = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await fetcher(...args);
+      const url = new URL(response.url);
+      if (url.pathname.startsWith('/sounds/')) {
+        const read = response.arrayBuffer.bind(response);
+        response.arrayBuffer = async () => {
+          const data = await read();
+          bytes.set(data, url.pathname);
+          return data;
+        };
       }
-      pause() {}
+      return response;
+    };
+    // Keep the real decoder and output path, record only named sample starts
+    const decode = AudioContext.prototype.decodeAudioData;
+    AudioContext.prototype.decodeAudioData = function (data) {
+      const path = bytes.get(data);
+      return decode.call(this, data).then((buffer) => {
+        if (path) {
+          samples.set(buffer, path);
+          scope.decodedSounds.push(path);
+        }
+        return buffer;
+      });
+    };
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (
+      when = 0,
+      offset = 0,
+      duration?: number,
+    ) {
+      const path = this.buffer && samples.get(this.buffer);
+      if (path) scope.sounds.push(path);
+      if (duration === undefined) start.call(this, when, offset);
+      else start.call(this, when, offset, duration);
     };
   });
 }
@@ -153,6 +186,24 @@ test('room palette reaches a dark participant and sounds follow new events only'
         ),
       ).toBeLessThan(2);
     }
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as {decodedSounds: string[]}).decodedSounds
+              .length,
+        ),
+      )
+      .toBe(6);
+    await expect
+      .poll(() =>
+        guest.evaluate(
+          () =>
+            (window as unknown as {decodedSounds: string[]}).decodedSounds
+              .length,
+        ),
+      )
+      .toBe(6);
     expect(await sounds(page)).toEqual([]);
     expect(await sounds(guest)).toEqual([]);
     await page
@@ -169,9 +220,9 @@ test('room palette reaches a dark participant and sounds follow new events only'
     await guest
       .getByRole('button', {name: 'Отправить ответ', exact: true})
       .click();
-    await expect.poll(() => sounds(guest)).toContain('/sounds/submit.wav');
-    await expect.poll(() => sounds(page)).toContain('/sounds/answer.wav');
-    expect(await sounds(guest)).not.toContain('/sounds/answer.wav');
+    await expect.poll(() => sounds(guest)).toContain('/sounds/submit.mp3');
+    await expect.poll(() => sounds(page)).toContain('/sounds/answer.mp3');
+    expect(await sounds(guest)).not.toContain('/sounds/answer.mp3');
     const response = await page.request.post(
       `/api/rooms/${f.room.id}/questions/${f.question.id}/lifecycle`,
       {
@@ -180,8 +231,8 @@ test('room palette reaches a dark participant and sounds follow new events only'
       },
     );
     expect(response.status()).toBe(200);
-    await expect.poll(() => sounds(page)).toContain('/sounds/close.wav');
-    await expect.poll(() => sounds(guest)).toContain('/sounds/close.wav');
+    await expect.poll(() => sounds(page)).toContain('/sounds/close.mp3');
+    await expect.poll(() => sounds(guest)).toContain('/sounds/close.mp3');
     const closed = (await response.json()).question;
     const reopened = await page.request.post(
       `/api/rooms/${f.room.id}/questions/${f.question.id}/lifecycle`,
@@ -191,8 +242,8 @@ test('room palette reaches a dark participant and sounds follow new events only'
       },
     );
     expect(reopened.status()).toBe(200);
-    await expect.poll(() => sounds(page)).toContain('/sounds/open.wav');
-    await expect.poll(() => sounds(guest)).toContain('/sounds/open.wav');
+    await expect.poll(() => sounds(page)).toContain('/sounds/open.mp3');
+    await expect.poll(() => sounds(guest)).toContain('/sounds/open.mp3');
     await guest.reload();
     await expect(
       guest.getByRole('button', {name: 'Выключить звуки', exact: true}),
@@ -220,7 +271,7 @@ test('room palette reaches a dark participant and sounds follow new events only'
       'answer',
       'submit',
     ]) {
-      const audio = await page.request.get(`/sounds/${kind}.wav`);
+      const audio = await page.request.get(`/sounds/${kind}.mp3`);
       expect(audio.status()).toBe(200);
       expect((await audio.body()).length).toBeGreaterThan(44);
     }
@@ -253,20 +304,28 @@ test('room deadline alarms work outside the question tab', async ({page}) => {
     .getByRole('tablist', {name: 'Разделы комнаты'})
     .getByRole('tab', {name: 'Настройки', exact: true})
     .click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as {decodedSounds: string[]}).decodedSounds.length,
+      ),
+    )
+    .toBe(6);
   await page.getByRole('button', {name: 'Включить звуки', exact: true}).click();
   await page.evaluate(
     () => ((window as unknown as {sounds: string[]}).sounds = []),
   );
   await page.clock.runFor(1800);
-  await expect.poll(() => sounds(page)).toContain('/sounds/minute.wav');
+  await expect.poll(() => sounds(page)).toContain('/sounds/minute.mp3');
   await page.clock.fastForward(50000);
-  await expect.poll(() => sounds(page)).toContain('/sounds/tick.wav');
+  await expect.poll(() => sounds(page)).toContain('/sounds/tick.mp3');
   await page.clock.runFor(1100);
   expect(
-    (await sounds(page)).filter((name) => name.endsWith('/tick.wav')).length,
+    (await sounds(page)).filter((name) => name.endsWith('/tick.mp3')).length,
   ).toBeGreaterThanOrEqual(2);
   expect(
-    (await sounds(page)).filter((name) => name.endsWith('/minute.wav')),
+    (await sounds(page)).filter((name) => name.endsWith('/minute.mp3')),
   ).toHaveLength(1);
 });
 
@@ -366,7 +425,9 @@ test('all seven accents tint backgrounds and borders in both themes', async ({
           document.documentElement.dataset.accent = accent;
           // Flush styles before finishing color transitions
           input.getBoundingClientRect();
-          for (const animation of document.getAnimations()) animation.finish();
+          for (const animation of document.getAnimations())
+            if (animation.effect?.getTiming().iterations !== Infinity)
+              animation.finish();
           const field = getComputedStyle(input),
             body = getComputedStyle(document.body),
             main = getComputedStyle(document.querySelector('main')!);
@@ -384,4 +445,27 @@ test('all seven accents tint backgrounds and borders in both themes', async ({
   for (const theme of palettes)
     for (const key of ['page', 'surface', 'panel', 'border', 'text'] as const)
       expect(new Set(theme.map((palette) => palette[key])).size).toBe(7);
+});
+
+// Ready samples must be silent until the user enables sound
+test('all compressed sounds decode before enabling sound', async ({page}) => {
+  await recordSounds(page.context());
+  let downloads = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/sounds/')) downloads++;
+  });
+  await page.goto('/');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as {decodedSounds: string[]}).decodedSounds.length,
+      ),
+    )
+    .toBe(6);
+  expect(downloads).toBe(6);
+  expect(await sounds(page)).toEqual([]);
+  await page.getByRole('button', {name: 'Включить звуки', exact: true}).click();
+  await expect.poll(() => sounds(page)).toContain('/sounds/open.mp3');
+  expect(downloads).toBe(6);
 });

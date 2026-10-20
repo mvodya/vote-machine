@@ -1,4 +1,12 @@
-.git
+# Keep only public revision refs available to the web build
+.git/**
+!.git/HEAD
+!.git/packed-refs
+!.git/commondir
+!.git/refs
+.git/refs/**
+!.git/refs/heads
+!.git/refs/heads/**
 ToR.md
 AGENTS.md
 README.md
