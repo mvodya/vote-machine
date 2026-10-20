@@ -88,3 +88,59 @@ test('home uses the desktop split and a compact mobile entry', async ({
   ).toHaveCount(0);
   await page.screenshot({path: info.outputPath('home.png'), fullPage: true});
 });
+
+// Decorative motion must never block entry or ignore reduced motion
+test('dot waves animate behind the layout and stop for reduced motion', async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  const canvas = page.locator('main canvas');
+  await expect(canvas).toBeVisible();
+  await expect
+    .poll(() =>
+      canvas.evaluate((element) => (element as HTMLCanvasElement).width),
+    )
+    .toBeGreaterThan(0);
+  const painted = await canvas.evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const pixels = canvas
+      .getContext('2d')!
+      .getImageData(0, 0, canvas.width, canvas.height).data;
+    return pixels.some((value, index) => index % 4 === 3 && value > 0);
+  });
+  expect(painted).toBe(true);
+  const snapshot = () =>
+    canvas.evaluate((element) => (element as HTMLCanvasElement).toDataURL());
+  const first = await snapshot();
+  await expect.poll(snapshot).not.toBe(first);
+  const bounds = await canvas.boundingBox();
+  const screen = page.viewportSize()!;
+  expect(bounds!.width).toBeCloseTo(
+    screen.width * (info.project.name === 'desktop' ? 0.6 : 1),
+    0,
+  );
+  await page.mouse.move(screen.width * 0.25, screen.height * 0.65);
+  await page.getByLabel('Название комнаты', {exact: true}).fill('Wave room');
+  await expect(page.getByLabel('Название комнаты', {exact: true})).toHaveValue(
+    'Wave room',
+  );
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  // Wait for the preference listener to draw its still frame
+  await page.waitForTimeout(100);
+  const still = await snapshot();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(150);
+  expect(await snapshot()).toBe(still);
+  await page
+    .getByRole('button', {name: 'Переключить тему', exact: true})
+    .click();
+  await expect.poll(snapshot).not.toBe(still);
+  await page.screenshot({
+    path: info.outputPath('dot-waves.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  expect(errors).toEqual([]);
+});
