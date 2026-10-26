@@ -118,10 +118,7 @@ test('dot waves animate behind the layout and stop for reduced motion', async ({
   await expect.poll(snapshot).not.toBe(first);
   const bounds = await canvas.boundingBox();
   const screen = page.viewportSize()!;
-  expect(bounds!.width).toBeCloseTo(
-    screen.width * (info.project.name === 'desktop' ? 0.6 : 1),
-    0,
-  );
+  expect(bounds!.width).toBeCloseTo(screen.width, 0);
   await page.mouse.move(screen.width * 0.25, screen.height * 0.65);
   await page.getByLabel('Название комнаты', {exact: true}).fill('Wave room');
   await expect(page.getByLabel('Название комнаты', {exact: true})).toHaveValue(

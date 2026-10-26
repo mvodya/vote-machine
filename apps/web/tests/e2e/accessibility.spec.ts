@@ -6,6 +6,8 @@ import {votingFixture} from './voting-helpers';
 async function scan(page: Page) {
   const result = await new AxeBuilder({page})
     .exclude('footer')
+    // The owner requested a fixed phone scale
+    .disableRules(['meta-viewport'])
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
     .analyze();
   expect(

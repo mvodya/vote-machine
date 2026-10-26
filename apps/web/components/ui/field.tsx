@@ -12,7 +12,7 @@ export interface FieldProps {
 }
 // Shared input styles for text, lists and choices
 export const controlClass =
-  'mt-2 block w-full min-w-0 rounded-xl border border-border bg-panel px-4 text-sm text-ink transition-colors placeholder:text-muted focus:border-ink/50 focus:outline-none focus:ring-3 focus:ring-ink/10 disabled:opacity-50 read-only:bg-page/60 aria-invalid:border-error-ink';
+  'mt-2 block w-full min-w-0 rounded-xl border border-border bg-panel px-4 text-base text-ink transition-colors placeholder:text-muted focus:border-ink/50 focus:outline-none focus:ring-3 focus:ring-ink/10 disabled:opacity-50 read-only:bg-page/60 aria-invalid:border-error-ink sm:text-sm pointer-coarse:text-base';
 // Connect hints and errors to their input
 export function fieldDescription(
   id: string,

@@ -100,7 +100,7 @@ it('keeps media mounted on parent edits and accepts a bounded display width', as
     <Markdown viewer={{roomId: room}} source={source} />,
   );
   const photo = await screen.findByRole('img', {name: 'Photo'});
-  expect(photo.parentElement).toHaveStyle({width: '320px'});
+  expect(photo.parentElement).toHaveStyle({width: 'min(100%, 320px)'});
   expect(photo.parentElement).toHaveClass('overflow-hidden', 'rounded-xl');
   rerender(<Markdown viewer={{roomId: room}} source={source} />);
   expect(screen.getByRole('img')).toBe(photo);

@@ -8,8 +8,13 @@ import {HomeCaption} from '../components/home-caption';
 export default function Home() {
   return (
     <main className="relative min-h-svh bg-surface text-ink lg:grid lg:grid-cols-[3fr_2fr]">
-      <DotWaves />
-      <IconRibbons />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden lg:[mask-image:linear-gradient(to_right,black_35%,rgb(0_0_0/0.12)_100%)]"
+      >
+        <DotWaves />
+        <IconRibbons />
+      </div>
       <PageHeader
         home
         className="absolute inset-x-0 top-0 z-10 px-5 py-7 sm:px-8 lg:p-12"

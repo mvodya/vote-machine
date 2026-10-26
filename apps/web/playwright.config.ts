@@ -18,12 +18,12 @@ export default defineConfig({
     },
     {
       name: 'webkit',
-      testMatch: '**/accessibility.spec.ts',
+      testMatch: ['**/accessibility.spec.ts', '**/mobile-layout.spec.ts'],
       use: {browserName: 'webkit', viewport: {width: 1280, height: 800}},
     },
     {
       name: 'webkit-mobile',
-      testMatch: '**/accessibility.spec.ts',
+      testMatch: ['**/accessibility.spec.ts', '**/mobile-layout.spec.ts'],
       use: {
         browserName: 'webkit',
         viewport: {width: 390, height: 844},

@@ -161,7 +161,7 @@ export function AnswerForm({
         <p className="mt-3 text-sm text-muted">Вопрос закрыт</p>
       )}
       <Form className="mt-5" onSubmit={(event) => void submit(event)}>
-        <fieldset disabled={busy || !canVote} className="space-y-3">
+        <fieldset disabled={busy || !canVote} className="min-w-0 space-y-3">
           <legend className="mb-3 text-sm font-medium">
             {question.choiceMode === 'single'
               ? 'Выберите один вариант'

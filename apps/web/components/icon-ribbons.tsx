@@ -165,7 +165,7 @@ export function IconRibbons() {
     <div
       ref={root}
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_8%,black_23%,black_65%,transparent_86%)] lg:right-[40%]"
+      className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_8%,black_23%,black_65%,transparent_86%)]"
     >
       <div className="absolute top-[20%] -left-[40%] flex w-[180%] -rotate-30 flex-col gap-5 lg:top-[23%] lg:gap-6">
         {Array.from({length: 5}, (_, row) => (

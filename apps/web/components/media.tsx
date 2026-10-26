@@ -65,8 +65,8 @@ export function Media({
   );
   return (
     <span
-      className={`my-3 block max-w-full overflow-hidden rounded-xl text-left ${asset.kind === 'video' ? 'border border-border bg-panel' : ''}`}
-      style={{width}}
+      className={`my-3 block min-w-0 max-w-full overflow-hidden rounded-xl text-left ${asset.kind === 'video' ? 'border border-border bg-panel' : ''}`}
+      style={{width: `min(100%, ${width}px)`}}
     >
       {asset.kind === 'video' ? (
         <video

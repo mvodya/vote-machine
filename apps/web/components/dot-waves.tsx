@@ -158,7 +158,7 @@ export function DotWaves() {
   }, []);
   return (
     <div
-      className="pointer-events-none absolute inset-0 overflow-hidden lg:right-[40%]"
+      className="pointer-events-none absolute inset-0 overflow-hidden"
       aria-hidden="true"
     >
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_50%,var(--app-accent),transparent_70%)]" />
