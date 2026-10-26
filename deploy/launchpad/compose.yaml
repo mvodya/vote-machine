@@ -1,8 +1,13 @@
 # Use after compose.yaml and compose.production.yaml
 services:
+  api:
+    deploy:
+      replicas: ${API_REPLICAS:-1}
   garage:
     restart: unless-stopped
   web:
+    deploy:
+      replicas: ${WEB_REPLICAS:-1}
     image: votemachine-web:${DEPLOY_REVISION:?Set release revision}
     build:
       args:

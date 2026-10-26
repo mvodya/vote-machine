@@ -13,7 +13,7 @@ release="$root/releases/$revision"
 mkdir -p "$release"
 # Check archive creation before reading it so Git failures stop deployment
 git --git-dir="$root/repo.git" archive --output="$release/source.tar" "$revision"
-tar -xf "$release/source.tar" -C "$release"
+tar -xpf "$release/source.tar" -C "$release"
 rm "$release/source.tar"
 # Use installed operator config so an application push cannot replace secrets
 compose() {
@@ -32,6 +32,12 @@ compose up -d --wait postgres garage
 compose stop edge web api asset-cleanup
 compose run --rm --no-deps migrate
 compose up -d --no-build --wait --wait-timeout 180 api web asset-cleanup edge
+# Keep plain Compose commands on the active release image
+environment=$(mktemp "$root/config/runtime.env.XXXXXX")
+sed '/^DEPLOY_REVISION=/d' "$root/config/runtime.env" > "$environment"
+printf 'DEPLOY_REVISION=%s\n' "$revision" >> "$environment"
+chmod 600 "$environment"
+mv "$environment" "$root/config/runtime.env"
 ln -sfn "$release" "$root/current"
 printf '%s\n' "$revision" > "$root/deployed-revision"
 echo "Deployed $revision"

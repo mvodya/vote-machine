@@ -106,6 +106,8 @@ test('launchpad keeps TLS on the external proxy and shares the web image', () =>
     '/opt/votemachine/config/nginx.conf',
   );
   assert.equal(services.web.image, services['asset-cleanup'].image);
+  assert.equal(services.web.deploy.replicas, 1);
+  assert.equal(services.api.deploy.replicas, 1);
   assert.equal(services.web.build.args.GIT_COMMIT, 'a'.repeat(40));
   for (const service of ['postgres', 'api', 'web', 'garage'])
     assert.deepEqual(services[service].ports ?? [], []);
