@@ -25,7 +25,8 @@ bool Name(const drogon::HttpRequestPtr& request, std::string& name,
   name = (*body)["name"].asString();
   std::size_t characters = 0;
   // Count UTF-8 characters, not bytes
-  for (unsigned char value : name) {
+  for (char byte : name) {
+    const auto value = static_cast<unsigned char>(byte);
     if ((value & 0xc0) != 0x80) ++characters;
   }
   return characters <= 200 && name.find('\0') == std::string::npos;

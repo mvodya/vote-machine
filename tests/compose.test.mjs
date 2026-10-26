@@ -20,6 +20,7 @@ function config(files) {
         GARAGE_RPC_SECRET: '3'.repeat(64),
         S3_ACCESS_KEY: 'GK' + '4'.repeat(32),
         S3_SECRET_KEY: '5'.repeat(64),
+        DEPLOY_REVISION: 'a'.repeat(40),
       },
       timeout: 10000,
     }),
@@ -87,4 +88,25 @@ test('production publishes only the TLS edge and uses two stateless balance pool
   );
   assert.equal(services.edge.ports.length, 2);
   assert.match(services.edge.image, /@sha256:[a-f0-9]{64}$/);
+});
+
+test('launchpad keeps TLS on the external proxy and shares the web image', () => {
+  const services = config([
+    'compose.yaml',
+    'compose.production.yaml',
+    'deploy/launchpad/compose.yaml',
+  ]).services;
+  assert.equal(services.edge.ports.length, 1);
+  assert.equal(services.edge.ports[0].host_ip, '10.0.0.63');
+  assert.equal(services.edge.ports[0].published, '8091');
+  assert.equal(services.edge.ports[0].target, 80);
+  assert.equal(services.edge.volumes.length, 1);
+  assert.equal(
+    services.edge.volumes[0].source,
+    '/opt/votemachine/config/nginx.conf',
+  );
+  assert.equal(services.web.image, services['asset-cleanup'].image);
+  assert.equal(services.web.build.args.GIT_COMMIT, 'a'.repeat(40));
+  for (const service of ['postgres', 'api', 'web', 'garage'])
+    assert.deepEqual(services[service].ports ?? [], []);
 });

@@ -1,0 +1,18 @@
+# Use after compose.yaml and compose.production.yaml
+services:
+  garage:
+    restart: unless-stopped
+  web:
+    image: votemachine-web:${DEPLOY_REVISION:?Set release revision}
+    build:
+      args:
+        GIT_COMMIT: ${DEPLOY_REVISION}
+  asset-cleanup:
+    image: votemachine-web:${DEPLOY_REVISION}
+  edge:
+    environment:
+      NGINX_ENVSUBST_FILTER: '^PUBLIC_ORIGIN$'
+    volumes: !override
+      - /opt/votemachine/config/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+    ports: !override
+      - '10.0.0.63:8091:80'

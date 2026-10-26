@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+# Only fast-forward releases on the main branch are allowed
+while read -r old new ref; do
+  [ "$ref" = refs/heads/main ] || { echo 'Push only main'; exit 1; }
+  [ "$new" != 0000000000000000000000000000000000000000 ] || exit 1
+  if [ "$old" != 0000000000000000000000000000000000000000 ]; then
+    git merge-base --is-ancestor "$old" "$new" || exit 1
+  fi
+done

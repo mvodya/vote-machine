@@ -37,8 +37,10 @@ bool Allowed(const drogon::orm::Result& result, const Reply& reply) {
 // Count full UTF-8 characters and reject null bytes
 bool ValidName(const std::string& name) {
   std::size_t count = 0;
-  for (unsigned char value : name)
+  for (char byte : name) {
+    const auto value = static_cast<unsigned char>(byte);
     if ((value & 0xc0) != 0x80) ++count;
+  }
   return count <= 200 && name.find('\0') == std::string::npos;
 }
 

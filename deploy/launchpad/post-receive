@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+while read -r old new ref; do
+  if [ "$ref" = refs/heads/main ]; then
+    # A failed deployment keeps the received commit available for retry
+    if ! /opt/votemachine/bin/deploy.sh "$new"; then
+      echo 'Deployment failed, inspect the output and retry with bin/deploy.sh' >&2
+      exit 1
+    fi
+  fi
+done
