@@ -1,0 +1,63 @@
+services:
+  postgres:
+    command:
+      [
+        postgres,
+        -c,
+        timezone=UTC,
+        -c,
+        'max_connections=${POSTGRES_MAX_CONNECTIONS:-100}',
+      ]
+    ports: !reset []
+    restart: unless-stopped
+  api:
+    environment:
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-2}
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+    stop_grace_period: 20s
+    restart: unless-stopped
+  web:
+    ports: !reset []
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the public HTTPS origin}
+      TRUSTED_PROXY_CIDRS: ${EDGE_ADDRESS:-172.30.17.254}/32
+      API_ORIGIN: http://edge:8080
+    deploy:
+      replicas: ${WEB_REPLICAS:-2}
+    stop_grace_period: 20s
+    restart: unless-stopped
+  edge:
+    image: nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the public HTTPS origin}
+      NGINX_ENVSUBST_FILTER: '^PUBLIC_ORIGIN$'
+    volumes:
+      - ./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${TLS_CERT_FILE:?Set the TLS certificate path}:/run/tls/cert.pem:ro
+      - ${TLS_KEY_FILE:?Set the TLS private key path}:/run/tls/key.pem:ro
+    ports:
+      - '${EDGE_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80'
+      - '${EDGE_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443'
+    networks:
+      default:
+        ipv4_address: ${EDGE_ADDRESS:-172.30.17.254}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1/edge/live']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    stop_signal: SIGQUIT
+    stop_grace_period: 20s
+    restart: unless-stopped
+    init: true
+  asset-cleanup:
+    environment:
+      API_ORIGIN: http://edge:8080
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${APP_SUBNET:-172.30.17.0/24}

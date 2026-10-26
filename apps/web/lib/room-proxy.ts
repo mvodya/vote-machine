@@ -5,10 +5,11 @@ import {
   rememberRoom,
   sameOrigin,
   roomCookieName,
+  forgetRoom,
 } from './recent-rooms';
 
 const headers = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'};
-type Action = 'create' | 'exchange' | 'read' | 'rename' | 'link';
+type Action = 'create' | 'exchange' | 'read' | 'rename' | 'link' | 'delete';
 
 // Return a safe error without private details
 function failure(status: number) {
@@ -47,7 +48,15 @@ export async function roomProxy(request: Request, action: Action, id?: string) {
         return failure(400);
       const body = json as Record<string, unknown>;
       // Link entry uses an admin key, not a room name
-      if (action === 'exchange') {
+      if (action === 'delete') {
+        if (
+          body.confirmation !== id ||
+          typeof body.revision !== 'string' ||
+          !/^(0|[1-9][0-9]{0,18})$/.test(body.revision)
+        )
+          return failure(400);
+        payload = {confirmation: id!, revision: body.revision};
+      } else if (action === 'exchange') {
         if (typeof body.token !== 'string' || !secretPattern.test(body.token))
           return failure(401);
         payload = {token: body.token};
@@ -66,7 +75,12 @@ export async function roomProxy(request: Request, action: Action, id?: string) {
       'Content-Type': 'application/json',
     };
     // Use only the session saved for this room
-    if (action === 'read' || action === 'rename' || action === 'link') {
+    if (
+      action === 'read' ||
+      action === 'rename' ||
+      action === 'link' ||
+      action === 'delete'
+    ) {
       const token =
         savedRooms(request).find((item) => item.id === id)?.token ?? '';
       if (!secretPattern.test(token)) return failure(401);
@@ -84,9 +98,11 @@ export async function roomProxy(request: Request, action: Action, id?: string) {
         method:
           action === 'read' || action === 'link'
             ? 'GET'
-            : action === 'rename'
-              ? 'PATCH'
-              : 'POST',
+            : action === 'delete'
+              ? 'DELETE'
+              : action === 'rename'
+                ? 'PATCH'
+                : 'POST',
         headers: upstreamHeaders,
         body: payload ? JSON.stringify(payload) : undefined,
         cache: 'no-store',
@@ -97,9 +113,24 @@ export async function roomProxy(request: Request, action: Action, id?: string) {
     // Hide internal errors from the browser
     if (!upstream.ok)
       return failure(
-        [400, 401, 403, 413].includes(upstream.status) ? upstream.status : 503,
+        [400, 401, 403, 409, 413].includes(upstream.status)
+          ? upstream.status
+          : 503,
       );
     const body: unknown = await upstream.json();
+    // Forget this browser entry only after the database confirms deletion
+    if (action === 'delete') {
+      if (
+        typeof body !== 'object' ||
+        body === null ||
+        !('deletedId' in body) ||
+        body.deletedId !== id
+      )
+        return failure(502);
+      const response = NextResponse.json({deletedId: id}, {headers});
+      forgetRoom(response, request, id!);
+      return response;
+    }
     // Settings may show the key after the session check
     if (action === 'link') {
       if (

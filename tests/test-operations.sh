@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+# Use a disposable encryption key only for the isolated test stack
+export ADMIN_LINK_KEY=1111111111111111111111111111111111111111111111111111111111111111
+export API_GATEWAY_KEY=6666666666666666666666666666666666666666666666666666666666666666
+export MEDIA_WORKER_KEY=2222222222222222222222222222222222222222222222222222222222222222
+export GARAGE_RPC_SECRET=3333333333333333333333333333333333333333333333333333333333333333
+export S3_ACCESS_KEY=GK44444444444444444444444444444444
+export S3_SECRET_KEY=5555555555555555555555555555555555555555555555555555555555555555
+export S3_ENDPOINT=http://garage:3900
+export S3_BUCKET=votebox-assets
+export S3_REGION=garage
+export COMPOSE_PROFILES=local-storage
+cd "$(dirname "$0")/.."
+# Keep test containers separate from the working stack
+export COMPOSE_PROJECT_NAME="vote-machine-check-$$"
+export WEB_PORT="${TEST_WEB_PORT:-3100}"
+export TEST_BASE_URL="http://127.0.0.1:$WEB_PORT"
+# Remove only this test stack and its data
+cleanup() {
+  status=$?
+  # Show logs when a check fails
+  if [ "$status" -ne 0 ]; then
+    docker compose -p "$COMPOSE_PROJECT_NAME" logs --no-color
+  fi
+  docker compose -p "$COMPOSE_PROJECT_NAME" down --volumes --remove-orphans
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+node --test tests/ingress.test.mjs
+docker compose -p "$COMPOSE_PROJECT_NAME" up --build --wait --wait-timeout 180
+node tests/operations.mjs
+pnpm --filter @vote-machine/web exec playwright test tests/e2e/home.spec.ts
+echo 'Stage 18 operations checks passed'

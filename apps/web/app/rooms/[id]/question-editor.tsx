@@ -37,6 +37,7 @@ import {
   type QuestionInput,
 } from '../../../lib/questions';
 
+import {TabPanel} from '../../../components/ui/tab-panel';
 import {Tabs} from '../../../components/ui/tabs';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
 import {
@@ -493,6 +494,7 @@ export function QuestionEditor({
       <div className="mt-5">
         <Tabs
           label="Разделы вопроса"
+          group={prefix}
           value={section}
           onChange={setSection}
           items={[
@@ -507,7 +509,7 @@ export function QuestionEditor({
         className="mt-6 space-y-6"
         onSubmit={(event) => void save(event)}
       >
-        <div hidden={section !== 'editing'}>
+        <TabPanel group={prefix} id="editing" value={section}>
           <fieldset disabled={busy || locked} className="min-w-0 space-y-6">
             <MarkdownField
               roomId={roomId}
@@ -595,8 +597,13 @@ export function QuestionEditor({
               </Button>
             </section>
           </fieldset>
-        </div>
-        <div hidden={section !== 'settings'} className="space-y-6">
+        </TabPanel>
+        <TabPanel
+          group={prefix}
+          id="settings"
+          value={section}
+          className="space-y-6"
+        >
           <fieldset disabled={busy || locked}>
             {' '}
             <div className="grid gap-5 sm:grid-cols-3">
@@ -713,8 +720,13 @@ export function QuestionEditor({
               />
             </section>
           </fieldset>
-        </div>
-        <div hidden={section !== 'management'} className="space-y-5">
+        </TabPanel>
+        <TabPanel
+          group={prefix}
+          id="management"
+          value={section}
+          className="space-y-5"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               <QuestionAction
@@ -822,7 +834,7 @@ export function QuestionEditor({
               При повторном открытии прежние голоса сохраняются
             </p>
           )}
-        </div>
+        </TabPanel>
         {error && (
           <p role="alert" className="text-sm text-error-ink">
             {error}

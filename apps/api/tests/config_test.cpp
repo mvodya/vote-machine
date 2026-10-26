@@ -41,5 +41,15 @@ TEST(ParseConfigTest, RequiresDatabaseUrl) {
   EXPECT_THROW(ParseConfig("", "8080"), std::invalid_argument);
 }
 
+// Reject oversized pools before a replica opens connections
+TEST(ParseConfigTest, BoundsPoolSize) {
+  EXPECT_EQ(ParseConfig("postgresql://db/test", "").pool_size, 2);
+  EXPECT_EQ(ParseConfig("postgresql://db/test", "", "32").pool_size, 32);
+  for (const std::string pool : {"0", "33", "-1", "2bad", " 2"}) {
+    EXPECT_THROW(ParseConfig("postgresql://db/test", "", pool),
+                 std::invalid_argument);
+  }
+}
+
 }  // namespace
 }  // namespace vote_machine

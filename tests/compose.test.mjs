@@ -11,6 +11,9 @@ function config(files) {
       env: {
         ...process.env,
         WORKSPACE_DB_PORT: '15432',
+        PUBLIC_ORIGIN: 'https://vote.example.invalid',
+        TLS_CERT_FILE: '/tmp/votebox-test-cert.pem',
+        TLS_KEY_FILE: '/tmp/votebox-test-key.pem',
         ADMIN_LINK_KEY: '1'.repeat(64),
         API_GATEWAY_KEY: '6'.repeat(64),
         MEDIA_WORKER_KEY: '2'.repeat(64),
@@ -69,4 +72,19 @@ test('devcontainer exposes PostgreSQL only on the host loopback', () => {
     services['asset-cleanup'].depends_on.workspace.condition,
     'service_started',
   );
+});
+
+test('production publishes only the TLS edge and uses two stateless balance pools', () => {
+  const services = config(['compose.yaml', 'compose.production.yaml']).services;
+  for (const service of ['postgres', 'api', 'web'])
+    assert.deepEqual(services[service].ports ?? [], []);
+  assert.equal(services.web.deploy.replicas, 2);
+  assert.equal(services.api.deploy.replicas, 2);
+  assert.equal(services.web.environment.API_ORIGIN, 'http://edge:8080');
+  assert.equal(
+    services.web.environment.TRUSTED_PROXY_CIDRS,
+    services.edge.networks.default.ipv4_address + '/32',
+  );
+  assert.equal(services.edge.ports.length, 2);
+  assert.match(services.edge.image, /@sha256:[a-f0-9]{64}$/);
 });

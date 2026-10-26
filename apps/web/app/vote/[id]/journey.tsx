@@ -11,6 +11,7 @@ import {
 import {Panel} from '../../../components/ui/panel';
 import {Button} from '../../../components/ui/button';
 import {EmptyState} from '../../../components/ui/empty-state';
+import {TabPanel} from '../../../components/ui/tab-panel';
 import {Tabs} from '../../../components/ui/tabs';
 import {Pagination} from '../../../components/ui/pagination';
 import {isJourney, type Journey} from '../../../lib/journey';
@@ -46,6 +47,13 @@ export function ParticipantJourney({
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const previous = useRef<string | null>(null);
+  // Live snapshots must not steal focus from a person reading or typing
+  const moveFocus = useRef(false);
+  useEffect(() => {
+    if (!moveFocus.current) return;
+    moveFocus.current = false;
+    document.getElementById(`participant-tabs-panel-${section}`)?.focus();
+  }, [section, snapshot]);
   const cursor = cursors[cursors.length - 1];
   const refresh = useCallback((message: string) => {
     previous.current = null;
@@ -130,6 +138,7 @@ export function ParticipantJourney({
   ]);
   // Preserve the active content while metadata pages change
   function choose(id: string, answered: boolean) {
+    moveFocus.current = true;
     setReview(answered);
     setSection('question');
     setSelected(id);
@@ -154,6 +163,7 @@ export function ParticipantJourney({
       const body = await response.json();
       if (!response.ok || !body.run?.id) throw new Error();
       newRun.current = null;
+      moveFocus.current = true;
       setRunId(body.run.id);
       setSelected(null);
       setReview(false);
@@ -180,6 +190,7 @@ export function ParticipantJourney({
   );
   // Review and edit return to the list instead of advancing the queue
   function closeReview() {
+    moveFocus.current = true;
     setReview(false);
     setSelected(null);
     setSkip(null);
@@ -189,6 +200,7 @@ export function ParticipantJourney({
     <div className="mt-6 space-y-5">
       <Tabs
         label="Вкладки участника"
+        group="participant-tabs"
         value={section}
         onChange={(next) => {
           if (!busy) setSection(next);
@@ -211,199 +223,216 @@ export function ParticipantJourney({
           Не удалось обновить вопросы, пробуем снова
         </p>
       )}
-      {section === 'question' && (
-        <Panel aria-label="Текущий вопрос">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-            <p className="text-sm text-muted">
-              {snapshot
-                ? `Осталось вопросов: ${snapshot.progress.pending}`
-                : 'Загружаем вопросы…'}
-            </p>
-            <Countdown
-              at={
-                shown?.state === 'open'
-                  ? shown.closesAt
-                  : (shown?.scheduledAt ??
-                    (!shown ? snapshot?.upcoming?.scheduledAt : null))
-              }
-              kind={shown?.state === 'open' ? 'close' : 'start'}
-              timeZone={snapshot?.timeZone}
-            />
-            {review && (
-              <Button
-                variant="secondary"
-                startIcon={<X />}
-                disabled={busy}
-                onClick={closeReview}
-              >
-                Закрыть
-              </Button>
-            )}
-          </div>
-          {shown ? (
-            <AnswerForm
-              key={`${runId ?? 'personal'}/${shown.id}/${shown.revision}/${snapshot?.answer?.revision ?? 'new'}`}
-              timeZone={snapshot?.timeZone}
-              extraPayload={runId ? {runId} : undefined}
-              linkId={linkId}
-              question={shown}
-              answer={snapshot?.answer ?? null}
-              onDenied={onDenied}
-              onBusy={setBusy}
-              onRefresh={refresh}
-              onSaved={() => {
-                previous.current = null;
-                setSelected(null);
-                setSkip(null);
-                if (review) {
-                  setReview(false);
-                  setSection('list');
+      <TabPanel group="participant-tabs" id="question" value={section}>
+        {section === 'question' && (
+          <Panel aria-label="Текущий вопрос">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+              <p className="text-sm text-muted">
+                {snapshot
+                  ? `Осталось вопросов: ${snapshot.progress.pending}`
+                  : 'Загружаем вопросы…'}
+              </p>
+              <Countdown
+                at={
+                  shown?.state === 'open'
+                    ? shown.closesAt
+                    : (shown?.scheduledAt ??
+                      (!shown ? snapshot?.upcoming?.scheduledAt : null))
                 }
-                refresh('Ответ принят');
-              }}
-              onSkip={() => {
-                previous.current = null;
-                setSelected(null);
-                setSkip(shown.id);
-                setNotice('Вопрос пропущен, к нему можно вернуться из списка');
-              }}
-            />
-          ) : snapshot && !selected ? (
-            <>
-              <EmptyState
-                icon={<ListChecks />}
-                title={
-                  snapshot.upcoming
-                    ? 'Ожидание открытия вопроса'
-                    : snapshot.progress.pending
-                      ? 'Остались вопросы без ответа'
-                      : snapshot.questions.length || snapshot.progress.total
-                        ? 'Все вопросы пройдены'
-                        : 'Ожидание вопросов'
-                }
-                description={
-                  snapshot.upcoming
-                    ? markdownSummary(snapshot.upcoming.preview)
-                    : 'Ответы и пропущенные вопросы доступны в списке'
-                }
+                kind={shown?.state === 'open' ? 'close' : 'start'}
+                timeZone={snapshot?.timeZone}
               />
-              <Button
-                variant="secondary"
-                startIcon={<ListChecks />}
-                onClick={() => setSection('list')}
-              >
-                К списку вопросов
-              </Button>
-              {snapshot.run &&
-                snapshot.repeatAllowed &&
-                !snapshot.progress.pending && (
-                  <Button
-                    className="ml-3"
-                    startIcon={<Repeat2 />}
-                    disabled={busy}
-                    onClick={() => void repeat()}
-                  >
-                    Ответить еще раз
-                  </Button>
-                )}
-            </>
-          ) : (
-            <p className="text-sm text-muted">Загружаем вопрос…</p>
-          )}
-        </Panel>
-      )}
-      {section === 'list' && (
-        <Panel aria-label="Список вопросов участника">
-          {snapshot?.run && (snapshot.runs?.length ?? 0) > 1 && (
-            <SelectField
-              id="voting-run"
-              label="Прохождение"
-              value={runId ?? snapshot.run.id}
-              disabled={busy}
-              onChange={(event) => {
-                setRunId(event.target.value);
-                setSelected(null);
-                setReview(false);
-                setSkip(null);
-                setCursors(['0']);
-                previous.current = null;
-              }}
-            >
-              {snapshot.runs?.map((run) => (
-                <option key={run.id} value={run.id}>
-                  {new Intl.DateTimeFormat('ru-RU', {
-                    dateStyle: 'short',
-                    timeStyle: 'medium',
-                    timeZone: snapshot.timeZone,
-                  }).format(new Date(run.createdAt))}
-                </option>
-              ))}
-            </SelectField>
-          )}
-          <ul className="divide-y divide-border">
-            {snapshot?.questions.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <Button
-                    variant="ghost"
-                    className="h-auto max-w-full justify-start whitespace-normal text-left"
-                    disabled={busy || !item.canChoose}
-                    onClick={() => choose(item.id, item.answered)}
-                  >
-                    {markdownSummary(item.preview) || 'Вопрос'}
-                  </Button>
-                  <p className="mt-1 flex items-center gap-2 text-xs text-muted">
-                    {item.answered && (
-                      <Check
-                        aria-hidden="true"
-                        className="size-3.5 text-success-ink"
-                      />
-                    )}
-                    {item.answered
-                      ? 'Ответ сохранен'
-                      : item.state === 'scheduled'
-                        ? 'Ожидание открытия'
-                        : item.canChoose
-                          ? 'Без ответа'
-                          : 'Сначала ответьте на обязательный вопрос'}
-                    {item.state === 'closed' ? ' · Закрыт' : ''}
-                  </p>
-                </div>
-                <Countdown
-                  at={
-                    item.state === 'scheduled'
-                      ? item.scheduledAt
-                      : item.state === 'open'
-                        ? item.closesAt
-                        : null
+              {review && (
+                <Button
+                  variant="secondary"
+                  startIcon={<X />}
+                  disabled={busy}
+                  onClick={closeReview}
+                >
+                  Закрыть
+                </Button>
+              )}
+            </div>
+            {shown ? (
+              <AnswerForm
+                key={`${runId ?? 'personal'}/${shown.id}/${shown.revision}/${snapshot?.answer?.revision ?? 'new'}`}
+                timeZone={snapshot?.timeZone}
+                extraPayload={runId ? {runId} : undefined}
+                linkId={linkId}
+                question={shown}
+                answer={snapshot?.answer ?? null}
+                onDenied={onDenied}
+                onBusy={setBusy}
+                onRefresh={refresh}
+                onSaved={() => {
+                  moveFocus.current = true;
+                  previous.current = null;
+                  setSelected(null);
+                  setSkip(null);
+                  if (review) {
+                    setReview(false);
+                    setSection('list');
                   }
-                  kind={item.state === 'scheduled' ? 'start' : 'close'}
-                  timeZone={snapshot?.timeZone}
+                  refresh('Ответ принят');
+                }}
+                onSkip={() => {
+                  moveFocus.current = true;
+                  previous.current = null;
+                  setSelected(null);
+                  setSkip(shown.id);
+                  setNotice(
+                    'Вопрос пропущен, к нему можно вернуться из списка',
+                  );
+                }}
+              />
+            ) : snapshot && !selected ? (
+              <>
+                <EmptyState
+                  icon={<ListChecks />}
+                  title={
+                    snapshot.upcoming
+                      ? 'Ожидание открытия вопроса'
+                      : snapshot.progress.pending
+                        ? 'Остались вопросы без ответа'
+                        : snapshot.questions.length || snapshot.progress.total
+                          ? 'Все вопросы пройдены'
+                          : 'Ожидание вопросов'
+                  }
+                  description={
+                    snapshot.upcoming
+                      ? markdownSummary(snapshot.upcoming.preview)
+                      : 'Ответы и пропущенные вопросы доступны в списке'
+                  }
                 />
-              </li>
-            ))}
-          </ul>
-          {snapshot?.questions.length === 0 && (
-            <p className="text-sm text-muted">Вопросов пока нет</p>
+                <Button
+                  variant="secondary"
+                  startIcon={<ListChecks />}
+                  onClick={() => setSection('list')}
+                >
+                  К списку вопросов
+                </Button>
+                {snapshot.run &&
+                  snapshot.repeatAllowed &&
+                  !snapshot.progress.pending && (
+                    <Button
+                      className="ml-3"
+                      startIcon={<Repeat2 />}
+                      disabled={busy}
+                      onClick={() => void repeat()}
+                    >
+                      Ответить еще раз
+                    </Button>
+                  )}
+              </>
+            ) : (
+              <p className="text-sm text-muted">Загружаем вопрос…</p>
+            )}
+          </Panel>
+        )}
+      </TabPanel>
+      <TabPanel group="participant-tabs" id="list" value={section}>
+        {section === 'list' && (
+          <Panel aria-label="Список вопросов участника">
+            {snapshot?.run && (snapshot.runs?.length ?? 0) > 1 && (
+              <SelectField
+                id="voting-run"
+                label="Прохождение"
+                value={runId ?? snapshot.run.id}
+                disabled={busy}
+                onChange={(event) => {
+                  setRunId(event.target.value);
+                  setSelected(null);
+                  setReview(false);
+                  setSkip(null);
+                  setCursors(['0']);
+                  previous.current = null;
+                }}
+              >
+                {snapshot.runs?.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {new Intl.DateTimeFormat('ru-RU', {
+                      dateStyle: 'short',
+                      timeStyle: 'medium',
+                      timeZone: snapshot.timeZone,
+                    }).format(new Date(run.createdAt))}
+                  </option>
+                ))}
+              </SelectField>
+            )}
+            <ul className="divide-y divide-border">
+              {snapshot?.questions.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-4"
+                >
+                  <div className="min-w-0 flex-1">
+                    <Button
+                      variant="ghost"
+                      className="h-auto max-w-full justify-start whitespace-normal text-left"
+                      disabled={busy || !item.canChoose}
+                      onClick={() => choose(item.id, item.answered)}
+                    >
+                      {markdownSummary(item.preview) || 'Вопрос'}
+                    </Button>
+                    <p className="mt-1 flex items-center gap-2 text-xs text-muted">
+                      {item.answered && (
+                        <Check
+                          aria-hidden="true"
+                          className="size-3.5 text-success-ink"
+                        />
+                      )}
+                      {item.answered
+                        ? 'Ответ сохранен'
+                        : item.state === 'scheduled'
+                          ? 'Ожидание открытия'
+                          : item.canChoose
+                            ? 'Без ответа'
+                            : 'Сначала ответьте на обязательный вопрос'}
+                      {item.state === 'closed' ? ' · Закрыт' : ''}
+                    </p>
+                  </div>
+                  <Countdown
+                    at={
+                      item.state === 'scheduled'
+                        ? item.scheduledAt
+                        : item.state === 'open'
+                          ? item.closesAt
+                          : null
+                    }
+                    kind={item.state === 'scheduled' ? 'start' : 'close'}
+                    timeZone={snapshot?.timeZone}
+                  />
+                </li>
+              ))}
+            </ul>
+            {snapshot?.questions.length === 0 && (
+              <p className="text-sm text-muted">Вопросов пока нет</p>
+            )}
+            <Pagination
+              label="Страницы вопросов участника"
+              page={cursors.length}
+              hasNext={Boolean(snapshot?.nextCursor)}
+              busy={busy}
+              onPrevious={() => setCursors((value) => value.slice(0, -1))}
+              onNext={() =>
+                snapshot?.nextCursor &&
+                setCursors((value) => [...value, snapshot.nextCursor!])
+              }
+            />
+          </Panel>
+        )}
+      </TabPanel>
+      {snapshot?.resultsAvailable && (
+        <TabPanel group="participant-tabs" id="results" value={section}>
+          {section === 'results' && snapshot?.resultsAvailable && (
+            <Results
+              id={linkId}
+              admin={false}
+              runId={runId}
+              onDenied={onDenied}
+            />
           )}
-          <Pagination
-            label="Страницы вопросов участника"
-            page={cursors.length}
-            hasNext={Boolean(snapshot?.nextCursor)}
-            busy={busy}
-            onPrevious={() => setCursors((value) => value.slice(0, -1))}
-            onNext={() =>
-              snapshot?.nextCursor &&
-              setCursors((value) => [...value, snapshot.nextCursor!])
-            }
-          />
-        </Panel>
-      )}
-      {section === 'results' && snapshot?.resultsAvailable && (
-        <Results id={linkId} admin={false} runId={runId} onDenied={onDenied} />
+        </TabPanel>
       )}
     </div>
   );

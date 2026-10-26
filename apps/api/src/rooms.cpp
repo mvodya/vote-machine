@@ -198,6 +198,36 @@ void RegisterRoomHandlers(const drogon::orm::DbClientPtr& database,
       },
       {drogon::Patch});
 
+  // Only the admin may confirm permanent room deletion
+  drogon::app().registerHandler(
+      "/api/rooms/{1}",
+      [database](const drogon::HttpRequestPtr& request, Reply&& reply,
+                 const std::string& id) {
+        const auto session = Session(request);
+        if (!IsRoomId(id) || session.empty()) {
+          Error(reply, drogon::k401Unauthorized, "Admin access required");
+          return;
+        }
+        const auto body = request->getJsonObject();
+        if (!body || !body->isObject() || HasNull(*body)) {
+          Error(reply, drogon::k400BadRequest, "Invalid confirmation");
+          return;
+        }
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        database->execSqlAsync(
+            "SELECT vm_delete_room($1::uuid,decode($2,'hex'),$3::jsonb)::text "
+            "AS response",
+            [reply](const drogon::orm::Result& result) {
+              DatabaseReply(result, reply);
+            },
+            [reply](const drogon::orm::DrogonDbException&) {
+              Unavailable(reply);
+            },
+            id, session, Json::writeString(writer, *body));
+      },
+      {drogon::Delete});
+
   // Read or rename a room through its session
   drogon::app().registerHandler(
       "/api/rooms/{1}",

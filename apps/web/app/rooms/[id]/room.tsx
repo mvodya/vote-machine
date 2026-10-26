@@ -13,15 +13,15 @@ import {QuestionPolicy} from './question-policy';
 import {Respondents} from './respondents';
 
 import {useCallback, useEffect, useRef, useState} from 'react';
-import Link from 'next/link';
 import {ListChecks, Users, ChartColumn, Settings, Copy} from 'lucide-react';
-import {Brand} from '../../../components/brand';
-import {Preferences} from '../../../components/preferences';
+import {PageHeader} from '../../../components/page-header';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
+import {TabPanel} from '../../../components/ui/tab-panel';
 import {Tabs} from '../../../components/ui/tabs';
 import {Button} from '../../../components/ui/button';
 import {TextField} from '../../../components/ui/text-field';
 import {Panel} from '../../../components/ui/panel';
+import {DeleteRoom} from './delete-room';
 import {
   isRoom,
   roomIdPattern,
@@ -243,12 +243,7 @@ export default function AdminRoom({id}: {id: string}) {
         onDenied={denyAccess}
       >
         <main className="min-h-screen bg-page">
-          <header className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-5 sm:px-8">
-            <Link href="/" aria-label="На главную">
-              <Brand />
-            </Link>
-            <Preferences />
-          </header>
+          <PageHeader className="mx-auto max-w-7xl px-4 py-5 sm:px-8" />
           <Results
             id={id}
             admin
@@ -268,16 +263,7 @@ export default function AdminRoom({id}: {id: string}) {
     >
       <main className="min-h-svh bg-page text-ink">
         <div className="mx-auto max-w-6xl px-4 pb-10 sm:px-8">
-          <header className="flex items-center justify-between border-b border-border py-5 sm:py-6">
-            <Link
-              className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
-              href="/"
-              aria-label="На главную"
-            >
-              <Brand />
-            </Link>
-            <Preferences />
-          </header>
+          <PageHeader className="border-b border-border py-5 sm:py-6" />
           {state === 'loading' && (
             <p role="status" className="mt-8">
               Открываем комнату…
@@ -316,6 +302,7 @@ export default function AdminRoom({id}: {id: string}) {
               </h1>
               <Tabs
                 label="Разделы комнаты"
+                group="room-sections"
                 value={section}
                 onChange={(value) => {
                   if (editing) {
@@ -350,95 +337,98 @@ export default function AdminRoom({id}: {id: string}) {
                   },
                 ]}
               />
-              <section
-                role="tabpanel"
-                aria-label={
-                  section === 'questions'
-                    ? 'Вопросы'
-                    : section === 'respondents'
-                      ? 'Респонденты'
-                      : section === 'results'
-                        ? 'Результаты'
-                        : 'Настройки'
-                }
-                className="pt-6"
-              >
-                {section === 'questions' && (
-                  <Questions
-                    key={editorKey}
-                    roomId={id}
-                    timeZone={room.timeZone ?? localTimeZone()}
-                    onDenied={denyAccess}
-                    onEditingChange={setEditing}
-                  />
-                )}
-                {section === 'respondents' && (
-                  <Respondents roomId={id} onDenied={denyAccess} />
-                )}
-                {section === 'results' && (
-                  <Results id={id} admin onDenied={denyAccess} />
-                )}
-                {section === 'settings' && (
-                  <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.2fr]">
-                    <div className="space-y-6">
-                      <Panel aria-label="Настройки комнаты">
-                        <h2 className="mb-5 text-lg font-semibold">Комната</h2>
-                        <RoomName
-                          room={room}
-                          onSaved={setRoom}
-                          onDenied={denyAccess}
-                          onNotice={setNotice}
-                        />
-                        <div className="mt-5">
-                          <RoomTimeZone
+              <div className="pt-6">
+                <TabPanel group="room-sections" id="questions" value={section}>
+                  {section === 'questions' && (
+                    <Questions
+                      key={editorKey}
+                      roomId={id}
+                      timeZone={room.timeZone ?? localTimeZone()}
+                      onDenied={denyAccess}
+                      onEditingChange={setEditing}
+                    />
+                  )}
+                </TabPanel>
+                <TabPanel
+                  group="room-sections"
+                  id="respondents"
+                  value={section}
+                >
+                  {section === 'respondents' && (
+                    <Respondents roomId={id} onDenied={denyAccess} />
+                  )}
+                </TabPanel>
+                <TabPanel group="room-sections" id="results" value={section}>
+                  {section === 'results' && (
+                    <Results id={id} admin onDenied={denyAccess} />
+                  )}
+                </TabPanel>
+                <TabPanel group="room-sections" id="settings" value={section}>
+                  {section === 'settings' && (
+                    <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.2fr]">
+                      <div className="space-y-6">
+                        <Panel aria-label="Настройки комнаты">
+                          <h2 className="mb-5 text-lg font-semibold">
+                            Комната
+                          </h2>
+                          <RoomName
                             room={room}
                             onSaved={setRoom}
                             onDenied={denyAccess}
                             onNotice={setNotice}
                           />
-                        </div>
-                        <AccentPicker roomId={id} onDenied={denyAccess} />
-                      </Panel>
-                      <QuestionPolicy roomId={id} onDenied={denyAccess} />
-                      <ReusePolicy roomId={id} onDenied={denyAccess} />
-                    </div>
-                    <Panel aria-label="Административный доступ">
-                      <h2 className="mb-3 text-lg font-semibold">
-                        Административный доступ
-                      </h2>
-                      <p className="mb-5 text-sm">
-                        Ссылка дает полный доступ к управлению комнатой
-                      </p>
-                      {link ? (
-                        <>
-                          <TextField
-                            id="admin-link"
-                            label="Административная ссылка"
-                            className="font-mono"
-                            readOnly
-                            value={link}
-                            onFocus={(event) => event.target.select()}
-                          />
+                          <div className="mt-5">
+                            <RoomTimeZone
+                              room={room}
+                              onSaved={setRoom}
+                              onDenied={denyAccess}
+                              onNotice={setNotice}
+                            />
+                          </div>
+                          <AccentPicker roomId={id} onDenied={denyAccess} />
+                        </Panel>
+                        <QuestionPolicy roomId={id} onDenied={denyAccess} />
+                        <ReusePolicy roomId={id} onDenied={denyAccess} />
+                        <DeleteRoom room={room} onDenied={denyAccess} />
+                      </div>
+                      <Panel aria-label="Административный доступ">
+                        <h2 className="mb-3 text-lg font-semibold">
+                          Административный доступ
+                        </h2>
+                        <p className="mb-5 text-sm">
+                          Ссылка дает полный доступ к управлению комнатой
+                        </p>
+                        {link ? (
+                          <>
+                            <TextField
+                              id="admin-link"
+                              label="Административная ссылка"
+                              className="font-mono"
+                              readOnly
+                              value={link}
+                              onFocus={(event) => event.target.select()}
+                            />
+                            <Button
+                              onClick={() => void copy()}
+                              variant="secondary"
+                              className="mt-4"
+                              startIcon={<Copy />}
+                            >
+                              Скопировать ссылку
+                            </Button>
+                          </>
+                        ) : (
                           <Button
-                            onClick={() => void copy()}
-                            variant="secondary"
-                            className="mt-4"
-                            startIcon={<Copy />}
+                            onClick={() => setAttempt((value) => value + 1)}
                           >
-                            Скопировать ссылку
+                            Получить ссылку
                           </Button>
-                        </>
-                      ) : (
-                        <Button
-                          onClick={() => setAttempt((value) => value + 1)}
-                        >
-                          Получить ссылку
-                        </Button>
-                      )}
-                    </Panel>
-                  </div>
-                )}
-              </section>
+                        )}
+                      </Panel>
+                    </div>
+                  )}
+                </TabPanel>
+              </div>
               {destination !== null && (
                 <ConfirmDialog
                   title="Выйти из редактирования вопроса без сохранений?"

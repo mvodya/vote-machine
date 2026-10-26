@@ -12,3 +12,8 @@ export async function GET(request: Request, context: Context) {
 export async function PATCH(request: Request, context: Context) {
   return roomProxy(request, 'rename', (await context.params).id);
 }
+
+// Require the same scoped admin session for permanent deletion
+export async function DELETE(request: Request, context: Context) {
+  return roomProxy(request, 'delete', (await context.params).id);
+}

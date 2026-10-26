@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 
 let client;
@@ -74,5 +75,17 @@ export async function headObject(key, signal) {
   return storage().send(
     new HeadObjectCommand({Bucket: process.env.S3_BUCKET, Key: key}),
     {abortSignal: signal},
+  );
+}
+
+// Read a bounded S3 page for operator backup and restore checks
+export async function listObjects(cursor) {
+  return storage().send(
+    new ListObjectsV2Command({
+      Bucket: process.env.S3_BUCKET,
+      Prefix: 'rooms/',
+      MaxKeys: 1000,
+      ...(cursor ? {ContinuationToken: cursor} : {}),
+    }),
   );
 }

@@ -1,10 +1,47 @@
 import http from 'node:http';
 import net from 'node:net';
-import {createHash} from 'node:crypto';
+import {createHash, timingSafeEqual} from 'node:crypto';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const secret = /^[0-9a-f]{64}$/;
 const digest = (value) => createHash('sha256').update(value).digest('hex');
+// Trust forwarded addresses only from explicitly configured proxy networks
+export function proxyNetworks(value = '') {
+  const networks = new net.BlockList();
+  for (const item of value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)) {
+    const [address, prefix, extra] = item.split('/');
+    const family = net.isIP(address);
+    const bits =
+      prefix === undefined ? (family === 4 ? 32 : 128) : Number(prefix);
+    if (
+      extra !== undefined ||
+      (prefix !== undefined && !/^\d+$/.test(prefix)) ||
+      !family ||
+      !Number.isInteger(bits) ||
+      bits < 0 ||
+      bits > (family === 4 ? 32 : 128)
+    )
+      throw new Error('Invalid trusted proxy network');
+    networks.addSubnet(address, bits, family === 4 ? 'ipv4' : 'ipv6');
+  }
+  return networks;
+}
+// Outside clients cannot choose the address used for shared request limits
+export function clientAddress(request, networks) {
+  let peer = request.socket.remoteAddress ?? 'unknown';
+  if (peer.startsWith('::ffff:')) peer = peer.slice(7);
+  const family = net.isIP(peer);
+  if (family && networks.check(peer, family === 4 ? 'ipv4' : 'ipv6')) {
+    const forwarded = request.headers['x-forwarded-for'];
+    if (typeof forwarded !== 'string' || !net.isIP(forwarded))
+      throw new Error('Invalid forwarded address');
+    return forwarded;
+  }
+  return peer;
+}
 // Never trust network headers supplied by an outside client
 export function cleanHeaders(source, address, origin) {
   const headers = {...source};
@@ -59,12 +96,57 @@ export function createIngress({
   apiOrigin,
   gatewayKey,
   publicOrigin,
+  trustedProxies = '',
   onError = () => {},
+  onRecord = () => {},
 }) {
   if (!secret.test(gatewayKey ?? ''))
     throw new Error('API gateway key is missing');
   const configured = publicOrigin ? new URL(publicOrigin) : null;
+  if (trustedProxies && !configured)
+    throw new Error('Trusted proxies need PUBLIC_ORIGIN');
+  const networks = proxyNetworks(trustedProxies);
+  const active = new Map();
+  const totals = new Map();
+  let running = 0;
+  let draining = false;
   const server = http.createServer(async (req, res) => {
+    const started = performance.now();
+    running++;
+    // Labels never contain IDs, queries, cookies or request bodies
+    let category = 'page';
+    const method = [
+      'GET',
+      'HEAD',
+      'POST',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ].includes(req.method)
+      ? req.method
+      : 'OTHER';
+    res.once('finish', () => {
+      const milliseconds = Math.max(0, performance.now() - started);
+      const key = `${method}|${res.statusCode}|${category}`;
+      const total = totals.get(key) ?? {count: 0, seconds: 0};
+      total.count++;
+      total.seconds += milliseconds / 1000;
+      totals.set(key, total);
+      onRecord({
+        service: 'web',
+        event: 'request',
+        method,
+        category,
+        status: res.statusCode,
+        milliseconds: Math.round(milliseconds),
+      });
+    });
+    res.once('close', () => {
+      running--;
+    });
+    const pending = {req, res, upstream: null, stream: false};
+    active.set(res, pending);
+    res.on('close', () => active.delete(res));
     // Stop admission when the caller leaves during an upload
     const aborted = new AbortController();
     req.on('aborted', () => aborted.abort());
@@ -93,6 +175,10 @@ export function createIngress({
       );
     };
     try {
+      if (draining) {
+        fail(503);
+        return;
+      }
       if (!req.url || req.url.length > 8192) {
         fail(414);
         return;
@@ -114,9 +200,57 @@ export function createIngress({
         fail(400);
         return;
       }
+      const address = clientAddress(req, networks);
       const path = decodeURIComponent(new URL(req.url, origin).pathname);
       if (path.includes('%') || path.startsWith('//')) {
         fail(400);
+        return;
+      }
+      pending.stream = path.endsWith('/events');
+      category = path.startsWith('/api/rooms')
+        ? 'room'
+        : path.startsWith('/api/vote')
+          ? 'vote'
+          : path.startsWith('/api/')
+            ? 'api'
+            : path.startsWith('/internal/')
+              ? 'operations'
+              : 'page';
+      if (path === '/internal/metrics' || path === '/internal/ready') {
+        const key = req.headers['x-vm-gateway'];
+        if (
+          typeof key !== 'string' ||
+          !secret.test(key) ||
+          !timingSafeEqual(Buffer.from(key), Buffer.from(gatewayKey))
+        ) {
+          fail(401);
+          return;
+        }
+        if (path.endsWith('/ready')) {
+          const ready = await fetch(new URL('/health/ready', apiOrigin), {
+            signal: AbortSignal.timeout(3000),
+          });
+          await ready.arrayBuffer();
+          res.writeHead(ready.ok ? 200 : 503, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({status: ready.ok ? 'ready' : 'unavailable'}));
+        } else {
+          let report =
+            '# TYPE vm_http_inflight gauge\n' +
+            `vm_http_inflight ${running}\n# TYPE vm_http_requests_total counter\n`;
+          for (const [key, total] of totals) {
+            const [method, status, route] = key.split('|');
+            const label = `{method="${method}",status="${status}",route="${route}"}`;
+            report += `vm_http_requests_total${label} ${total.count}\nvm_http_seconds_sum${label} ${total.seconds}\n`;
+          }
+          res.writeHead(200, {
+            'Content-Type': 'text/plain; version=0.0.4',
+            'Cache-Control': 'no-store',
+          });
+          res.end(report);
+        }
         return;
       }
       if (path.startsWith('/api/')) {
@@ -132,8 +266,6 @@ export function createIngress({
         }
         // Health checks contain no private data and must survive a DB outage
         if (path !== '/api/health' && path !== '/api/hello') {
-          let address = req.socket.remoteAddress ?? 'unknown';
-          if (address.startsWith('::ffff:')) address = address.slice(7);
           const context = requestContext(
             path,
             req.method,
@@ -165,11 +297,7 @@ export function createIngress({
         }
       }
       if (req.destroyed || res.destroyed) return;
-      const headers = cleanHeaders(
-        req.headers,
-        req.socket.remoteAddress ?? 'unknown',
-        origin,
-      );
+      const headers = cleanHeaders(req.headers, address, origin);
       const upstream = http.request(
         {
           hostname: '127.0.0.1',
@@ -188,6 +316,7 @@ export function createIngress({
           response.pipe(res);
         },
       );
+      pending.upstream = upstream;
       upstream.on('error', () => fail(503));
       res.on('close', () => upstream.destroy());
       req.on('aborted', () => upstream.destroy());
@@ -230,6 +359,24 @@ export function createIngress({
       socket.destroy();
     }
   });
+  // Finish commands before stopping the framework, reconnect streams elsewhere
+  server.drain = (timeout = 10000) => {
+    draining = true;
+    return new Promise((resolve) => {
+      const limit = setTimeout(() => server.closeAllConnections(), timeout);
+      server.close(() => {
+        clearTimeout(limit);
+        resolve();
+      });
+      server.closeIdleConnections();
+      for (const pending of active.values()) {
+        if (pending.stream) {
+          pending.res.end();
+          pending.upstream?.destroy();
+        }
+      }
+    });
+  };
   return server;
 }
 // Keep existing development environments usable after an upgrade

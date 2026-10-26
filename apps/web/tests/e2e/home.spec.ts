@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {votingFixture} from './voting-helpers';
 
 test('home offers room creation without an account', async ({page}) => {
   await page.goto('/');
@@ -340,5 +341,60 @@ test('every page has a quiet footer with year and a real short revision', async 
     expect(positions.height).toBeLessThanOrEqual(
       Math.ceil(Math.max(page.viewportSize()!.height, positions.mainHeight)),
     );
+  }
+});
+
+// Deletion needs confirmation and invalidates every role after success
+test('room deletion confirms, retries a failed request and removes participant access', async ({
+  page,
+  browser,
+}) => {
+  const f = await votingFixture(page);
+  const context = await browser.newContext();
+  try {
+    const guest = await context.newPage();
+    await guest.goto(f.url);
+    await expect(
+      guest.getByRole('radio', {name: 'Yes', exact: true}),
+    ).toBeVisible();
+    await page.goto(`/rooms/${f.room.id}`);
+    await page
+      .getByRole('tablist', {name: 'Разделы комнаты'})
+      .getByRole('tab', {name: 'Настройки', exact: true})
+      .click();
+    const remove = page.getByRole('button', {
+      name: 'Удалить комнату',
+      exact: true,
+    });
+    await remove.click();
+    const dialog = page.getByRole('dialog', {name: 'Удалить комнату?'});
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', {name: 'Отмена', exact: true}).click();
+    await expect(dialog).toHaveCount(0);
+    await remove.click();
+    await page.route(`**/api/rooms/${f.room.id}`, (route) =>
+      route.request().method() === 'DELETE'
+        ? route.fulfill({status: 503, json: {error: 'Unavailable'}})
+        : route.continue(),
+    );
+    await dialog
+      .getByRole('button', {name: 'Удалить комнату', exact: true})
+      .click();
+    await expect(dialog.getByRole('alert')).toContainText('Не удалось удалить');
+    await page.unroute(`**/api/rooms/${f.room.id}`);
+    await dialog
+      .getByRole('button', {name: 'Удалить комнату', exact: true})
+      .click();
+    await expect(page).toHaveURL(f.origin + '/');
+    await expect(
+      guest.getByRole('heading', {name: 'Ссылка недействительна'}),
+    ).toBeVisible();
+    expect(
+      (await page.context().cookies()).some(
+        (cookie) => cookie.name === `vm_room_${f.room.id}`,
+      ),
+    ).toBe(false);
+  } finally {
+    await context.close();
   }
 });

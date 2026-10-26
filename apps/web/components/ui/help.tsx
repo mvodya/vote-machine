@@ -40,7 +40,8 @@ export function Help({
         type="button"
         aria-label={`Справка: ${label}`}
         aria-expanded={open}
-        aria-controls={id}
+        aria-controls={open ? id : undefined}
+        aria-describedby={open ? id : undefined}
         className="inline-flex size-7 items-center justify-center rounded-full text-muted hover:bg-ink/5 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         onFocus={(event) =>
           setFocused(event.currentTarget.matches(':focus-visible'))

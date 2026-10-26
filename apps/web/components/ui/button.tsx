@@ -15,9 +15,9 @@ const variants = {
   secondary:
     'min-h-11 border border-border bg-panel px-4 py-2.5 text-sm text-ink shadow-xs hover:border-ink/25 hover:bg-page',
   switch:
-    'min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-ink/60 hover:text-ink aria-pressed:border-primary/35 aria-pressed:bg-selected aria-pressed:text-ink aria-pressed:shadow-xs',
-  ghost: 'min-h-10 p-2.5 text-sm text-ink/65 hover:bg-ink/5 hover:text-ink',
-  tab: 'min-w-0 flex-1 flex-col px-1.5 py-3 text-[11px] text-ink/60 hover:bg-page aria-selected:bg-accent aria-selected:text-ink sm:flex-none sm:flex-row sm:px-5 sm:text-sm',
+    'min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-muted hover:text-ink aria-pressed:border-primary/35 aria-pressed:bg-selected aria-pressed:text-ink aria-pressed:shadow-xs',
+  ghost: 'min-h-10 p-2.5 text-sm text-muted hover:bg-ink/5 hover:text-ink',
+  tab: 'min-w-0 flex-1 flex-col px-1.5 py-3 text-[11px] text-muted hover:bg-page aria-selected:bg-accent aria-selected:text-ink sm:flex-none sm:flex-row sm:px-5 sm:text-sm',
 };
 
 type Props = ComponentProps<'button'> & {

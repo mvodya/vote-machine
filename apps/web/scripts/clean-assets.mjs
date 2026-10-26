@@ -42,7 +42,9 @@ export async function cleanOnce() {
       await request({action: 'ack', id: job.id, token: job.token});
     } catch {
       if (!controller.signal.aborted)
-        console.error('Asset cleanup job will retry');
+        console.error(
+          JSON.stringify({service: 'cleanup', event: 'object_retry'}),
+        );
     }
   }
 }
@@ -52,7 +54,10 @@ if (import.meta.main) {
     try {
       await cleanOnce();
     } catch {
-      if (!controller.signal.aborted) console.error('Asset cleanup will retry');
+      if (!controller.signal.aborted)
+        console.error(
+          JSON.stringify({service: 'cleanup', event: 'worker_retry'}),
+        );
     }
     try {
       await delay(60000, undefined, {signal: controller.signal});

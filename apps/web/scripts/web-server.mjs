@@ -19,6 +19,10 @@ const ingress = createIngress({
   apiOrigin: process.env.API_ORIGIN ?? 'http://api:8080',
   gatewayKey: gatewayKey(process.env),
   publicOrigin: process.env.PUBLIC_ORIGIN,
+  trustedProxies: process.env.TRUSTED_PROXY_CIDRS,
+  onRecord: (record) => console.log(JSON.stringify(record)),
+  onError: () =>
+    console.error(JSON.stringify({service: 'web', event: 'proxy_error'})),
 });
 // The framework listens only inside this process namespace
 const child = spawn(
@@ -44,10 +48,10 @@ const child = spawn(
 );
 ingress.listen(port, '0.0.0.0');
 // Stop streaming connections and the framework child together
-function stop(signal) {
+async function stop(signal) {
+  if (stopping) return;
   stopping = true;
-  ingress.closeAllConnections();
-  ingress.close();
+  await ingress.drain(10000);
   if (dev) {
     try {
       process.kill(-child.pid, signal);

@@ -131,3 +131,119 @@ test('the public ingress rejects cross-site writes before its admission call', a
     }
   }
 });
+
+// A proxy may supply one address only after its peer network is trusted
+test('forwarded addresses require an explicit proxy network and public origin', async () => {
+  const {proxyNetworks, clientAddress} =
+    await import('../apps/web/lib/server/ingress.mjs');
+  const request = {
+    socket: {remoteAddress: '::ffff:127.0.0.1'},
+    headers: {'x-forwarded-for': '192.0.2.42'},
+  };
+  assert.equal(clientAddress(request, proxyNetworks()), '127.0.0.1');
+  assert.equal(
+    clientAddress(request, proxyNetworks('127.0.0.1/32')),
+    '192.0.2.42',
+  );
+  assert.throws(() =>
+    clientAddress(
+      {...request, headers: {'x-forwarded-for': '192.0.2.1, 192.0.2.2'}},
+      proxyNetworks('127.0.0.1'),
+    ),
+  );
+  for (const value of ['bad', '127.0.0.1/33', '::1/129', '127.0.0.1/2/3'])
+    assert.throws(() => proxyNetworks(value));
+  assert.throws(() =>
+    createIngress({
+      targetPort: 1,
+      apiOrigin: 'http://api',
+      gatewayKey: '6'.repeat(64),
+      trustedProxies: '127.0.0.1',
+    }),
+  );
+});
+
+// A deploy lets commands finish while streams reconnect on another replica
+test('draining finishes an in-flight command and closes an open event stream', async () => {
+  let entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const target = http.createServer(async (req, res) => {
+    if (req.url === '/events') {
+      res.writeHead(200, {'Content-Type': 'text/event-stream'});
+      res.write('data: ready\n\n');
+      return;
+    }
+    entered();
+    await delay(80);
+    res.end('saved');
+  });
+  await new Promise((resolve) => target.listen(0, '127.0.0.1', resolve));
+  const ingress = createIngress({
+    targetPort: target.address().port,
+    apiOrigin: 'http://unused',
+    gatewayKey: '6'.repeat(64),
+  });
+  await new Promise((resolve) => ingress.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${ingress.address().port}`;
+  try {
+    const events = await fetch(origin + '/events');
+    const reader = events.body.getReader();
+    await reader.read();
+    const command = fetch(origin + '/slow', {
+      method: 'POST',
+      body: 'answer',
+    }).then((response) => response.text());
+    await started;
+    const drained = ingress.drain(1000);
+    assert.equal(await command, 'saved');
+    assert.equal((await reader.read()).done, true);
+    await drained;
+  } finally {
+    ingress.closeAllConnections();
+    ingress.close();
+    target.closeAllConnections();
+    await new Promise((resolve) => target.close(resolve));
+  }
+});
+
+// Operator data is authenticated and logs cannot contain private request details
+test('metrics and structured records have bounded labels and redact private input', async () => {
+  const records = [];
+  const target = http.createServer((_req, res) => res.end('ok'));
+  await new Promise((resolve) => target.listen(0, '127.0.0.1', resolve));
+  const ingress = createIngress({
+    targetPort: target.address().port,
+    apiOrigin: 'http://unused',
+    gatewayKey: '6'.repeat(64),
+    onRecord: (record) => records.push(record),
+  });
+  await new Promise((resolve) => ingress.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${ingress.address().port}`;
+  try {
+    await (
+      await fetch(origin + '/private-secret?token=never-log-this', {
+        headers: {Cookie: 'private-cookie'},
+      })
+    ).text();
+    assert.equal((await fetch(origin + '/internal/metrics')).status, 401);
+    const response = await fetch(origin + '/internal/metrics', {
+      headers: {'X-VM-Gateway': '6'.repeat(64)},
+    });
+    assert.equal(response.status, 200);
+    const metrics = await response.text();
+    assert.match(metrics, /vm_http_requests_total/);
+    for (const text of [JSON.stringify(records), metrics]) {
+      assert(!text.includes('never-log-this'));
+      assert(!text.includes('private-secret'));
+      assert(!text.includes('private-cookie'));
+      assert(!text.includes('6'.repeat(64)));
+    }
+  } finally {
+    ingress.closeAllConnections();
+    ingress.close();
+    target.closeAllConnections();
+    await new Promise((resolve) => target.close(resolve));
+  }
+});

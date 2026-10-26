@@ -1,9 +1,7 @@
 'use client';
 import {RoomExperience} from '../../../components/room-experience';
 import {useCallback, useEffect, useRef, useState} from 'react';
-import Link from 'next/link';
-import {Brand} from '../../../components/brand';
-import {Preferences} from '../../../components/preferences';
+import {PageHeader} from '../../../components/page-header';
 import {Panel} from '../../../components/ui/panel';
 import {Button} from '../../../components/ui/button';
 import {ParticipantJourney} from './journey';
@@ -106,12 +104,7 @@ export default function VotingEntry({id}: {id: string}) {
     >
       <main className="min-h-svh bg-page px-4 py-6 text-ink">
         <div className="mx-auto max-w-5xl">
-          <header className="flex items-center justify-between gap-3">
-            <Link href="/" aria-label="На главную">
-              <Brand />
-            </Link>
-            <Preferences />
-          </header>
+          <PageHeader />
           {state === 'loading' && (
             <p role="status" className="mt-8">
               Проверяем ссылку…

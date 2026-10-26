@@ -1,0 +1,12 @@
+[Unit]
+Description=Vote Machine daily database and object backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/votebox
+EnvironmentFile=/etc/votebox/backup.env
+ExecStart=/usr/bin/node scripts/backup.mjs backup /var/backups/votebox
+UMask=0077
+TimeoutStartSec=1h

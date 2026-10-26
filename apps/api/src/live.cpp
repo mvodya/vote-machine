@@ -62,6 +62,8 @@ class LiveHub : public std::enable_shared_from_this<LiveHub> {
 
   // Release streams and the listener before closing the shared database
   void Stop() {
+    // Drain and final shutdown can request the same cleanup
+    if (stopped_) return;
     stopped_ = true;
     drogon::app().getLoop()->invalidateTimer(timer_);
     listener_.reset();

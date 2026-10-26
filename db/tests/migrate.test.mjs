@@ -414,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT to_regprocedure('public.vm_room_experience(uuid,bytea,boolean,jsonb)') AS name",
+          "SELECT to_regprocedure('public.vm_delete_room(uuid,bytea,jsonb)') AS name",
         )
       ).rows[0].name,
       null,
@@ -4942,7 +4942,7 @@ test('appearance rollback and reapply preserve rooms and answers', async () => {
     await runMigrations({databaseUrl});
     const f = await personalFixture(client);
     await cast(client, f, ballotInput(f.question));
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: 2});
     assert.equal(
       (
         await client.query(
@@ -4962,5 +4962,181 @@ test('appearance rollback and reapply preserve rooms and answers', async () => {
       ).rows[0].count,
       '1',
     );
+  });
+});
+
+// Use the real deletion function with the latest room revision
+async function removeRoom(client, fixture, data = {}) {
+  const {
+    rows: [room],
+  } = await client.query('SELECT revision::text FROM rooms WHERE id=$1', [
+    fixture.admin.room.id,
+  ]);
+  return (
+    await client.query('SELECT vm_delete_room($1,$2,$3) AS reply', [
+      fixture.admin.room.id,
+      hash(fixture.admin.session),
+      JSON.stringify({
+        confirmation: fixture.admin.room.id,
+        revision: room?.revision ?? '0',
+        ...data,
+      }),
+    ])
+  ).rows[0].reply;
+}
+test('room deletion removes answers, links and sessions and keeps retryable object jobs', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    const asset = await readyAsset(client, f.admin);
+    assert.equal(
+      (await removeRoom(client, f, {confirmation: randomUUID()})).status,
+      400,
+    );
+    assert.equal(
+      (await removeRoom(client, f, {revision: '999999'})).status,
+      409,
+    );
+    assert.equal((await removeRoom(client, f)).status, 200);
+    for (const table of [
+      'rooms',
+      'questions',
+      'ballots',
+      'room_admin_sessions',
+      'voting_links',
+      'assets',
+    ]) {
+      const column = table === 'rooms' ? 'id' : 'room_id';
+      assert.equal(
+        (
+          await client.query(
+            `SELECT count(*) FROM ${table} WHERE ${column}=$1`,
+            [f.admin.room.id],
+          )
+        ).rows[0].count,
+        '0',
+      );
+    }
+    assert.equal((await journey(client, f)).status, 401);
+    assert.equal((await cleanupCall(client, 'claim')).jobs.length, 0);
+    await client.query(
+      "UPDATE object_deletions SET available_at=clock_timestamp()-interval '1 second'",
+    );
+    const [job] = (await cleanupCall(client, 'claim')).jobs;
+    assert.equal(job.id, asset.id);
+    assert.equal((await cleanupCall(client, 'claim')).jobs.length, 0);
+    await cleanupCall(client, 'ack', {id: job.id, token: randomUUID()});
+    assert.equal(
+      (await client.query('SELECT count(*) FROM object_deletions')).rows[0]
+        .count,
+      '1',
+    );
+    await cleanupCall(client, 'ack', job);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM object_deletions')).rows[0]
+        .count,
+      '0',
+    );
+  });
+});
+test('room deletion rejects another admin and rolls back all data on a failed child cleanup', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const other = await adminRoom(client);
+    await cast(client, f, ballotInput(f.question));
+    assert.equal(
+      (
+        await removeRoom(client, {
+          ...f,
+          admin: {...f.admin, session: other.session},
+        })
+      ).status,
+      401,
+    );
+    await client.query(
+      "CREATE FUNCTION fail_room_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$; CREATE TRIGGER fail_delete BEFORE DELETE ON voting_links FOR EACH ROW EXECUTE FUNCTION fail_room_delete()",
+    );
+    await assert.rejects(removeRoom(client, f));
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM ballots WHERE question_id=$1',
+          [f.question.id],
+        )
+      ).rows[0].count,
+      '1',
+    );
+    assert.equal((await journey(client, f)).status, 200);
+  });
+});
+test('operations rollback refuses queued objects and reapply preserves active room data', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await readyAsset(client, f.admin);
+    await removeRoom(client, f);
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}));
+    assert.equal(
+      (
+        await client.query(
+          "SELECT to_regprocedure('vm_delete_room(uuid,bytea,jsonb)') IS NOT NULL AS present",
+        )
+      ).rows[0].present,
+      true,
+    );
+    await client.query('DELETE FROM object_deletions');
+    const active = await personalFixture(client);
+    await cast(client, active, ballotInput(active.question));
+    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl});
+    assert.equal((await journey(client, active)).status, 200);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM ballots WHERE question_id=$1',
+          [active.question.id],
+        )
+      ).rows[0].count,
+      '1',
+    );
+  });
+});
+
+test('room deletion and a simultaneous vote leave no orphan data', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const [removed, vote] = await Promise.all([
+        removeRoom(client, f),
+        cast(other, f, ballotInput(f.question)),
+      ]);
+      assert([200, 409].includes(removed.status));
+      assert([200, 401, 409].includes(vote.status));
+      if (removed.status === 409)
+        assert.equal((await removeRoom(client, f)).status, 200);
+      assert.equal(
+        (
+          await client.query('SELECT count(*) FROM ballots WHERE room_id=$1', [
+            f.admin.room.id,
+          ])
+        ).rows[0].count,
+        '0',
+      );
+      assert.equal(
+        (
+          await client.query('SELECT count(*) FROM rooms WHERE id=$1', [
+            f.admin.room.id,
+          ])
+        ).rows[0].count,
+        '0',
+      );
+    } finally {
+      await other.end();
+    }
   });
 });

@@ -13,10 +13,13 @@ type Tab = {
 // Show tabs with mouse and keyboard controls
 export function Tabs({
   items,
+  group,
   value,
   onChange,
   label,
 }: {
+  // Prefix shared with each tab panel
+  group: string;
   // Tabs to show
   items: Tab[];
   // Selected tab ID
@@ -37,6 +40,8 @@ export function Tabs({
           key={tab.id}
           variant="tab"
           role="tab"
+          id={`${group}-tab-${tab.id}`}
+          aria-controls={`${group}-panel-${tab.id}`}
           aria-selected={value === tab.id}
           tabIndex={value === tab.id ? 0 : -1}
           onClick={() => onChange(tab.id)}
@@ -60,7 +65,7 @@ export function Tabs({
           <span className="inline-flex size-4 shrink-0" aria-hidden="true">
             {tab.icon}
           </span>
-          <span>{tab.label}</span>
+          <span className="max-w-full min-w-0 break-words">{tab.label}</span>
         </Button>
       ))}
     </div>

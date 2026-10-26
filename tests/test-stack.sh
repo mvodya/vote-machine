@@ -42,5 +42,11 @@ docker compose -p "$COMPOSE_PROJECT_NAME" exec -T -e API_B_ORIGIN="http://$COMPO
 node tests/security-api.mjs
 node tests/realtime-recovery.mjs
 docker rm -f "$COMPOSE_PROJECT_NAME-api-b"
-pnpm test:e2e
+# Linux CI runs every engine directly, macOS can use the pinned Firefox image
+if [ "${FIREFOX_IN_DOCKER:-0}" = 1 ]; then
+  pnpm --filter @vote-machine/web exec playwright test --project=desktop --project=mobile --project=webkit --project=webkit-mobile
+  sh tests/test-firefox.sh
+else
+  pnpm test:e2e
+fi
 node tests/stack.mjs
