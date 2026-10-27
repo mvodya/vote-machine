@@ -1,9 +1,10 @@
 'use client';
 
+import {AnswerCount} from '../../../components/answer-count';
 import {Loading} from '../../../components/ui/loading';
 import {useLive} from '../../../lib/use-live';
 import {useEffect, useRef, useState} from 'react';
-import {Eye, ListChecks, Pencil, Plus, Trash2, Check} from 'lucide-react';
+import {Eye, ListChecks, Pencil, Plus, Trash2} from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Panel} from '../../../components/ui/panel';
 import {SectionHeader} from '../../../components/ui/section-header';
@@ -341,13 +342,7 @@ export function Questions({
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <span
-                      aria-label={`Количество ответов: ${item.answerCount ?? 0}`}
-                      className="inline-flex items-center gap-1 text-xs text-muted"
-                    >
-                      <Check aria-hidden="true" className="size-4" />
-                      {item.answerCount ?? 0}
-                    </span>
+                    <AnswerCount count={item.answerCount ?? 0} />
                     <span
                       aria-label={`Смотрят вопрос: ${item.viewerCount ?? 0}`}
                       className="inline-flex items-center gap-1 text-xs text-muted"

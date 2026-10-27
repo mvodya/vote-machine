@@ -507,3 +507,72 @@ test('long results leave room for the footer and unavailable labels follow the t
     await device.close();
   }
 });
+
+test('new answers launch separate floating increments without moving the count', async ({
+  page,
+}, info) => {
+  const f = await votingFixture(page);
+  await page.goto(`/rooms/${f.room.id}`);
+  const row = page.getByRole('listitem', {
+    name: 'Choose a result',
+    exact: true,
+  });
+  await expect(
+    row.getByLabel('Количество ответов: 0', {exact: true}),
+  ).toBeVisible();
+  await expect(row.getByText('+1', {exact: true})).toHaveCount(0);
+  const replies = await Promise.all(
+    Array.from({length: 3}, () =>
+      page.request.post(
+        `/api/rooms/${f.room.id}/questions/${f.question.id}/manual`,
+        {
+          headers: {Origin: f.origin},
+          data: {
+            requestId: crypto.randomUUID(),
+            questionRevision: f.question.revision,
+            ballotRevision: '0',
+            choices: [f.question.choices[0].id],
+          },
+        },
+      ),
+    ),
+  );
+  expect(replies.map((reply) => reply.status())).toEqual([200, 200, 200]);
+  await expect(
+    row.getByLabel('Количество ответов: 3', {exact: true}),
+  ).toBeVisible();
+  const bursts = row.getByText('+1', {exact: true});
+  await expect(bursts).toHaveCount(3);
+  const frames = await bursts.evaluateAll((labels) =>
+    labels.map((label) => {
+      const animation = label.getAnimations()[0];
+      animation.pause();
+      animation.currentTime = 0;
+      return (animation.effect as KeyframeEffect).getKeyframes()[0].transform;
+    }),
+  );
+  expect(new Set(frames).size).toBe(3);
+  await page.screenshot({path: info.outputPath('answer-increments.png')});
+  await bursts.evaluateAll((labels) =>
+    labels.forEach((label) => label.getAnimations()[0].finish()),
+  );
+  await expect(bursts).toHaveCount(0);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  const next = await page.request.post(
+    `/api/rooms/${f.room.id}/questions/${f.question.id}/manual`,
+    {
+      headers: {Origin: f.origin},
+      data: {
+        requestId: crypto.randomUUID(),
+        questionRevision: f.question.revision,
+        ballotRevision: '0',
+        choices: [f.question.choices[0].id],
+      },
+    },
+  );
+  expect(next.status()).toBe(200);
+  await expect(
+    row.getByLabel('Количество ответов: 4', {exact: true}),
+  ).toBeVisible();
+  await expect(bursts).toHaveCount(0);
+});
