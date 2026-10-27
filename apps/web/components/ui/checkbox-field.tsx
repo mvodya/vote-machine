@@ -1,4 +1,5 @@
 import type {ComponentProps} from 'react';
+import {SelectionInput} from './selection-input';
 import {fieldDescription, type FieldProps} from './field';
 
 // Keep a checkbox next to its label and help text
@@ -17,10 +18,10 @@ export function CheckboxField({
         htmlFor={id}
         className="flex items-start gap-3 text-sm leading-6 text-ink"
       >
-        <input
+        <SelectionInput
           id={id}
           type="checkbox"
-          className="mt-1 size-4 shrink-0 accent-primary focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ink disabled:opacity-50"
+          className="mt-1 size-4"
           aria-describedby={fieldDescription(id, hint, error, describedBy)}
           aria-invalid={error ? true : undefined}
           {...props}

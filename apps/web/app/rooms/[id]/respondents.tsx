@@ -1,5 +1,6 @@
 'use client';
 
+import {Loading} from '../../../components/ui/loading';
 import {markdownSummary} from '../../../lib/markdown';
 import {useLive} from '../../../lib/use-live';
 import {useEffect, useState, type FormEvent} from 'react';
@@ -491,9 +492,7 @@ export function Respondents({
         </Button>
       </div>
       {loading ? (
-        <p role="status" className="py-8 text-muted">
-          Загружаем респондентов…
-        </p>
+        <Loading label="Загружаем респондентов…" />
       ) : failed ? (
         <div role="alert" className="py-8">
           <p>Не удалось загрузить список</p>
@@ -557,12 +556,17 @@ export function Respondents({
                     </div>
                     {online[link.id] && (
                       <div className="mt-2 text-xs text-muted">
-                        <p>
-                          {link.mode === 'reusable'
-                            ? `Сейчас онлайн: ${online[link.id].online}`
-                            : online[link.id].online
-                              ? 'Онлайн'
-                              : 'Не в сети'}
+                        <p className="flex flex-wrap gap-x-3 gap-y-1">
+                          <span>
+                            {link.mode === 'reusable'
+                              ? `Сейчас онлайн: ${online[link.id].online}`
+                              : online[link.id].online
+                                ? 'Онлайн'
+                                : 'Не в сети'}
+                          </span>
+                          {link.mode === 'reusable' && (
+                            <span>Заходов: {link.sessionCount ?? '0'}</span>
+                          )}
                         </p>
                         {online[link.id].questions.map((question) => (
                           <p key={question.id}>
@@ -632,8 +636,16 @@ export function Respondents({
           page={cursors.length}
           hasNext={Boolean(next)}
           busy={busy}
-          onPrevious={() => setCursors((value) => value.slice(0, -1))}
-          onNext={() => next && setCursors((value) => [...value, next])}
+          onPrevious={() => {
+            setLoading(true);
+            setCursors((value) => value.slice(0, -1));
+          }}
+          onNext={() => {
+            if (next) {
+              setLoading(true);
+              setCursors((value) => [...value, next]);
+            }
+          }}
         />
       )}
       <p role="status" className="mt-4 text-sm text-muted">

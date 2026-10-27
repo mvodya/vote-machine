@@ -1,4 +1,5 @@
 import type {ReactNode} from 'react';
+import {SelectionInput} from './selection-input';
 
 // Keep rich answer content separate from the native selection control
 export function ChoiceField({
@@ -27,7 +28,7 @@ export function ChoiceField({
     <div
       className={`flex items-start gap-3 rounded-xl border p-4 ${checked ? 'border-ink bg-accent/60' : 'border-border'}`}
     >
-      <input
+      <SelectionInput
         id={id}
         aria-label={label}
         name="question-choice"
@@ -35,7 +36,7 @@ export function ChoiceField({
         checked={checked}
         disabled={disabled}
         onChange={onChange}
-        className="mt-[calc(0.75rem+0.25rem)] size-5 shrink-0 accent-primary focus-visible:outline-2 focus-visible:outline-offset-3"
+        className="mt-[calc(0.75rem+0.25rem)] size-5"
       />
       <div className="min-w-0 flex-1">
         <label htmlFor={id} className="block cursor-pointer">

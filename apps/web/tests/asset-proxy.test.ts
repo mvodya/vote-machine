@@ -116,6 +116,22 @@ it('passes one private range through and rejects multipart ranges', async () => 
   expect(rejected.status).toBe(416);
   expect(storage.getObject).not.toHaveBeenCalled();
 });
+it('returns a valid size header when storage rejects a byte range', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(() => Promise.resolve(Response.json({asset}))),
+  );
+  storage.getObject.mockRejectedValueOnce({$metadata: {httpStatusCode: 416}});
+  const response = await assetBytes(
+    request('GET', {Range: 'bytes=1000-'}),
+    room,
+    id,
+  );
+  expect(response.status).toBe(416);
+  expect(response.headers.get('content-range')).toBe('bytes */100');
+  expect(response.headers.get('accept-ranges')).toBe('bytes');
+});
+
 it('checks Origin before uploads or heartbeat writes', async () => {
   const fetcher = vi.fn();
   vi.stubGlobal('fetch', fetcher);

@@ -12,6 +12,8 @@ export interface VotingLink {
   ordinal: string;
   // Version of the link data
   revision: string;
+  // Count of stored sessions across all key generations
+  sessionCount?: string;
   // Whether new access is blocked
   revoked: boolean;
 }
@@ -61,7 +63,8 @@ export function isVotingLink(value: unknown): value is VotingLink {
     validCursor(value.ordinal) &&
     value.ordinal !== '0' &&
     validCursor(value.revision) &&
-    typeof value.revoked === 'boolean'
+    typeof value.revoked === 'boolean' &&
+    (value.sessionCount === undefined || validCursor(value.sessionCount))
   );
 }
 // Copy only fields allowed in normal admin lists
@@ -73,6 +76,9 @@ export function publicLink(value: VotingLink): VotingLink {
     ordinal: value.ordinal,
     revision: value.revision,
     revoked: value.revoked,
+    ...(value.sessionCount !== undefined
+      ? {sessionCount: value.sessionCount}
+      : {}),
   };
 }
 // Check the room and link returned to a participant

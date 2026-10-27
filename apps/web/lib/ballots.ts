@@ -37,7 +37,6 @@ export function isAnswer(value: unknown): value is Answer {
     value.hidden === undefined &&
     typeof value.id === 'string' &&
     roomIdPattern.test(value.id) &&
-    value.choices.length >= 1 &&
     value.choices.length <= 100 &&
     value.choices.every(
       (id) => typeof id === 'string' && roomIdPattern.test(id),

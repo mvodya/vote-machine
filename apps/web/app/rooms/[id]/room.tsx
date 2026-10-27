@@ -1,4 +1,5 @@
 'use client';
+import {Loading} from '../../../components/ui/loading';
 import {RoomExperience} from '../../../components/room-experience';
 import {AccentPicker} from '../../../components/accent-picker';
 
@@ -13,7 +14,15 @@ import {QuestionPolicy} from './question-policy';
 import {Respondents} from './respondents';
 
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {ListChecks, Users, ChartColumn, Settings, Copy} from 'lucide-react';
+import {
+  ListChecks,
+  Users,
+  ChartColumn,
+  Settings,
+  Copy,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import {PageHeader} from '../../../components/page-header';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
 import {TabPanel} from '../../../components/ui/tab-panel';
@@ -49,6 +58,8 @@ export default function AdminRoom({id}: {id: string}) {
   const [room, setRoom] = useState<Room | null>(null);
   // Full admin link shown in settings
   const [link, setLink] = useState('');
+  // Keep the key covered until the admin asks to see it
+  const [linkVisible, setLinkVisible] = useState(false);
   // Change this value to retry loading
   const [attempt, setAttempt] = useState(0);
   // Short result or error message
@@ -242,7 +253,7 @@ export default function AdminRoom({id}: {id: string}) {
         active={state === 'ready'}
         onDenied={denyAccess}
       >
-        <main className="min-h-screen bg-page">
+        <main className="min-h-screen bg-page pb-14">
           <PageHeader className="mx-auto max-w-7xl px-4 py-5 sm:px-8" />
           <Results
             id={id}
@@ -262,13 +273,9 @@ export default function AdminRoom({id}: {id: string}) {
       onDenied={denyAccess}
     >
       <main className="min-h-svh bg-page text-ink">
-        <div className="mx-auto max-w-6xl px-4 pb-10 sm:px-8">
+        <div className="mx-auto max-w-6xl px-4 pb-14 sm:px-8">
           <PageHeader className="border-b border-border py-5 sm:py-6" />
-          {state === 'loading' && (
-            <p role="status" className="mt-8">
-              Открываем комнату…
-            </p>
-          )}
+          {state === 'loading' && <Loading label="Открываем комнату…" />}
           {state === 'denied' && (
             <Panel className="mt-8">
               <h1 className="text-2xl font-semibold">Нет доступа к комнате</h1>
@@ -402,6 +409,24 @@ export default function AdminRoom({id}: {id: string}) {
                           <>
                             <TextField
                               id="admin-link"
+                              type={linkVisible ? 'text' : 'password'}
+                              autoComplete="off"
+                              endAction={
+                                <Button
+                                  variant="ghost"
+                                  aria-label={
+                                    linkVisible
+                                      ? 'Скрыть административную ссылку'
+                                      : 'Показать административную ссылку'
+                                  }
+                                  onClick={() =>
+                                    setLinkVisible((value) => !value)
+                                  }
+                                >
+                                  {linkVisible ? <EyeOff /> : <Eye />}
+                                </Button>
+                              }
+                              onClick={() => setLinkVisible(true)}
                               label="Административная ссылка"
                               className="font-mono"
                               readOnly

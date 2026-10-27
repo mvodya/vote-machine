@@ -1,7 +1,8 @@
 'use client';
 
+import {Loading} from '../../../components/ui/loading';
 import {useLive} from '../../../lib/use-live';
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {Eye, ListChecks, Pencil, Plus, Trash2, Check} from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Panel} from '../../../components/ui/panel';
@@ -38,6 +39,15 @@ export function Questions({
   // Tell room tabs when the editor is open
   onEditingChange?: (value: boolean) => void;
 }) {
+  // Compare real snapshots so old closed questions do not flash on arrival
+  const prior = useRef(new Map<string, string>());
+  const closeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const [recentlyClosed, setRecentlyClosed] = useState<Set<string>>(new Set());
+  const [opening, setOpening] = useState(false);
+  useEffect(() => {
+    const timers = closeTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
   // Metadata for the current page
   const [items, setItems] = useState<QuestionSummary[]>([]);
   // Saved page boundaries
@@ -96,6 +106,33 @@ export function Questions({
         )
           throw new Error('Bad page');
         if (!controller.signal.aborted) {
+          for (const item of body.questions as QuestionSummary[]) {
+            if (
+              prior.current.get(item.id) === 'open' &&
+              item.state === 'closed'
+            ) {
+              setRecentlyClosed((old) => new Set([...old, item.id]));
+              clearTimeout(closeTimers.current.get(item.id));
+              closeTimers.current.set(
+                item.id,
+                setTimeout(() => {
+                  setRecentlyClosed((old) => {
+                    const next = new Set(old);
+                    next.delete(item.id);
+                    return next;
+                  });
+                  closeTimers.current.delete(item.id);
+                }, 5000),
+              );
+            }
+            prior.current.set(item.id, item.state);
+          }
+          prior.current = new Map(
+            (body.questions as QuestionSummary[]).map((item) => [
+              item.id,
+              item.state,
+            ]),
+          );
           setItems(body.questions);
           setNext(body.nextCursor);
         }
@@ -115,6 +152,7 @@ export function Questions({
   // Keep the list usable if a full question cannot be loaded
   async function open(id: string) {
     if (busy) return;
+    setOpening(true);
     setBusy(true);
     setNotice('');
     try {
@@ -135,6 +173,7 @@ export function Questions({
     } catch {
       setNotice('Не удалось открыть вопрос, обновите список');
     } finally {
+      setOpening(false);
       setBusy(false);
     }
   }
@@ -208,7 +247,11 @@ export function Questions({
   }
   return (
     <>
-      {editing !== null ? (
+      {opening ? (
+        <Panel>
+          <Loading label="Открываем вопрос…" rows={4} />
+        </Panel>
+      ) : editing !== null ? (
         <QuestionEditor
           key={editorSession}
           roomId={roomId}
@@ -247,9 +290,7 @@ export function Questions({
             </Button>
           </SectionHeader>
           {loading ? (
-            <p role="status" className="py-8 text-muted">
-              Загружаем вопросы…
-            </p>
+            <Loading label="Загружаем вопросы…" />
           ) : failed ? (
             <div role="alert" className="py-8">
               <p>Не удалось загрузить вопросы</p>
@@ -264,12 +305,15 @@ export function Questions({
               description="Создайте черновик вопроса"
             />
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="-mx-5 divide-y divide-border sm:-mx-6">
               {items.map((item) => (
                 <li
                   key={item.id}
                   aria-label={markdownSummary(item.preview) || 'Без текста'}
-                  className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between"
+                  className={`flex flex-col gap-3 px-5 py-5 sm:flex-row sm:px-6 sm:items-center sm:justify-between ${recentlyClosed.has(item.id) ? 'animate-question-closed' : ''}`}
+                  data-recently-closed={
+                    recentlyClosed.has(item.id) ? 'true' : undefined
+                  }
                 >
                   <div className="min-w-0">
                     <h3 className="font-medium whitespace-pre-wrap break-words">
@@ -365,8 +409,16 @@ export function Questions({
               page={cursors.length}
               hasNext={Boolean(next)}
               busy={busy}
-              onPrevious={() => setCursors((value) => value.slice(0, -1))}
-              onNext={() => next && setCursors((value) => [...value, next])}
+              onPrevious={() => {
+                setLoading(true);
+                setCursors((value) => value.slice(0, -1));
+              }}
+              onNext={() => {
+                if (next) {
+                  setLoading(true);
+                  setCursors((value) => [...value, next]);
+                }
+              }}
             />
           )}
         </Panel>

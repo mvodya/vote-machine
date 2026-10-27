@@ -1,4 +1,5 @@
 'use client';
+import {Loading} from '../../../components/ui/loading';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   ListChecks,
@@ -325,7 +326,7 @@ export function ParticipantJourney({
                   )}
               </>
             ) : (
-              <p className="text-sm text-muted">Загружаем вопрос…</p>
+              <Loading label="Загружаем вопрос…" rows={2} />
             )}
           </Panel>
         )}

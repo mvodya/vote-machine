@@ -1,5 +1,7 @@
 'use client';
 import {CalendarClock, Hourglass, Infinity as InfinityIcon} from 'lucide-react';
+import {TemporalField} from './ui/temporal-field';
+import {wallTime} from '../lib/time';
 import {TextField} from './ui/text-field';
 import {SelectField} from './ui/select-field';
 import {SegmentedControl} from './ui/segmented-control';
@@ -78,26 +80,27 @@ export function QuestionDeadline({
       />
       {value.deadlineMode === 'absolute' && (
         <div className="grid gap-4 sm:grid-cols-2">
-          <TextField
+          <TemporalField
             id={`${purpose}-date`}
             label={start ? 'Дата открытия' : 'Дата закрытия'}
-            type="date"
+            kind="date"
+            now={() =>
+              wallTime(new Date().toISOString(), timeZone).split('T')[0]
+            }
             value={date}
             disabled={disabled}
-            onChange={(event) =>
-              onChange({...value, wall: `${event.target.value}T${time}`})
-            }
+            onChange={(next) => onChange({...value, wall: `${next}T${time}`})}
           />
-          <TextField
+          <TemporalField
             id={`${purpose}-time`}
             label={start ? 'Время открытия' : 'Время закрытия'}
-            type="time"
-            step={1}
+            kind="time"
+            now={() =>
+              wallTime(new Date().toISOString(), timeZone).split('T')[1]
+            }
             value={time}
             disabled={disabled}
-            onChange={(event) =>
-              onChange({...value, wall: `${date}T${event.target.value}`})
-            }
+            onChange={(next) => onChange({...value, wall: `${date}T${next}`})}
           />
           <p className="text-xs text-muted sm:col-span-2">
             Часовой пояс комнаты: {timeZone}

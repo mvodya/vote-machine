@@ -60,6 +60,8 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        GIT_COMMIT: ${DEPLOY_REVISION:-dev}
     environment:
       DATABASE_URL: postgresql://vote_machine:${POSTGRES_PASSWORD:-vote_machine_local}@postgres:5432/vote_machine
       API_PORT: '8080'

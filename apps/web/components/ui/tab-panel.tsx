@@ -25,8 +25,8 @@ export function TabPanel({
       role="tabpanel"
       aria-labelledby={`${group}-tab-${id}`}
       hidden={value !== id}
-      tabIndex={0}
-      className={`min-w-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${className}`}
+      tabIndex={-1}
+      className={`min-w-0 rounded-xl outline-none ${className}`}
     >
       {children}
     </div>

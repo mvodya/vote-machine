@@ -62,6 +62,7 @@ assert.deepEqual(Object.keys(link).sort(), [
   'ordinal',
   'revision',
   'revoked',
+  'sessionCount',
 ]);
 const secretPath = `${path}/${link.id}/secret`;
 const secret = (await call(secretPath, {token})).data.token;

@@ -1,4 +1,5 @@
 'use client';
+import {Loading} from '../../../components/ui/loading';
 import {RoomExperience} from '../../../components/room-experience';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {PageHeader} from '../../../components/page-header';
@@ -102,13 +103,11 @@ export default function VotingEntry({id}: {id: string}) {
       active={state === 'ready'}
       onDenied={denyAccess}
     >
-      <main className="min-h-svh bg-page px-4 py-6 text-ink">
+      <main className="min-h-svh bg-page px-4 pt-6 pb-14 text-ink">
         <div className="mx-auto max-w-5xl">
           <PageHeader />
           {state === 'loading' && (
-            <p role="status" className="mt-8">
-              Проверяем ссылку…
-            </p>
+            <Loading label="Проверяем ссылку…" rows={2} />
           )}
           {state === 'denied' && (
             <Panel className="mt-8">

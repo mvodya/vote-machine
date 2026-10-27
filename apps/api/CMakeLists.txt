@@ -47,6 +47,12 @@ target_include_directories(vote_machine_markdown PUBLIC src)
 target_link_libraries(vote_machine_markdown PUBLIC vote_machine_access vote_machine_options Drogon::Drogon ${CMARK_GFM_LIBRARY})
 
 add_executable(vote_machine_api src/main.cpp src/rooms.cpp src/http.cpp src/links.cpp src/questions.cpp src/assets.cpp src/voting.cpp src/results.cpp src/live.cpp src/security.cpp)
+# Only a public revision may enter build metadata
+set(VOTE_MACHINE_COMMIT "dev" CACHE STRING "Public source revision")
+if(NOT VOTE_MACHINE_COMMIT MATCHES "^(dev|[0-9a-fA-F]+)$")
+  message(FATAL_ERROR "Invalid public revision")
+endif()
+target_compile_definitions(vote_machine_api PRIVATE VOTE_MACHINE_COMMIT="${VOTE_MACHINE_COMMIT}")
 target_link_libraries(
   vote_machine_api
   PRIVATE vote_machine_config vote_machine_access vote_machine_markdown Drogon::Drogon

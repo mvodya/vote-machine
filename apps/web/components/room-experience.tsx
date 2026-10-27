@@ -1,4 +1,5 @@
 'use client';
+import {Spinner} from './ui/loading';
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {useDeadlineSounds} from '../lib/use-deadline-sounds';
 import {useLive} from '../lib/use-live';
@@ -90,10 +91,14 @@ export function RoomExperience({
   );
   if (active && !ready)
     return (
-      <div role="status" className="p-8 text-muted">
-        {failed
-          ? 'Не удалось загрузить настройки комнаты, повторяем'
-          : 'Открываем комнату…'}
+      <div className="p-8 text-muted">
+        <Spinner
+          label={
+            failed
+              ? 'Не удалось загрузить настройки комнаты, повторяем'
+              : 'Открываем комнату…'
+          }
+        />
       </div>
     );
   return children;

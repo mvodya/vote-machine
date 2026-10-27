@@ -48,7 +48,6 @@ export async function adminVotingProxy(
           !validCursor(input.questionRevision) ||
           !validCursor(input.ballotRevision) ||
           !Array.isArray(input.choices) ||
-          input.choices.length < 1 ||
           input.choices.length > 100 ||
           !input.choices.every(
             (id) => typeof id === 'string' && roomIdPattern.test(id),

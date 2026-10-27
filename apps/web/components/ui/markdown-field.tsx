@@ -1,4 +1,5 @@
 'use client';
+import {Spinner} from './loading';
 import {useEffect, useRef, useState} from 'react';
 import {
   TextCursorInput,
@@ -266,11 +267,7 @@ export function MarkdownField({
           }}
         />
       )}
-      {uploading && (
-        <p role="status" className="mt-2 text-xs text-muted">
-          Загружаем и проверяем файл…
-        </p>
-      )}
+      {uploading && <Spinner label="Загружаем и проверяем файл…" />}
       {error && (
         <p role="alert" className="mt-2 text-sm text-error-ink">
           {error}

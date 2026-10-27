@@ -31,9 +31,10 @@ WORKDIR /workspace
 
 # For building API app
 FROM test_tools AS build
+ARG GIT_COMMIT=dev
 WORKDIR /src
 COPY apps/api/ .
-RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DVOTE_MACHINE_COMMIT="$GIT_COMMIT" \
     && cmake --build build --parallel 2 \
     && ctest --test-dir build --output-on-failure
 

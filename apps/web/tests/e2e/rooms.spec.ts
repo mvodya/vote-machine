@@ -58,9 +58,14 @@ test('create, save the link, rename and reopen after reload', async ({
   expect(
     await page.evaluate(() => ({
       local: localStorage.length,
-      session: sessionStorage.length,
+      session: Object.keys(sessionStorage).filter(
+        (key) => key !== 'vm-debug-client',
+      ).length,
     })),
   ).toEqual({local: 0, session: 0});
+  expect(
+    await page.evaluate(() => sessionStorage.getItem('vm-debug-client')),
+  ).toMatch(/^[a-f0-9-]{36}$/);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

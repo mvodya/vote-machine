@@ -12,6 +12,7 @@
 #include "access.hpp"
 #include "assets.hpp"
 #include "config.hpp"
+#include "diagnostics.hpp"
 #include "links.hpp"
 #include "live.hpp"
 #include "questions.hpp"
@@ -83,6 +84,7 @@ void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
           body["message"] = result[0]["message"].as<std::string>();
           body["database"] = "connected";
         } else if (result[0]["schema_ready"].as<bool>()) {
+          body = vote_machine::ConnectionInfo();
           body["status"] = "ready";
         } else {
           body["error"] = "Database schema is unavailable";

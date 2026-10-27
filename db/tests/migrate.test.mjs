@@ -414,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT to_regprocedure('public.vm_delete_room(uuid,bytea,jsonb)') AS name",
+          "SELECT conname AS name FROM pg_constraint WHERE conname='questions_max_choices_positive' UNION ALL SELECT NULL LIMIT 1",
         )
       ).rows[0].name,
       null,
@@ -1467,7 +1467,7 @@ test('database constraints protect option ownership, positions and selection lim
       )
     ).question;
     for (const sql of [
-      'UPDATE questions SET min_choices=0 WHERE id=$1',
+      'UPDATE questions SET min_choices=-1 WHERE id=$1',
       "UPDATE questions SET content=repeat('a',20001) WHERE id=$1",
       'UPDATE questions SET ordinal=ordinal+1 WHERE id=$1',
       'UPDATE question_options SET position=99 WHERE question_id=$1',
@@ -4942,7 +4942,7 @@ test('appearance rollback and reapply preserve rooms and answers', async () => {
     await runMigrations({databaseUrl});
     const f = await personalFixture(client);
     await cast(client, f, ballotInput(f.question));
-    await runMigrations({databaseUrl, direction: 'down', count: 2});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 17});
     assert.equal(
       (
         await client.query(
@@ -5077,7 +5077,9 @@ test('operations rollback refuses queued objects and reapply preserves active ro
     const f = await personalFixture(client);
     await readyAsset(client, f.admin);
     await removeRoom(client, f);
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}));
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 18}),
+    );
     assert.equal(
       (
         await client.query(
@@ -5089,7 +5091,7 @@ test('operations rollback refuses queued objects and reapply preserves active ro
     await client.query('DELETE FROM object_deletions');
     const active = await personalFixture(client);
     await cast(client, active, ballotInput(active.question));
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 18});
     await runMigrations({databaseUrl});
     assert.equal((await journey(client, active)).status, 200);
     assert.equal(
@@ -5101,6 +5103,71 @@ test('operations rollback refuses queued objects and reapply preserves active ro
       ).rows[0].count,
       '1',
     );
+  });
+});
+
+test('reusable visit signals count concurrent new sessions, retain rotations and roll back safely', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    const key = linkItem('Many sessions', 'reusable');
+    const [link] = await addLinks(client, f.admin, [key]);
+    const version = async () =>
+      (
+        await client.query('SELECT vm_event_state($1,$2,true) AS state', [
+          f.admin.room.id,
+          hash(f.admin.session),
+        ])
+      ).rows[0].state.version;
+    const before = await version();
+    const sessions = await Promise.all(
+      Array.from({length: 12}, async () => {
+        const other = new pg.Client({connectionString: databaseUrl});
+        await other.connect();
+        try {
+          return await openLink(other, link, key.key);
+        } finally {
+          await other.end();
+        }
+      }),
+    );
+    assert(sessions.every((session) => session.count === 1));
+    const visits = async () =>
+      (
+        await client.query(
+          'SELECT count(*) FROM voting_sessions WHERE link_id=$1',
+          [link.id],
+        )
+      ).rows[0].count;
+    assert.equal(await visits(), '12');
+    assert.notEqual(await version(), before);
+    const reused = await client.query(
+      'SELECT * FROM vm_exchange_voting_session($1,$2,$3,$4)',
+      [link.id, hash(key.key), hash(randomUUID()), hash(sessions[0].session)],
+    );
+    assert.equal(reused.rows[0].reused, true);
+    assert.equal(await visits(), '12');
+    const next = linkItem('Many sessions', 'reusable');
+    await editLink(client, f.admin, link, 'rotate', next);
+    await openLink(client, link, next.key);
+    assert.equal(await visits(), '13');
+    // An outside dependency must block rollback without losing session history
+    await client.query(
+      'CREATE VIEW outside_live AS SELECT vm_event_state(NULL::uuid,NULL::bytea,false)',
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 19}),
+      {
+        code: '2BP01',
+      },
+    );
+    assert.equal(await visits(), '13');
+    assert.equal(await migrationCount(client), total);
+    await client.query('DROP VIEW outside_live');
+    await runMigrations({databaseUrl, direction: 'down', count: total - 19});
+    assert.equal(await visits(), '13');
+    await runMigrations({databaseUrl});
+    assert.equal(await visits(), '13');
   });
 });
 
@@ -5138,5 +5205,133 @@ test('room deletion and a simultaneous vote leave no orphan data', async () => {
     } finally {
       await other.end();
     }
+  });
+});
+
+test('zero minimum accepts empty personal, reusable and manual answers and completes expected links', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const extra = {choiceMode: 'multiple', minChoices: 0, maxChoices: 2};
+    const f = await personalFixture(client, extra);
+    const body = ballotInput(f.question, {choices: []});
+    const reply = await cast(client, f, body);
+    assert.equal(reply.status, 200);
+    assert.deepEqual(reply.answer.choices, []);
+    assert.deepEqual(await cast(client, f, body), reply);
+    assert.equal((await results(client, f, true)).result.total, 1);
+    const reusable = await reusableFixture(client, extra);
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          reusable,
+          ballotInput(reusable.question, {choices: [], runId: reusable.run.id}),
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          f,
+          ballotInput(f.question, {choices: []}),
+          true,
+        )
+      ).status,
+      200,
+    );
+    const required = await personalFixture(client);
+    assert.equal(
+      (
+        await cast(
+          client,
+          required,
+          ballotInput(required.question, {choices: []}),
+        )
+      ).status,
+      400,
+    );
+    const completion = await completionFixture(client, extra);
+    assert.equal(
+      (
+        await cast(
+          client,
+          completion,
+          ballotInput(completion.question, {choices: []}),
+        )
+      ).status,
+      200,
+    );
+    const second = {
+      ...completion,
+      link: completion.links[1],
+      session: completion.sessions[1].session,
+    };
+    assert.equal(
+      (
+        await cast(
+          client,
+          second,
+          ballotInput(completion.question, {choices: []}),
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await client.query('SELECT state FROM questions WHERE id=$1', [
+          completion.question.id,
+        ])
+      ).rows[0].state,
+      'closed',
+    );
+  });
+});
+
+test('zero minimum rollback refuses data loss and supports recovery and reapply', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const q = await readyQuestion(client, admin, {
+      choiceMode: 'multiple',
+      minChoices: 0,
+    });
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
+      code: '23514',
+    });
+    assert.equal(await migrationCount(client), total);
+    assert.equal(
+      (
+        await client.query('SELECT min_choices FROM questions WHERE id=$1', [
+          q.id,
+        ])
+      ).rows[0].min_choices,
+      0,
+    );
+    await client.query('UPDATE questions SET min_choices=1 WHERE id=$1', [
+      q.id,
+    ]);
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          admin,
+          'create',
+          questionDocument({choiceMode: 'multiple', minChoices: 0}),
+        )
+      ).status,
+      400,
+    );
+    await runMigrations({databaseUrl});
+    assert(
+      (
+        await readyQuestion(client, admin, {
+          choiceMode: 'multiple',
+          minChoices: 0,
+        })
+      ).id,
+    );
   });
 });

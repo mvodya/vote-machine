@@ -12,6 +12,7 @@ import {
   Plus,
   Trash2,
   Save,
+  LoaderCircle,
   Undo2,
   ArrowLeft,
   Pencil,
@@ -466,7 +467,13 @@ export function QuestionEditor({
               <Button
                 type="submit"
                 form={`${prefix}-form`}
-                startIcon={<Save />}
+                startIcon={
+                  busy ? (
+                    <LoaderCircle className="motion-safe:animate-spin" />
+                  ) : (
+                    <Save />
+                  )
+                }
                 disabled={busy || uploads > 0 || electorateLoading}
               >
                 {busy ? 'Сохраняем…' : 'Сохранить изменения'}
@@ -632,7 +639,7 @@ export function QuestionEditor({
                     id={`${prefix}-min`}
                     label="Минимум вариантов"
                     type="number"
-                    min={1}
+                    min={0}
                     max={Math.max(1, value.choices.length)}
                     value={value.minChoices}
                     onChange={(event) =>
@@ -643,7 +650,7 @@ export function QuestionEditor({
                     id={`${prefix}-max`}
                     label="Максимум вариантов"
                     type="number"
-                    min={value.minChoices}
+                    min={Math.max(1, value.minChoices)}
                     max={Math.max(1, value.choices.length)}
                     value={value.maxChoices}
                     onChange={(event) =>

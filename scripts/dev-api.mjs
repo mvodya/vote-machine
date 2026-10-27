@@ -1,10 +1,22 @@
 import {createHash} from 'node:crypto';
 import {readdir, readFile} from 'node:fs/promises';
-import {spawn} from 'node:child_process';
+import {execFileSync, spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 
 let child;
 let stopping = false;
+
+// Record only the public commit hash
+function buildRevision() {
+  try {
+    const value = execFileSync('git', ['rev-parse', 'HEAD'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (/^[a-f0-9]{40}$/.test(value)) return value;
+  } catch {}
+  return 'dev';
+}
 
 // Send a signal to the whole process group
 function killGroup(pid, signal) {
@@ -91,9 +103,13 @@ try {
       // Do not start another step after shutdown
       if (stopping) break;
       console.log('Building API');
-      const configured = await start('cmake', ['--preset', 'dev'], {
-        cwd: 'apps/api',
-      });
+      const configured = await start(
+        'cmake',
+        ['--preset', 'dev', `-DVOTE_MACHINE_COMMIT=${buildRevision()}`],
+        {
+          cwd: 'apps/api',
+        },
+      );
       if (stopping) break;
       const built =
         configured &&

@@ -14,6 +14,8 @@ namespace {
 
 const std::string kColumns =
     "SELECT authorized, id::text, name, mode, ordinal::text, revision::text, "
+    "(SELECT count(*)::text FROM voting_sessions visits WHERE "
+    "visits.link_id=links.id) AS session_count, "
     "(revoked_at "
     "IS NOT NULL) AS revoked";
 const std::string kSecrets =
@@ -59,6 +61,7 @@ Json::Value Link(const drogon::orm::Row& row) {
   for (const auto* field : {"id", "name", "mode", "ordinal", "revision"})
     link[field] = row[field].as<std::string>();
   link["revoked"] = row["revoked"].as<bool>();
+  link["sessionCount"] = row["session_count"].as<std::string>();
   return link;
 }
 
@@ -116,7 +119,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           database->execSqlAsync(
               kColumns + (include_secrets ? kSecrets : "") +
                   " FROM vm_list_voting_links($1::uuid, decode($2,'hex'), "
-                  "$3::bigint, 51)" +
+                  "$3::bigint, 51) AS links" +
                   kAccess,
               [reply, include_secrets,
                encryption_key](const drogon::orm::Result& result) {
@@ -186,7 +189,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
         database->execSqlAsync(
             kColumns +
                 " FROM vm_add_voting_links($1::uuid, decode($2,'hex'), "
-                "$3::jsonb)" +
+                "$3::jsonb) AS links" +
                 kAccess,
             [reply](const drogon::orm::Result& result) {
               if (!Allowed(result, reply)) return;
@@ -237,7 +240,8 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
         database->execSqlAsync(
             kColumns +
                 " FROM vm_edit_voting_link($1::uuid, decode($2,'hex'), "
-                "$3::uuid, $4, $5, decode($6,'hex'), decode($7,'hex'))" +
+                "$3::uuid, $4, $5, decode($6,'hex'), decode($7,'hex')) AS "
+                "links" +
                 kAccess,
             [reply](const drogon::orm::Result& result) {
               if (!Allowed(result, reply)) return;

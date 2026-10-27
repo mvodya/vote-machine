@@ -307,7 +307,7 @@ test('ribbon copies meet at the exact repeat boundary in both directions', async
   }
 });
 
-test('every page has a quiet footer with year and a real short revision', async ({
+test('every page has a quiet footer and a real short revision', async ({
   page,
 }) => {
   for (const path of [
@@ -318,9 +318,7 @@ test('every page has a quiet footer with year and a real short revision', async 
   ]) {
     await page.goto(path);
     const footer = page.getByRole('contentinfo');
-    await expect(footer).toHaveText(
-      new RegExp(`^${new Date().getFullYear()} · Vote Machine · [a-f0-9]{7}$`),
-    );
+    await expect(footer).toHaveText(/^Vote Machine · [a-f0-9]{7}$/);
     await expect(footer).toHaveCSS('font-size', '10px');
     await expect(footer).toHaveCSS('text-align', 'right');
     await expect(footer).toHaveCSS('position', 'absolute');

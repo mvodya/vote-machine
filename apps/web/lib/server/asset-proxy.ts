@@ -40,6 +40,7 @@ async function backend(
   token: string,
   body?: unknown,
   worker = false,
+  signal?: AbortSignal,
 ) {
   const response = await fetch(
     new URL(path, process.env.API_ORIGIN ?? 'http://api:8080'),
@@ -55,14 +56,18 @@ async function backend(
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: 'no-store',
       redirect: 'error',
-      signal: AbortSignal.timeout(12000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(12000)])
+        : AbortSignal.timeout(12000),
     },
   );
   if (!response.ok)
     throw new AccessError(
       [400, 401, 403, 404, 409, 413, 415].includes(response.status)
         ? response.status
-        : 503,
+        : response.status === 429
+          ? 429
+          : 503,
     );
   return response.json();
 }
@@ -197,6 +202,9 @@ async function assetData(
       ? `/api/vote/${owner}/assets/${id}`
       : `/api/rooms/${owner}/assets/${id}`,
     token,
+    undefined,
+    false,
+    request.signal,
   );
   if (
     !isAsset(body.asset) ||
@@ -237,8 +245,10 @@ export async function assetBytes(
   id: string,
   participant = false,
 ) {
+  let size: number | undefined;
   try {
     const asset = await assetData(request, owner, id, participant);
+    size = asset.bytes;
     const range = request.headers.get('range');
     if (range && !/^bytes=(?:\d+-\d*|-\d+)$/.test(range))
       return new NextResponse(null, {
@@ -274,7 +284,16 @@ export async function assetBytes(
     if (error instanceof AccessError) return failure(error.status);
     const status = (error as {$metadata?: {httpStatusCode?: number}})?.$metadata
       ?.httpStatusCode;
-    return failure(status === 404 ? 404 : status === 416 ? 416 : 503);
+    if (status === 416 && size !== undefined)
+      return new NextResponse(null, {
+        status: 416,
+        headers: {
+          ...headers,
+          'Accept-Ranges': 'bytes',
+          'Content-Range': `bytes */${size}`,
+        },
+      });
+    return failure(status === 404 ? 404 : 503);
   }
 }
 // Active unsaved references renew their deletion grace period

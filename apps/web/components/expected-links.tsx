@@ -1,4 +1,5 @@
 'use client';
+import {Spinner} from './ui/loading';
 import {useEffect, useState} from 'react';
 import {CheckboxField} from './ui/checkbox-field';
 import {Button} from './ui/button';
@@ -109,9 +110,7 @@ export function ExpectedLinks({
           />
         ))}
       </div>
-      {missing.length > 0 && (
-        <p className="text-xs text-muted">Загружаем выбранные ссылки…</p>
-      )}
+      {missing.length > 0 && <Spinner label="Загружаем выбранные ссылки…" />}
       {!selected.length && (
         <p className="text-sm text-error-ink">
           Выберите хотя бы одну персональную ссылку

@@ -209,6 +209,51 @@ test('draining finishes an in-flight command and closes an open event stream', a
 });
 
 // Operator data is authenticated and logs cannot contain private request details
+test('draining closes upgraded hot-reload sockets before waiting for HTTP shutdown', async () => {
+  const sockets = new Set();
+  const target = http.createServer();
+  target.on('upgrade', (_request, socket) => {
+    sockets.add(socket);
+    socket.on('error', () => {});
+    socket.on('close', () => sockets.delete(socket));
+    socket.write(
+      'HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n',
+    );
+  });
+  await new Promise((resolve) => target.listen(0, '127.0.0.1', resolve));
+  const ingress = createIngress({
+    targetPort: target.address().port,
+    apiOrigin: 'http://unused',
+    gatewayKey: '6'.repeat(64),
+  });
+  await new Promise((resolve) => ingress.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${ingress.address().port}`;
+  let socket;
+  try {
+    socket = await new Promise((resolve, reject) => {
+      const request = http.request(origin, {
+        headers: {Origin: origin, Connection: 'Upgrade', Upgrade: 'websocket'},
+      });
+      request.on('upgrade', (_response, upgraded) => resolve(upgraded));
+      request.on('error', reject);
+      request.end();
+    });
+    socket.on('error', () => {});
+    socket.resume();
+    const closed = new Promise((resolve) => socket.once('close', resolve));
+    await Promise.race([
+      ingress.drain(100),
+      delay(1500).then(() => assert.fail('Hot reload blocked drain')),
+    ]);
+    await closed;
+  } finally {
+    socket?.destroy();
+    sockets.forEach((item) => item.destroy());
+    ingress.close();
+    await new Promise((resolve) => target.close(resolve));
+  }
+});
+
 test('metrics and structured records have bounded labels and redact private input', async () => {
   const records = [];
   const target = http.createServer((_req, res) => res.end('ok'));

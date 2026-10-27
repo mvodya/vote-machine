@@ -16,8 +16,8 @@ Only the proxy can access the application listener on port 8091
 - /opt/votemachine/current - last successful release
 - /opt/votemachine/deployed-revision - last successful full commit hash
 
-The local remote is named laucnpad as requested, origin is not used
-Push committed application changes with git push laucnpad
+The local remote is named launchpad, origin is not used
+Push committed application changes with git push launchpad
 Uncommitted files are not deployed
 Only fast-forward main updates are accepted, branch deletion is blocked
 
@@ -26,6 +26,30 @@ It then stops application writers, applies migrations and waits for healthy serv
 Database and Garage volumes belong to the fixed votemachine Compose project
 Keys and data are not copied from the development machine
 The cleanup worker uses the same release image as web
+Launchpad runs one web and one API by default, counts are set in runtime.env
+
+## Compose commands
+
+On launchpad, change to /opt/votemachine and use normal Compose commands
+The private .env link reads config/runtime.env
+COMPOSE_FILE selects current/compose.yaml, current/compose.production.yaml and config/compose.yaml
+COMPOSE_PROJECT_NAME is votemachine, DEPLOY_REVISION follows the last successful release
+
+```sh
+ssh launchpad
+cd /opt/votemachine
+docker compose ps
+docker compose top
+docker compose logs -f --tail 100
+docker compose down
+docker compose up -d --no-build --wait
+```
+
+down removes project containers and network, stored data stays in Docker volumes
+Use stop and start instead when containers should stay present
+Do not add -v to down unless database and file deletion is intended
+
+## Operator config
 
 Installed operator files do not update on push, copy reviewed changes separately
 This prevents application pushes from replacing server keys or proxy configuration

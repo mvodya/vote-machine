@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "access.hpp"
+#include "diagnostics.hpp"
 #include "http.hpp"
 
 namespace vote_machine {
@@ -130,8 +131,14 @@ class LiveHub : public std::enable_shared_from_this<LiveHub> {
   static bool Send(const std::shared_ptr<LiveClient>& client,
                    const std::string& event, const std::string& version = "") {
     ++client->writes;
-    return client->stream && client->stream->send("event: " + event + "\nid: " +
-                                                  version + "\ndata: {}\n\n");
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    return client->stream &&
+           client->stream->send(
+               (event == "heartbeat" ? ": heartbeat\n" : "") +
+               std::string("event: ") + event + "\nid: " + version +
+               "\ndata: " + Json::writeString(writer, ConnectionInfo()) +
+               "\n\n");
   }
 
   // Every connection starts with a fresh snapshot request, including reconnects
@@ -184,7 +191,7 @@ class LiveHub : public std::enable_shared_from_this<LiveHub> {
       if (Clock::now() - client->started >= std::chrono::seconds(180) ||
           client->writes >= 64 ||
           (ticks_ % 15 == 0 && client->stream &&
-           !client->stream->send(": heartbeat\n\n"))) {
+           !Send(client, "heartbeat", client->version))) {
         CloseClient(client);
         item = clients_.erase(item);
         continue;

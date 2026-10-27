@@ -110,8 +110,9 @@ export function isQuestionInput(value: unknown): value is QuestionInput {
   if (
     !Number.isInteger(value.minChoices) ||
     !Number.isInteger(value.maxChoices) ||
-    Number(value.minChoices) < 1 ||
+    Number(value.minChoices) < 0 ||
     Number(value.minChoices) > Number(value.maxChoices) ||
+    Number(value.maxChoices) < 1 ||
     Number(value.maxChoices) > Math.max(1, value.choices.length)
   )
     return false;

@@ -1,8 +1,9 @@
 'use client';
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {ChartColumn, Download, Expand, Minimize, Monitor} from 'lucide-react';
 import {useLive} from '../lib/use-live';
 import {Countdown} from './countdown';
+import {Loading} from './ui/loading';
 import {Panel} from './ui/panel';
 import {Button} from './ui/button';
 import {Pagination} from './ui/pagination';
@@ -41,6 +42,8 @@ export function Results({
     `/api/${admin ? 'rooms' : 'vote'}/${id}/events`,
     onDenied,
   );
+  const detailPanel = useRef<HTMLElement>(null);
+  const scrollPending = useRef(false);
   const [page, setPage] = useState<ResultPage | null>(null);
   const [selected, setSelected] = useState<string | null>(
     initialQuestion ?? null,
@@ -82,6 +85,7 @@ export function Results({
             onDenied();
             return;
           }
+          if (item.status === 404) setSelected(null);
           if (item.status !== 404) {
             detail = publicResult((await item.json()).result, admin, projector);
             if (!item.ok || !detail) throw new Error();
@@ -119,6 +123,18 @@ export function Results({
     live.connected,
     projector,
   ]);
+  // Scroll only after a deliberate phone selection, never on a live refresh
+  useEffect(() => {
+    if (!scrollPending.current || (!result && !failed)) return;
+    scrollPending.current = false;
+    if (matchMedia('(max-width: 1023px)').matches)
+      detailPanel.current?.scrollIntoView({
+        block: 'start',
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'instant'
+          : 'smooth',
+      });
+  }, [result, failed]);
   // Download a fresh authorized snapshot rather than a stale browser copy
   async function download() {
     const query = new URLSearchParams({question: selected!, format: 'csv'});
@@ -181,15 +197,31 @@ export function Results({
               description="Здесь появятся результаты голосования"
             />
           )}
+          {!page && !failed && (
+            <Loading label="Загружаем список результатов…" />
+          )}
           <ul className="mt-4 divide-y divide-border">
             {page?.questions.map((question) => (
               <li key={question.id} className="py-2">
                 <Button
                   variant="ghost"
-                  className="h-auto w-full justify-start whitespace-normal text-left"
+                  className="h-auto w-full justify-start whitespace-normal px-3 border border-transparent text-left aria-[current=true]:border-primary/35 aria-[current=true]:bg-selected aria-[current=true]:text-ink"
                   aria-label={`Результаты: ${markdownSummary(question.content) || 'Вопрос'}`}
                   aria-current={selected === question.id ? 'true' : undefined}
                   onClick={() => {
+                    if (selected === question.id) {
+                      if (matchMedia('(max-width: 1023px)').matches)
+                        detailPanel.current?.scrollIntoView({
+                          block: 'start',
+                          behavior: matchMedia(
+                            '(prefers-reduced-motion: reduce)',
+                          ).matches
+                            ? 'instant'
+                            : 'smooth',
+                        });
+                      return;
+                    }
+                    scrollPending.current = true;
                     setSelected(question.id);
                     setPeopleCursors(['']);
                     setResult(null);
@@ -198,7 +230,7 @@ export function Results({
                   {markdownSummary(question.content) || 'Вопрос'}
                 </Button>
                 {!question.available && (
-                  <p className="text-xs text-muted">
+                  <p className="mx-px px-3 text-xs text-muted">
                     Результаты пока недоступны
                   </p>
                 )}
@@ -218,7 +250,14 @@ export function Results({
           />
         </Panel>
       )}
-      <Panel aria-label="Итоги вопроса">
+      <Panel
+        ref={detailPanel}
+        aria-label="Итоги вопроса"
+        className="scroll-mt-5"
+      >
+        {selected && !result && !failed && (
+          <Loading label="Загружаем результаты…" rows={2} />
+        )}
         {failed && (
           <p role="alert" className="text-sm text-error-ink">
             Не удалось обновить результаты

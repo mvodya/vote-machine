@@ -63,6 +63,8 @@ describe('question documents', () => {
     {content: '\0'},
     {choices: Array(101).fill({content: ''})},
     {minChoices: 0},
+    {choiceMode: 'multiple', minChoices: -1},
+    {choiceMode: 'multiple', minChoices: 0, maxChoices: 0},
     {maxChoices: 3},
     {maxChoices: 1.5},
     {choiceMode: 'multiple', minChoices: 2, maxChoices: 1},
@@ -77,6 +79,15 @@ describe('question documents', () => {
   ])('rejects invalid source, limits or option IDs', (extra) =>
     expect(isQuestionInput({...emptyQuestion(), ...extra})).toBe(false),
   );
+  it('accepts zero as the multiple-choice minimum', () => {
+    expect(
+      isQuestionInput({
+        ...emptyQuestion(),
+        choiceMode: 'multiple',
+        minChoices: 0,
+      }),
+    ).toBe(true);
+  });
   it('keeps the full cursor precise and usable without a saved boundary row', () => {
     expect(
       validQuestionCursor('2026-10-25T00:00:00.123456Z~9223372036854775807'),

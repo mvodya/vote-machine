@@ -2,6 +2,7 @@
 import {useEffect, useState} from 'react';
 import {Moon, Sun, Volume2, VolumeX} from 'lucide-react';
 import {Button} from './ui/button';
+import {ConnectionIndicator} from './connection-indicator';
 import {prepareSounds, setSoundEnabled, unlockSound} from '../lib/audio';
 let themeTimer: ReturnType<typeof setTimeout> | undefined;
 // Only changes after the first paint need a transition
@@ -68,6 +69,7 @@ export function Preferences() {
       className="inline-flex shrink-0 items-center gap-1"
       aria-label="Вид и звук"
     >
+      <ConnectionIndicator />
       <Button
         variant="ghost"
         aria-label={sound ? 'Выключить звуки' : 'Включить звуки'}

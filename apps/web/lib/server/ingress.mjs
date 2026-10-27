@@ -107,6 +107,7 @@ export function createIngress({
     throw new Error('Trusted proxies need PUBLIC_ORIGIN');
   const networks = proxyNetworks(trustedProxies);
   const active = new Map();
+  const upgrades = new Set();
   const totals = new Map();
   let running = 0;
   let draining = false;
@@ -332,6 +333,7 @@ export function createIngress({
     try {
       const origin = configured ?? new URL(`http://${req.headers.host}`);
       if (
+        draining ||
         !req.headers.origin ||
         new URL(req.headers.origin).origin !== origin.origin
       ) {
@@ -352,9 +354,13 @@ export function createIngress({
         if (head.length) upstream.write(head);
         socket.pipe(upstream).pipe(socket);
       });
+      upgrades.add(socket);
       upstream.on('error', () => socket.destroy());
       socket.on('error', () => upstream.destroy());
-      socket.on('close', () => upstream.destroy());
+      socket.on('close', () => {
+        upgrades.delete(socket);
+        upstream.destroy();
+      });
     } catch {
       socket.destroy();
     }
@@ -362,6 +368,8 @@ export function createIngress({
   // Finish commands before stopping the framework, reconnect streams elsewhere
   server.drain = (timeout = 10000) => {
     draining = true;
+    // Node does not close upgraded hot-reload sockets with normal HTTP clients
+    for (const socket of upgrades) socket.destroy();
     return new Promise((resolve) => {
       const limit = setTimeout(() => server.closeAllConnections(), timeout);
       server.close(() => {

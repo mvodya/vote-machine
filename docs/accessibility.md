@@ -15,22 +15,26 @@ Actual supported release/device spot checks remain part of release acceptance
 
 Our own tabs link controls and panels with stable IDs and names
 Arrow keys wrap through tabs, Home and End choose the first and last tab
-Only the active panel is in the tab order, editor content can retain its local state while hidden
+Panels allow focus after an action but Tab skips their containers, hidden editor content retains local state
 Native controls keep connected labels, hints and errors
+Shared selection marks, calendar and time controls keep Chrome and WebKit styles consistent
 Modal confirmation focuses Cancel, traps Tab and Shift+Tab, supports Escape and restores its opener
 An async opener passes its ref so disabling it during a request cannot lose return focus
 Participant actions focus the resulting panel, background live snapshots do not steal focus
 
 Inactive switches, question links and placeholders have stronger readable colors in both themes
-The shared header keeps branding, theme and sound controls consistent on normal and error pages
+The shared header keeps the supplied logo, connection details, theme and sound controls consistent on normal and error pages
 404 and unexpected rendering errors use short Russian text and a safe way back or retry
 The room timezone remains shared across admin and participant devices
 Cross-device checks use a New York browser with a Vladivostok room and verify a date crossing midnight
 
 Axe checks the home, empty room, settings, confirmation, question editor/settings/management,
 participant answer/history/completion, projector and denied/missing pages
-Keyboard checks cover create, tab selection, panel entry, modal focus, answer submission and review close
-The deliberately faint noninteractive version footer is excluded from axe per the owner's explicit design
+Keyboard checks cover create, tab selection, skipping panel containers, modal focus, answer submission and review close
+The deliberately faint version footer is excluded from axe per the owner's explicit design
+The owner requested a fixed phone scale with pinch and double-tap zoom disabled
+The meta-viewport rule is excluded from axe because this choice limits page zoom
+Touch inputs use at least sixteen pixels, including landscape, to avoid focus zoom
 This is not a WCAG conformance certificate, automated checks do not replace assistive-technology/device review
 Reduced motion, sound off by default and initial theme selection remain supported
 

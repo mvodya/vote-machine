@@ -156,3 +156,22 @@ body {
   --brand-light: #14676b;
   --brand-dark: #7ad3d5;
 }
+
+/* A close signal fades once without moving list items */
+@keyframes question-closed {
+  from {
+    background-color: color-mix(in oklab, var(--app-primary) 25%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.animate-question-closed {
+  animation: question-closed 5s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-question-closed {
+    animation: none;
+    background-color: var(--app-accent);
+  }
+}

@@ -64,7 +64,10 @@ test('home, empty room, settings and errors support keyboard access in both them
     await panel.getAttribute('id'),
   );
   await page.keyboard.press('Tab');
-  await expect(panel).toBeFocused();
+  await expect(panel).not.toBeFocused();
+  await expect(
+    page.getByLabel('Название комнаты', {exact: true}),
+  ).toBeFocused();
   await scan(page);
   const remove = page.getByRole('button', {
     name: 'Удалить комнату',
