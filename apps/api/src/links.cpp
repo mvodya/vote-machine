@@ -171,6 +171,13 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Error(reply, drogon::k400BadRequest, "Invalid mode");
           return;
         }
+        // Only shared links may expose earlier runs
+        if (input->isMember("allowRunHistory") &&
+            (!(*input)["allowRunHistory"].isBool() ||
+             (mode == "personal" && (*input)["allowRunHistory"].asBool()))) {
+          Error(reply, drogon::k400BadRequest, "Invalid history setting");
+          return;
+        }
         for (const auto& name : (*input)["names"])
           if (!name.isString() || !ValidName(name.asString())) {
             Error(reply, drogon::k400BadRequest, "Invalid name");
@@ -182,6 +189,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Json::Value item;
           item["name"] = name;
           item["mode"] = mode;
+          item["allowRunHistory"] = (*input)["allowRunHistory"].asBool();
           item["hash"] = HashSecret(key);
           item["cipher"] = EncryptSecret(key, encryption_key);
           batch.append(item);

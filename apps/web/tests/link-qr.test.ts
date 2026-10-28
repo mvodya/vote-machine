@@ -86,3 +86,47 @@ it('validates the history flag and copies it through the checked edit path', asy
   expect(invalid.status).toBe(400);
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it('validates and forwards history choices during link creation', async () => {
+  const fetcher = vi.fn<typeof fetch>(async () =>
+    Response.json(
+      {
+        links: [
+          {
+            id: link,
+            name: 'Shared',
+            mode: 'reusable',
+            ordinal: '1',
+            revision: '1',
+            revoked: false,
+            allowRunHistory: true,
+          },
+        ],
+        nextCursor: null,
+      },
+      {status: 201},
+    ),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const saved = await adminLinkProxy(
+    request('POST', {
+      mode: 'reusable',
+      names: ['Shared'],
+      allowRunHistory: true,
+    }),
+    room,
+  );
+  expect(saved.status).toBe(201);
+  expect(
+    JSON.parse(String(fetcher.mock.calls[0][1]?.body)).allowRunHistory,
+  ).toBe(true);
+  for (const body of [
+    {mode: 'reusable', names: ['Bad'], allowRunHistory: 'true'},
+    {mode: 'personal', names: ['Bad'], allowRunHistory: true},
+  ]) {
+    expect((await adminLinkProxy(request('POST', body), room)).status).toBe(
+      400,
+    );
+  }
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});

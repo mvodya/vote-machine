@@ -76,10 +76,19 @@ export async function adminLinkProxy(
           !Array.isArray(data.names) ||
           data.names.length < 1 ||
           data.names.length > 100 ||
-          !data.names.every(validName)
+          !data.names.every(validName) ||
+          (data.allowRunHistory !== undefined &&
+            typeof data.allowRunHistory !== 'boolean') ||
+          (data.mode === 'personal' && data.allowRunHistory === true)
         )
           return failure(400);
-        body = {mode: data.mode, names: data.names};
+        body = {
+          mode: data.mode,
+          names: data.names,
+          ...(data.allowRunHistory !== undefined
+            ? {allowRunHistory: data.allowRunHistory}
+            : {}),
+        };
       } else {
         if (
           !id ||

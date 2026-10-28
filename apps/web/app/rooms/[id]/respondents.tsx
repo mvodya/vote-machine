@@ -80,6 +80,8 @@ export function Respondents({
   const [batch, setBatch] = useState(false);
   // Mode for the new links
   const [mode, setMode] = useState<LinkMode>('personal');
+  // New shared links hide older runs unless the admin opts in
+  const [allowRunHistory, setAllowRunHistory] = useState(false);
   // Name for one new link
   const [name, setName] = useState('');
   // Names pasted as separate lines
@@ -227,10 +229,15 @@ export function Respondents({
     setBusy(true);
     setNotice('');
     try {
-      await write(base, 'POST', {mode, names: values});
+      await write(base, 'POST', {
+        mode,
+        names: values,
+        ...(mode === 'reusable' ? {allowRunHistory} : {}),
+      });
       setAdding(false);
       setName('');
       setNames('');
+      setAllowRunHistory(false);
       setCursors(['0']);
       reload();
       setNotice(
@@ -397,7 +404,10 @@ export function Respondents({
       <SectionHeader title="Респонденты">
         <Button
           disabled={busy}
-          onClick={() => setAdding((value) => !value)}
+          onClick={() => {
+            if (!adding) setAllowRunHistory(false);
+            setAdding((value) => !value);
+          }}
           startIcon={<Plus />}
         >
           Добавить респондентов
@@ -434,6 +444,14 @@ export function Respondents({
               <option value="personal">Персональная</option>
               <option value="reusable">Многоразовая</option>
             </SelectField>
+            {mode === 'reusable' && (
+              <CheckboxField
+                id="new-link-history"
+                label="Разрешить просмотр прошлых прохождений"
+                checked={allowRunHistory}
+                onChange={(event) => setAllowRunHistory(event.target.checked)}
+              />
+            )}
             {batch ? (
               <>
                 <TextareaField

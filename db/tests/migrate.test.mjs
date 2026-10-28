@@ -414,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT pg_get_functiondef('vm_results_before_review(uuid,bytea,boolean,uuid,jsonb)'::regprocedure) LIKE '%choices'',COALESCE%' AS name",
+          "SELECT pg_get_functiondef('vm_add_voting_links(uuid,bytea,jsonb)'::regprocedure) LIKE '%allowRunHistory%' AS name",
         )
       ).rows[0].name,
       false,
@@ -5714,6 +5714,7 @@ test('old reusable media and an answer waiting behind history disable follow the
 test('empty result choices survive upgrade, rollback, failed rollback and reapply', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
+    await runMigrations({databaseUrl, direction: 'down'});
     const f = await personalFixture(client, {
       choiceMode: 'multiple',
       minChoices: 0,
@@ -5737,7 +5738,7 @@ test('empty result choices survive upgrade, rollback, failed rollback and reappl
       runMigrations({databaseUrl, direction: 'down'}),
       /Missing empty result choices expression/,
     );
-    assert.equal(await migrationCount(client), total);
+    assert.equal(await migrationCount(client), total - 1);
     assert.equal((await read()).total, 1);
     await client.query(definition);
     await runMigrations({databaseUrl, direction: 'down'});
@@ -5746,5 +5747,77 @@ test('empty result choices survive upgrade, rollback, failed rollback and reappl
     await runMigrations({databaseUrl});
     assert.deepEqual((await read()).people[0].choices, []);
     assert.equal((await read()).total, 1);
+  });
+});
+
+test('link creation saves history choices atomically and survives rollback and reapply', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const items = [
+      {...linkItem('History', 'reusable'), allowRunHistory: true},
+      linkItem('Default', 'reusable'),
+    ];
+    const saved = await addLinks(client, admin, items);
+    assert.deepEqual(
+      saved.map((link) => link.allow_run_history),
+      [true, false],
+    );
+    for (const invalid of [
+      {...linkItem(), allowRunHistory: true},
+      {...linkItem('Bad', 'reusable'), allowRunHistory: 'true'},
+    ]) {
+      await assert.rejects(addLinks(client, admin, [linkItem(), invalid]), {
+        code: '23514',
+      });
+      assert.equal(
+        (await client.query('SELECT count(*) FROM voting_links')).rows[0].count,
+        '2',
+      );
+    }
+    const definition = (
+      await client.query(
+        "SELECT pg_get_functiondef('vm_add_voting_links(uuid,bytea,jsonb)'::regprocedure) AS sql",
+      )
+    ).rows[0].sql;
+    await client.query(
+      definition.replace(
+        'secret_hash, secret_cipher, allow_run_history)',
+        'secret_hash, secret_cipher,  allow_run_history)',
+      ),
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down'}),
+      /Missing link history insert/,
+    );
+    assert.equal(await migrationCount(client), total);
+    await client.query(definition);
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal(
+      (
+        await addLinks(client, admin, [
+          {...linkItem('Old', 'reusable'), allowRunHistory: true},
+        ])
+      )[0].allow_run_history,
+      false,
+    );
+    assert.equal(
+      (
+        await client.query(
+          'SELECT allow_run_history FROM voting_links WHERE id=$1',
+          [saved[0].id],
+        )
+      ).rows[0].allow_run_history,
+      true,
+    );
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (
+        await addLinks(client, admin, [
+          {...linkItem('New', 'reusable'), allowRunHistory: true},
+        ])
+      )[0].allow_run_history,
+      true,
+    );
   });
 });

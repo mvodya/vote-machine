@@ -152,3 +152,55 @@ test('shared-link history is off by default and changes live through respondent 
     await device.close();
   }
 });
+
+test('new reusable links expose an unchecked history option and save it for one or a batch', async ({
+  page,
+}) => {
+  const f = await votingFixture(page);
+  await page.goto(`/rooms/${f.room.id}`);
+  await page.getByRole('tab', {name: 'Респонденты', exact: true}).click();
+  await page
+    .getByRole('button', {name: 'Добавить респондентов', exact: true})
+    .click();
+  const history = page.getByLabel('Разрешить просмотр прошлых прохождений', {
+    exact: true,
+  });
+  await expect(history).toHaveCount(0);
+  await page.getByLabel('Режим ссылки', {exact: true}).selectOption('reusable');
+  await expect(history).not.toBeChecked();
+  await history.check();
+  await page
+    .getByLabel('Имя респондента', {exact: true})
+    .fill('Shared history');
+  await page.getByRole('button', {name: 'Создать ссылки', exact: true}).click();
+  await expect(
+    page.getByRole('heading', {name: 'Shared history', exact: true}),
+  ).toBeVisible();
+  let links = (
+    await (await page.request.get(`/api/rooms/${f.room.id}/links`)).json()
+  ).links;
+  expect(
+    links.find((link: {name: string}) => link.name === 'Shared history')
+      .allowRunHistory,
+  ).toBe(true);
+  await page
+    .getByRole('button', {name: 'Добавить респондентов', exact: true})
+    .click();
+  await expect(history).not.toBeChecked();
+  await page.getByRole('button', {name: 'Списком', exact: true}).click();
+  await page
+    .getByLabel('Имена, по одному на строку', {exact: true})
+    .fill('Default one\nDefault two');
+  await page.getByRole('button', {name: 'Создать ссылки', exact: true}).click();
+  await expect(
+    page.getByRole('heading', {name: 'Default two', exact: true}),
+  ).toBeVisible();
+  links = (
+    await (await page.request.get(`/api/rooms/${f.room.id}/links`)).json()
+  ).links;
+  expect(
+    links
+      .filter((link: {name: string}) => link.name.startsWith('Default'))
+      .every((link: {allowRunHistory: boolean}) => !link.allowRunHistory),
+  ).toBe(true);
+});
