@@ -79,7 +79,7 @@ test('personal link, rename, repeated copy, revoke and reissue across devices', 
     await page
       .getByLabel('Имя респондента', {exact: true})
       .fill('Alice renamed');
-    await page.getByRole('button', {name: 'Сохранить имя'}).click();
+    await page.getByRole('button', {name: 'Сохранить', exact: true}).click();
     const renamed = page.getByRole('listitem', {
       name: 'Alice renamed',
       exact: true,

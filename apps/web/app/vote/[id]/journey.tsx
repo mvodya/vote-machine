@@ -83,6 +83,16 @@ export function ParticipantJourney({
           onDenied();
           return;
         }
+        // A disabled old run must return to the current run without stale answers
+        if (response.status === 404 && runId) {
+          setRunId(null);
+          setSelected(null);
+          setReview(false);
+          setSnapshot(null);
+          setCursors(['0']);
+          previous.current = null;
+          return;
+        }
         if (response.status === 409 && skip) {
           setSkip(null);
           return;

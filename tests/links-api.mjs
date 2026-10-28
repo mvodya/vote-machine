@@ -56,6 +56,7 @@ const created = await call(path, {
 assert.equal(created.status, 201);
 const [link] = created.data.links;
 assert.deepEqual(Object.keys(link).sort(), [
+  'allowRunHistory',
   'id',
   'mode',
   'name',

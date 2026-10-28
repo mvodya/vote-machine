@@ -86,11 +86,23 @@ export async function adminLinkProxy(
           !['rename', 'revoke', 'rotate'].includes(String(data.action))
         )
           return failure(400);
-        if (data.action === 'rename' && !validName(data.name))
+        if (
+          data.action === 'rename' &&
+          (!validName(data.name) ||
+            (data.allowRunHistory !== undefined &&
+              typeof data.allowRunHistory !== 'boolean'))
+        )
           return failure(400);
         body = {
           action: data.action,
-          ...(data.action === 'rename' ? {name: data.name} : {}),
+          ...(data.action === 'rename'
+            ? {
+                name: data.name,
+                ...(data.allowRunHistory !== undefined
+                  ? {allowRunHistory: data.allowRunHistory}
+                  : {}),
+              }
+            : {}),
         };
       }
     }

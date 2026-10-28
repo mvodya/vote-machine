@@ -414,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT to_regprocedure('public.vm_results_before_report(uuid,bytea,boolean,uuid,jsonb)') AS name",
+          "SELECT to_regprocedure('public.vm_run_history_check(uuid,bytea,uuid,boolean)') AS name",
         )
       ).rows[0].name,
       null,
@@ -5490,13 +5490,16 @@ test('report rollback is atomic when a dependent view exists and reapply preserv
     await client.query(
       'CREATE VIEW external_report AS SELECT vm_room_report(NULL::uuid,NULL::bytea,false,NULL::uuid,false)',
     );
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
-      code: '2BP01',
-    });
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 21}),
+      {
+        code: '2BP01',
+      },
+    );
     assert.equal(await migrationCount(client), total);
     assert.equal((await roomReport(client, f)).report.answers, 1);
     await client.query('DROP VIEW external_report');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 21});
     assert.equal((await results(client, f, true)).result.total, 1);
     await runMigrations({databaseUrl});
     assert.equal((await roomReport(client, f)).report.answers, 1);
@@ -5537,6 +5540,167 @@ test('a report waiting behind a room change observes sharing and access revocati
       await editLink(client, f.admin, f.link, 'revoke');
       await client.query('COMMIT');
       assert.equal((await revoked).status, 401);
+    } finally {
+      await client.query('ROLLBACK');
+      await other.end();
+    }
+  });
+});
+
+// Save the label and history choice through one locked admin action
+async function historyRule(client, f, enabled) {
+  return client.query(
+    'SELECT * FROM vm_edit_voting_link($1,$2,$3,$4,$5,NULL,NULL,$6)',
+    [
+      f.admin.room.id,
+      hash(f.admin.session),
+      f.link.id,
+      'rename',
+      f.link.name,
+      enabled,
+    ],
+  );
+}
+
+test('reusable history starts disabled and old IDs cannot bypass the link rule', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client, {allowAnswerChange: true});
+    assert.equal(
+      (
+        await client.query(
+          'SELECT allow_run_history FROM voting_links WHERE id=$1',
+          [f.link.id],
+        )
+      ).rows[0].allow_run_history,
+      false,
+    );
+    const body = ballotInput(f.question, {runId: f.run.id});
+    assert.equal((await generalCast(client, f, body)).status, 200);
+    await client.query(
+      'UPDATE rooms SET allow_reusable_repeat=true,show_all_results=true WHERE id=$1',
+      [f.admin.room.id],
+    );
+    const current = (await startRun(client, f)).run;
+    assert.deepEqual(
+      (await journey(client, f)).runs.map((run) => run.id),
+      [current.id],
+    );
+    assert.equal((await journey(client, f, {run: f.run.id})).status, 404);
+    assert.equal(
+      (await results(client, f, false, f.question.id, {run: f.run.id})).status,
+      404,
+    );
+    assert.equal((await generalCast(client, f, body)).status, 404);
+    assert.equal((await startRun(client, f, f.run.id)).status, 404);
+    const ownAnswer = async () =>
+      (
+        await client.query('SELECT vm_current_answer($1,$2,$3,$4) AS reply', [
+          f.link.id,
+          hash(f.session),
+          f.question.id,
+          f.run.id,
+        ])
+      ).rows[0].reply;
+    assert.equal((await ownAnswer()).status, 404);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT vm_room_report($1,$2,false,$3,true) AS reply',
+          [f.link.id, hash(f.session), f.run.id],
+        )
+      ).rows[0].reply.status,
+      404,
+    );
+    await historyRule(client, f, true);
+    assert.equal((await journey(client, f)).runs.length, 2);
+    assert.equal((await journey(client, f, {run: f.run.id})).status, 200);
+    assert.deepEqual((await ownAnswer()).answer.choices, body.choices);
+    const another = {
+      ...f,
+      session: (await openLink(client, f.link, f.key.key)).session,
+    };
+    assert.equal((await journey(client, another, {run: f.run.id})).status, 404);
+    await historyRule(client, f, false);
+    assert.equal((await ownAnswer()).status, 404);
+    assert.equal((await journey(client, f)).run.id, current.id);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM ballots WHERE question_id=$1',
+          [f.question.id],
+        )
+      ).rows[0].count,
+      '1',
+    );
+  });
+});
+
+test('history rollback refuses outside dependencies and reapply preserves runs and answers', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    await generalCast(client, f, ballotInput(f.question, {runId: f.run.id}));
+    await client.query(
+      'CREATE VIEW external_history AS SELECT vm_run_readable(NULL::uuid,NULL::bytea,NULL::uuid)',
+    );
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
+      code: '2BP01',
+    });
+    assert.equal(await migrationCount(client), total);
+    await client.query('DROP VIEW external_history');
+    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl});
+    assert.equal((await journey(client, f)).run.id, f.run.id);
+    assert.equal((await results(client, f, true)).result.total, 1);
+  });
+});
+
+test('old reusable media and an answer waiting behind history disable follow the link rule', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client);
+    await lifecycle(client, f.admin, f.question, 'close');
+    const asset = await readyAsset(client, f.admin);
+    const draft = await readyQuestion(client, f.admin, {
+      content: `![Photo](asset:${asset.id})`,
+      assetRefs: [{position: -1, assetId: asset.id}],
+    });
+    f.question = (await lifecycle(client, f.admin, draft, 'open')).question;
+    await generalCast(client, f, ballotInput(f.question, {runId: f.run.id}));
+    await lifecycle(client, f.admin, f.question, 'close');
+    await client.query(
+      'UPDATE rooms SET allow_reusable_repeat=true WHERE id=$1',
+      [f.admin.room.id],
+    );
+    await startRun(client, f);
+    const media = async () =>
+      (
+        await client.query('SELECT vm_participant_asset($1,$2,$3) AS reply', [
+          f.link.id,
+          hash(f.session),
+          asset.id,
+        ])
+      ).rows[0].reply;
+    assert.equal((await media()).status, 404);
+    await historyRule(client, f, true);
+    assert.equal((await media()).status, 200);
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM rooms WHERE id=$1 FOR UPDATE', [
+        f.admin.room.id,
+      ]);
+      const pending = other.query(
+        'SELECT vm_current_answer($1,$2,$3,$4) AS reply',
+        [f.link.id, hash(f.session), f.question.id, f.run.id],
+      );
+      await delay(30);
+      await historyRule(client, f, false);
+      await client.query('COMMIT');
+      assert.equal((await pending).rows[0].reply.status, 404);
+      assert.equal((await media()).status, 404);
     } finally {
       await client.query('ROLLBACK');
       await other.end();

@@ -14,6 +14,7 @@ namespace {
 
 const std::string kColumns =
     "SELECT authorized, id::text, name, mode, ordinal::text, revision::text, "
+    "allow_run_history, "
     "(SELECT count(*)::text FROM voting_sessions visits WHERE "
     "visits.link_id=links.id) AS session_count, "
     "(revoked_at "
@@ -61,6 +62,7 @@ Json::Value Link(const drogon::orm::Row& row) {
   for (const auto* field : {"id", "name", "mode", "ordinal", "revision"})
     link[field] = row[field].as<std::string>();
   link["revoked"] = row["revoked"].as<bool>();
+  link["allowRunHistory"] = row["allow_run_history"].as<bool>();
   link["sessionCount"] = row["session_count"].as<std::string>();
   return link;
 }
@@ -236,11 +238,21 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Error(reply, drogon::k400BadRequest, "Invalid action");
           return;
         }
+        if (input->isMember("allowRunHistory") &&
+            (action != "rename" || !(*input)["allowRunHistory"].isBool())) {
+          Error(reply, drogon::k400BadRequest, "Invalid history rule");
+          return;
+        }
+        const std::string history =
+            input->isMember("allowRunHistory")
+                ? ((*input)["allowRunHistory"].asBool() ? "true" : "false")
+                : "";
         const auto key = action == "rotate" ? NewSecret() : "";
         database->execSqlAsync(
             kColumns +
                 " FROM vm_edit_voting_link($1::uuid, decode($2,'hex'), "
-                "$3::uuid, $4, $5, decode($6,'hex'), decode($7,'hex')) AS "
+                "$3::uuid, $4, $5, decode($6,'hex'), decode($7,'hex'), "
+                "NULLIF($8,'')::boolean) AS "
                 "links" +
                 kAccess,
             [reply](const drogon::orm::Result& result) {
@@ -257,7 +269,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
               Unavailable(reply);
             },
             room, session, id, action, name, key.empty() ? "" : HashSecret(key),
-            key.empty() ? "" : EncryptSecret(key, encryption_key));
+            key.empty() ? "" : EncryptSecret(key, encryption_key), history);
       },
       {drogon::Patch});
 

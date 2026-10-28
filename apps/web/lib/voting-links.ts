@@ -14,6 +14,8 @@ export interface VotingLink {
   revision: string;
   // Count of stored sessions across all key generations
   sessionCount?: string;
+  // Old runs stay private unless the admin allows their history
+  allowRunHistory?: boolean;
   // Whether new access is blocked
   revoked: boolean;
 }
@@ -64,6 +66,8 @@ export function isVotingLink(value: unknown): value is VotingLink {
     value.ordinal !== '0' &&
     validCursor(value.revision) &&
     typeof value.revoked === 'boolean' &&
+    (value.allowRunHistory === undefined ||
+      typeof value.allowRunHistory === 'boolean') &&
     (value.sessionCount === undefined || validCursor(value.sessionCount))
   );
 }
@@ -76,6 +80,9 @@ export function publicLink(value: VotingLink): VotingLink {
     ordinal: value.ordinal,
     revision: value.revision,
     revoked: value.revoked,
+    ...(value.allowRunHistory !== undefined
+      ? {allowRunHistory: value.allowRunHistory}
+      : {}),
     ...(value.sessionCount !== undefined
       ? {sessionCount: value.sessionCount}
       : {}),

@@ -1,5 +1,7 @@
 'use client';
 
+import {LinkQrDialog} from '../../../components/link-qr-dialog';
+import {CheckboxField} from '../../../components/ui/checkbox-field';
 import {Loading} from '../../../components/ui/loading';
 import {markdownSummary} from '../../../lib/markdown';
 import {useLive} from '../../../lib/use-live';
@@ -8,6 +10,7 @@ import {
   Copy,
   Download,
   Pencil,
+  QrCode,
   Plus,
   RefreshCw,
   Ban,
@@ -56,6 +59,8 @@ export function Respondents({
   const [online, setOnline] = useState<
     Record<string, {online: number; questions: {id: string; preview: string}[]}>
   >({});
+  const [qr, setQr] = useState<VotingLink | null>(null);
+  const [editHistory, setEditHistory] = useState(false);
   const [links, setLinks] = useState<VotingLink[]>([]);
   // Page history for back navigation
   const [cursors, setCursors] = useState(['0']);
@@ -249,11 +254,12 @@ export function Respondents({
       await write(`${base}/${link.id}`, 'PATCH', {
         action: 'rename',
         name: editName.trim() || 'Респондент',
+        ...(link.mode === 'reusable' ? {allowRunHistory: editHistory} : {}),
       });
       setEditing(null);
       reload();
     } catch {
-      setNotice('Не удалось сохранить имя');
+      setNotice('Не удалось сохранить респондента');
     } finally {
       setBusy(false);
     }
@@ -523,9 +529,18 @@ export function Respondents({
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
                   />
+                  {link.mode === 'reusable' && (
+                    <CheckboxField
+                      id={`history-${link.id}`}
+                      label="Разрешить просмотр прошлых прохождений"
+                      checked={editHistory}
+                      disabled={busy}
+                      onChange={(event) => setEditHistory(event.target.checked)}
+                    />
+                  )}
                   <div className="flex gap-2">
                     <Button type="submit" disabled={busy}>
-                      Сохранить имя
+                      Сохранить
                     </Button>
                     <Button
                       variant="secondary"
@@ -597,8 +612,22 @@ export function Respondents({
                       onClick={() => {
                         setEditing(link.id);
                         setEditName(link.name);
+                        setEditHistory(link.allowRunHistory === true);
                       }}
                     />
+                    {!link.revoked && (
+                      <Button
+                        variant="ghost"
+                        title="QR Code"
+                        aria-label={`QR Code: ${link.name}`}
+                        disabled={busy}
+                        startIcon={<QrCode />}
+                        onClick={(event) => {
+                          event.currentTarget.focus();
+                          setQr(link);
+                        }}
+                      />
+                    )}
                     <Button
                       variant="ghost"
                       title="Перевыпустить ссылку"
@@ -659,6 +688,14 @@ export function Respondents({
           value={manualCopy}
           readOnly
           onFocus={(event) => event.target.select()}
+        />
+      )}
+      {qr && (
+        <LinkQrDialog
+          roomId={roomId}
+          linkId={qr.id}
+          name={qr.name}
+          onClose={() => setQr(null)}
         />
       )}
       {confirmation && (

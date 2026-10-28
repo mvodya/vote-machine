@@ -17,6 +17,15 @@ test('a shared link starts automatically and repeat voting follows the room sett
   const {token} = await (
     await page.request.get(`/api/rooms/${f.room.id}/links/${link.id}/secret`)
   ).json();
+  // This scenario checks the optional history picker
+  expect(
+    (
+      await page.request.patch(`/api/rooms/${f.room.id}/links/${link.id}`, {
+        headers: {Origin: f.origin},
+        data: {action: 'rename', name: link.name, allowRunHistory: true},
+      })
+    ).status(),
+  ).toBe(200);
   const devices = await Promise.all([
     browser.newContext(),
     browser.newContext(),
