@@ -1,5 +1,6 @@
 'use client';
 import {Loading} from '../../../components/ui/loading';
+import {ResultsPolicy} from './results-policy';
 import {RoomExperience} from '../../../components/room-experience';
 import {AccentPicker} from '../../../components/accent-picker';
 
@@ -396,6 +397,7 @@ export default function AdminRoom({id}: {id: string}) {
                         </Panel>
                         <QuestionPolicy roomId={id} onDenied={denyAccess} />
                         <ReusePolicy roomId={id} onDenied={denyAccess} />
+                        <ResultsPolicy roomId={id} onDenied={denyAccess} />
                         <DeleteRoom room={room} onDenied={denyAccess} />
                       </div>
                       <Panel aria-label="Административный доступ">

@@ -33,9 +33,20 @@ export async function experienceProxy(
       if (text.length > 256)
         return Response.json({error: 'Too large'}, {status: 413, headers});
       const data = JSON.parse(text);
-      if (!isAccent(data?.accent))
+      if (
+        (!isAccent(data?.accent) &&
+          typeof data?.showAllResults !== 'boolean') ||
+        (data?.accent !== undefined && !isAccent(data.accent)) ||
+        (data?.showAllResults !== undefined &&
+          typeof data.showAllResults !== 'boolean')
+      )
         return Response.json({error: 'Invalid accent'}, {status: 400, headers});
-      body = JSON.stringify({accent: data.accent});
+      body = JSON.stringify({
+        ...(data.accent !== undefined ? {accent: data.accent} : {}),
+        ...(data.showAllResults !== undefined
+          ? {showAllResults: data.showAllResults}
+          : {}),
+      });
     }
     const response = await fetch(
       new URL(
@@ -90,6 +101,7 @@ export async function experienceProxy(
     return Response.json(
       {
         accent: data.accent,
+        showAllResults: data.showAllResults === true,
         cursor: data.cursor,
         timers: data.timers,
         events: data.events.map((event: {id: string; kind: string}) => ({

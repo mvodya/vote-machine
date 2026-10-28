@@ -22,6 +22,7 @@ export default defineConfig({
         '**/accessibility.spec.ts',
         '**/mobile-layout.spec.ts',
         '**/ui-details.spec.ts',
+        '**/room-report.spec.ts',
       ],
       use: {browserName: 'webkit', viewport: {width: 1280, height: 800}},
     },
@@ -31,6 +32,7 @@ export default defineConfig({
         '**/accessibility.spec.ts',
         '**/mobile-layout.spec.ts',
         '**/ui-details.spec.ts',
+        '**/room-report.spec.ts',
       ],
       use: {
         browserName: 'webkit',

@@ -1,3 +1,4 @@
+import {publicRoomReport} from './room-report';
 import {NextResponse} from 'next/server';
 import {roomIdPattern} from './rooms';
 import {savedRooms} from './recent-rooms';
@@ -40,6 +41,10 @@ export async function resultsProxy(
       return NextResponse.json({error: 'Invalid page'}, {status: 400, headers});
     query.set('after', input.get('after')!);
   }
+  const reportView =
+    input.get('view') === 'summary' || input.get('format') === 'xlsx';
+  if (reportView)
+    query.set('view', input.get('format') === 'xlsx' ? 'export' : 'summary');
   const projector = admin && input.get('view') === 'projector';
   if (projector) query.set('view', 'projector');
   try {
@@ -59,13 +64,35 @@ export async function resultsProxy(
       return NextResponse.json(
         {error: 'Results unavailable'},
         {
-          status: [400, 401, 404].includes(response.status)
+          status: [400, 401, 403, 404].includes(response.status)
             ? response.status
             : 503,
           headers,
         },
       );
     const data: unknown = await response.json();
+    if (reportView) {
+      const exporting = input.get('format') === 'xlsx';
+      const report = publicRoomReport(
+        isRecord(data) ? data.report : null,
+        admin,
+        exporting,
+      );
+      if (!report) throw new Error();
+      if (exporting) {
+        const {resultsWorkbook} = await import('./server/results-workbook');
+        const bytes = await resultsWorkbook(report, admin);
+        return new Response(bytes, {
+          headers: {
+            ...headers,
+            'Content-Type':
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': 'attachment; filename="results.xlsx"',
+          },
+        });
+      }
+      return NextResponse.json({report}, {headers});
+    }
     const result =
       isRecord(data) && query.has('question')
         ? publicResult(data.result, admin, projector)

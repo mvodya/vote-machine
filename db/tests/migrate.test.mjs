@@ -414,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT conname AS name FROM pg_constraint WHERE conname='questions_max_choices_positive' UNION ALL SELECT NULL LIMIT 1",
+          "SELECT to_regprocedure('public.vm_results_before_report(uuid,bytea,boolean,uuid,jsonb)') AS name",
         )
       ).rows[0].name,
       null,
@@ -5297,9 +5297,12 @@ test('zero minimum rollback refuses data loss and supports recovery and reapply'
       choiceMode: 'multiple',
       minChoices: 0,
     });
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
-      code: '23514',
-    });
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 20}),
+      {
+        code: '23514',
+      },
+    );
     assert.equal(await migrationCount(client), total);
     assert.equal(
       (
@@ -5312,7 +5315,7 @@ test('zero minimum rollback refuses data loss and supports recovery and reapply'
     await client.query('UPDATE questions SET min_choices=1 WHERE id=$1', [
       q.id,
     ]);
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 20});
     assert.equal(
       (
         await questionCall(
@@ -5333,5 +5336,210 @@ test('zero minimum rollback refuses data loss and supports recovery and reapply'
         })
       ).id,
     );
+  });
+});
+
+// Use the same result entry point as HTTP for both report roles
+async function roomReport(client, f, admin = true, exporting = false) {
+  return (
+    await client.query('SELECT vm_results($1,$2,$3,NULL,$4) AS reply', [
+      admin ? f.admin.room.id : f.link.id,
+      hash(admin ? f.admin.session : f.session),
+      admin,
+      JSON.stringify({view: exporting ? 'export' : 'summary'}),
+    ])
+  ).rows[0].reply;
+}
+
+test('room reports count identities once and keep hidden choices, names and anonymous links private', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 200);
+    const anonymous = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {
+          content: 'Anonymous',
+          anonymous: true,
+          shareResults: true,
+          publication: 'after_answer',
+        }),
+        'open',
+      )
+    ).question;
+    assert.equal(
+      (await cast(client, {...f, question: anonymous}, ballotInput(anonymous)))
+        .status,
+      200,
+    );
+    const hidden = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {
+          content: 'Hidden',
+          hideResultsUntilEnd: true,
+        }),
+        'open',
+      )
+    ).question;
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          {...f, question: hidden},
+          ballotInput(hidden),
+          true,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question), true)).status,
+      200,
+    );
+    const key = linkItem('Reusable report', 'reusable');
+    const [link] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const g = {...f, link, session};
+    const run = (await journey(client, g)).run;
+    assert.equal(
+      (await generalCast(client, g, ballotInput(f.question, {runId: run.id})))
+        .status,
+      200,
+    );
+    const report = (await roomReport(client, f, true, true)).report;
+    assert.equal(report.answers, 4);
+    assert.equal(report.participants, 3);
+    assert.equal(report.links.find((item) => item.id === f.link.id).answers, 1);
+    assert.equal(
+      report.links.find((item) => item.id === link.id).participants,
+      1,
+    );
+    assert(!report.questions.some((q) => q.id === hidden.id));
+    assert(!report.sheets.some((q) => q.id === hidden.id));
+    assert(
+      report.people.every((person) =>
+        person.answers.every((answer) => answer.questionId !== anonymous.id),
+      ),
+    );
+    assert.equal((await roomReport(client, f, false)).status, 403);
+    const saved = await client.query(
+      'SELECT vm_room_experience($1,$2,true,$3) AS reply',
+      [f.admin.room.id, hash(f.admin.session), {showAllResults: true}],
+    );
+    assert.equal(saved.rows[0].reply.showAllResults, true);
+    assert.equal((await journey(client, f)).resultsAvailable, true);
+    const publicReport = (await roomReport(client, f, false, true)).report;
+    assert.equal(publicReport.answers, 4);
+    assert.deepEqual(publicReport.links, []);
+    assert.deepEqual(publicReport.people, []);
+    assert.deepEqual(
+      publicReport.sheets.map((q) => q.id),
+      [anonymous.id],
+    );
+    assert(!JSON.stringify(publicReport).includes(link.id));
+    assert.equal((await results(client, f)).status, 404);
+    const liveVersion = async () =>
+      (
+        await client.query('SELECT vm_event_state($1,$2,false) AS reply', [
+          f.link.id,
+          hash(f.session),
+        ])
+      ).rows[0].reply.version;
+    const before = await liveVersion();
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question), true)).status,
+      200,
+    );
+    assert.notEqual(await liveVersion(), before);
+    const shown = await liveVersion();
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          {...f, question: hidden},
+          ballotInput(hidden),
+          true,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(await liveVersion(), shown);
+    assert.equal(
+      (
+        await client.query(
+          'SELECT vm_room_experience($1,$2,false,$3) AS reply',
+          [f.link.id, hash(f.session), {showAllResults: false}],
+        )
+      ).rows[0].reply.status,
+      403,
+    );
+    await editLink(client, f.admin, f.link, 'revoke');
+    assert.equal((await roomReport(client, f, false)).status, 401);
+  });
+});
+
+test('report rollback is atomic when a dependent view exists and reapply preserves votes', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await cast(client, f, ballotInput(f.question));
+    await client.query(
+      'CREATE VIEW external_report AS SELECT vm_room_report(NULL::uuid,NULL::bytea,false,NULL::uuid,false)',
+    );
+    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
+      code: '2BP01',
+    });
+    assert.equal(await migrationCount(client), total);
+    assert.equal((await roomReport(client, f)).report.answers, 1);
+    await client.query('DROP VIEW external_report');
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal((await results(client, f, true)).result.total, 1);
+    await runMigrations({databaseUrl});
+    assert.equal((await roomReport(client, f)).report.answers, 1);
+  });
+});
+
+test('a report waiting behind a room change observes sharing and access revocation', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client);
+    await client.query('UPDATE rooms SET show_all_results=true WHERE id=$1', [
+      f.admin.room.id,
+    ]);
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM rooms WHERE id=$1 FOR UPDATE', [
+        f.admin.room.id,
+      ]);
+      const disabled = roomReport(other, f, false, true);
+      await delay(30);
+      await client.query(
+        'UPDATE rooms SET show_all_results=false WHERE id=$1',
+        [f.admin.room.id],
+      );
+      await client.query('COMMIT');
+      assert.equal((await disabled).status, 403);
+      await client.query('UPDATE rooms SET show_all_results=true WHERE id=$1', [
+        f.admin.room.id,
+      ]);
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM rooms WHERE id=$1 FOR UPDATE', [
+        f.admin.room.id,
+      ]);
+      const revoked = roomReport(other, f, false, true);
+      await delay(30);
+      await editLink(client, f.admin, f.link, 'revoke');
+      await client.query('COMMIT');
+      assert.equal((await revoked).status, 401);
+    } finally {
+      await client.query('ROLLBACK');
+      await other.end();
+    }
   });
 });

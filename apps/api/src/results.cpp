@@ -51,11 +51,18 @@ void Experience(const drogon::orm::DbClientPtr& database,
   Json::Value data(Json::objectValue);
   if (request->method() == drogon::Patch) {
     const auto body = request->getJsonObject();
-    if (!body || !body->isObject() || !(*body)["accent"].isString()) {
-      Error(reply, drogon::k400BadRequest, "Invalid accent");
+    if (!body || !body->isObject() ||
+        (!body->isMember("accent") && !body->isMember("showAllResults")) ||
+        (body->isMember("accent") && !(*body)["accent"].isString()) ||
+        (body->isMember("showAllResults") &&
+         !(*body)["showAllResults"].isBool())) {
+      Error(reply, drogon::k400BadRequest, "Invalid room setting");
       return;
     }
-    data["accent"] = (*body)["accent"];
+    if (body->isMember("accent")) data["accent"] = (*body)["accent"];
+    if (body->isMember("showAllResults")) {
+      data["showAllResults"] = (*body)["showAllResults"];
+    }
   }
   const auto after = request->getParameter("after");
   if (!after.empty()) data["after"] = after;
