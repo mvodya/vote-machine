@@ -144,3 +144,53 @@ test('hidden results and exports clear after reopen', async ({page}) => {
     results.getByText('Результаты пока недоступны', {exact: true}),
   ).toBeVisible();
 });
+
+test('an answer with no selected options remains available in admin results and CSV', async ({
+  page,
+  browser,
+}) => {
+  const f = await votingFixture(page, {
+    choiceMode: 'multiple',
+    minChoices: 0,
+    maxChoices: 2,
+  });
+  const device = await browser.newContext();
+  try {
+    const participant = await device.newPage();
+    await participant.goto(f.url);
+    await participant
+      .getByRole('button', {name: 'Отправить ответ', exact: true})
+      .click();
+    await expect(
+      participant.getByRole('heading', {
+        name: 'Все вопросы пройдены',
+        exact: true,
+      }),
+    ).toBeVisible();
+    const path = `/api/rooms/${f.room.id}/results?question=${f.question.id}`;
+    const response = await page.request.get(path);
+    expect(response.status()).toBe(200);
+    const {result} = await response.json();
+    expect(result.total).toBe(1);
+    expect(result.people[0].choices).toEqual([]);
+    expect(
+      result.options.every((option: {count: number}) => option.count === 0),
+    ).toBe(true);
+    expect((await page.request.get(`${path}&format=csv`)).status()).toBe(200);
+    await page.goto(`/rooms/${f.room.id}`);
+    await page
+      .getByRole('tablist', {name: 'Разделы комнаты'})
+      .getByRole('tab', {name: 'Результаты', exact: true})
+      .click();
+    await page
+      .getByRole('button', {name: 'Результаты: Choose a result', exact: true})
+      .click();
+    await expect(
+      page
+        .getByRole('region', {name: 'Итоги вопроса', exact: true})
+        .getByText('Ответы: 1', {exact: true}),
+    ).toBeVisible();
+  } finally {
+    await device.close();
+  }
+});

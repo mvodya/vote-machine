@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import {PageHeader} from '../../../components/page-header';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
+import {TabPanels} from '../../../components/ui/tab-panels';
 import {TabPanel} from '../../../components/ui/tab-panel';
 import {Tabs} from '../../../components/ui/tabs';
 import {Button} from '../../../components/ui/button';
@@ -345,7 +346,7 @@ export default function AdminRoom({id}: {id: string}) {
                   },
                 ]}
               />
-              <div className="pt-6">
+              <TabPanels group="room-sections" value={section} className="pt-6">
                 <TabPanel group="room-sections" id="questions" value={section}>
                   {section === 'questions' && (
                     <Questions
@@ -455,7 +456,7 @@ export default function AdminRoom({id}: {id: string}) {
                     </div>
                   )}
                 </TabPanel>
-              </div>
+              </TabPanels>
               {destination !== null && (
                 <ConfirmDialog
                   title="Выйти из редактирования вопроса без сохранений?"

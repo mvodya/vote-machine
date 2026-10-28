@@ -1,4 +1,5 @@
 'use client';
+import {SegmentedControl} from './segmented-control';
 import {Spinner} from './loading';
 import {useEffect, useRef, useState} from 'react';
 import {
@@ -141,28 +142,16 @@ export function MarkdownField({
       {!readOnly && (
         <>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div
-              role="group"
-              aria-label={`Режим редактора: ${label}`}
-              className="inline-flex rounded-xl bg-ink/5 p-1"
-            >
-              <Button
-                variant="switch"
-                startIcon={<TextCursorInput />}
-                aria-pressed={!preview}
-                onClick={() => setPreview(false)}
-              >
-                Текст
-              </Button>
-              <Button
-                variant="switch"
-                startIcon={<Eye />}
-                aria-pressed={preview}
-                onClick={() => setPreview(true)}
-              >
-                Предпросмотр
-              </Button>
-            </div>
+            <SegmentedControl
+              label={`Режим редактора: ${label}`}
+              value={preview ? 'preview' : 'text'}
+              className="inline-flex"
+              items={[
+                {id: 'text', label: 'Текст', icon: <TextCursorInput />},
+                {id: 'preview', label: 'Предпросмотр', icon: <Eye />},
+              ]}
+              onChange={(next) => setPreview(next === 'preview')}
+            />
             <div
               role="toolbar"
               aria-label={`Форматирование: ${label}`}

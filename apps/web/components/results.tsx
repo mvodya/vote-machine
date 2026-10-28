@@ -66,7 +66,10 @@ export function Results({
         if (runId) query.set('run', runId);
         const response = await fetch(`${path}?${query}`, {
           cache: 'no-store',
-          signal: controller.signal,
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(12000),
+          ]),
         });
         if (response.status === 401) {
           onDenied();
@@ -80,7 +83,10 @@ export function Results({
           if (peopleCursor) query.set('peopleAfter', peopleCursor);
           const item = await fetch(`${path}?${query}`, {
             cache: 'no-store',
-            signal: controller.signal,
+            signal: AbortSignal.any([
+              controller.signal,
+              AbortSignal.timeout(12000),
+            ]),
           });
           if (item.status === 401) {
             onDenied();
@@ -328,7 +334,7 @@ export function Results({
                       aria-hidden="true"
                     >
                       <div
-                        className="h-full rounded-full bg-primary"
+                        className="h-full rounded-full bg-primary motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out"
                         style={{width: `${option.percent}%`}}
                       />
                     </div>

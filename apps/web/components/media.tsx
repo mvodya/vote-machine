@@ -183,6 +183,7 @@ export function Media({
           width={asset.width}
           height={asset.height}
           loading="lazy"
+          decoding="async"
           onError={() => setFailed(true)}
         />
       )}

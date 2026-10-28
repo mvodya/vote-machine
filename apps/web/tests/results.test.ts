@@ -60,3 +60,46 @@ it('uses a minimal projector projection even if the upstream includes identities
   expect(value.people).toBeUndefined();
   expect(value.sources).toBeUndefined();
 });
+
+it('keeps empty submitted answers in admin results for old and new readers', () => {
+  for (const choices of [null, []]) {
+    const value = publicResult(
+      {
+        ...result,
+        anonymous: false,
+        people: [
+          {
+            id,
+            linkId: id,
+            name: 'Empty answer',
+            source: 'personal',
+            choices,
+          },
+        ],
+        nextPeopleCursor: null,
+      },
+      true,
+    );
+    expect(value?.total).toBe(1);
+    expect(value?.people?.[0].choices).toEqual([]);
+  }
+  expect(
+    publicResult(
+      {
+        ...result,
+        anonymous: false,
+        people: [
+          {
+            id,
+            linkId: id,
+            name: null,
+            source: 'personal',
+            choices: 'invalid',
+          },
+        ],
+        nextPeopleCursor: null,
+      },
+      true,
+    ),
+  ).toBeNull();
+});

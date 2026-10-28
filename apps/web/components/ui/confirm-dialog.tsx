@@ -1,4 +1,5 @@
 'use client';
+import motion from './motion.module.css';
 import {useEffect, useId, useRef, type RefObject} from 'react';
 import {Button} from './button';
 
@@ -89,7 +90,7 @@ export function ConfirmDialog({
         event.preventDefault();
         if (!busy) onClose();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-border bg-panel p-6 text-ink shadow-xl backdrop:bg-black/50"
+      className={`${motion.dialog} m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-border bg-panel p-6 text-ink shadow-xl backdrop:bg-black/50`}
     >
       <h2 id={heading} className="text-xl font-semibold">
         {title}

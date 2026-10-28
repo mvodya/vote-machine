@@ -1,4 +1,5 @@
 'use client';
+import motion from './motion.module.css';
 import {useEffect, useId, useRef, type ReactNode} from 'react';
 import {X} from 'lucide-react';
 import {Button} from './button';
@@ -52,7 +53,7 @@ export function Dialog({
           first?.focus();
         }
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-border bg-panel p-5 text-ink shadow-xl backdrop:bg-black/50 sm:p-6"
+      className={`${motion.dialog} m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-border bg-panel p-5 text-ink shadow-xl backdrop:bg-black/50 sm:p-6`}
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 id={heading} className="text-lg font-semibold">

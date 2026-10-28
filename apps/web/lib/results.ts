@@ -187,8 +187,10 @@ export function publicResult(
         return null;
       result.people = [];
       for (const person of value.people) {
+        if (!isRecord(person)) return null;
+        // Older database readers use null for a submitted empty answer
+        const choices = person.choices === null ? [] : person.choices;
         if (
-          !isRecord(person) ||
           typeof person.id !== 'string' ||
           !roomIdPattern.test(person.id) ||
           (person.linkId !== null &&
@@ -196,8 +198,8 @@ export function publicResult(
               !roomIdPattern.test(person.linkId))) ||
           (person.name !== null && typeof person.name !== 'string') ||
           !sources.includes(String(person.source)) ||
-          !Array.isArray(person.choices) ||
-          !person.choices.every(
+          !Array.isArray(choices) ||
+          !choices.every(
             (id) =>
               typeof id === 'string' &&
               options.some((option) => option.id === id),
@@ -209,7 +211,7 @@ export function publicResult(
           linkId: person.linkId as string | null,
           name: person.name as string | null,
           source: String(person.source),
-          choices: person.choices,
+          choices,
         });
       }
       result.nextPeopleCursor = value.nextPeopleCursor as string | null;

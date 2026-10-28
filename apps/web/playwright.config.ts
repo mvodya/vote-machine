@@ -24,6 +24,7 @@ export default defineConfig({
         '**/ui-details.spec.ts',
         '**/room-report.spec.ts',
         '**/qr-history.spec.ts',
+        '**/motion.spec.ts',
       ],
       use: {browserName: 'webkit', viewport: {width: 1280, height: 800}},
     },
@@ -35,6 +36,7 @@ export default defineConfig({
         '**/ui-details.spec.ts',
         '**/room-report.spec.ts',
         '**/qr-history.spec.ts',
+        '**/motion.spec.ts',
       ],
       use: {
         browserName: 'webkit',

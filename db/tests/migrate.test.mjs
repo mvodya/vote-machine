@@ -414,10 +414,10 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT to_regprocedure('public.vm_run_history_check(uuid,bytea,uuid,boolean)') AS name",
+          "SELECT pg_get_functiondef('vm_results_before_review(uuid,bytea,boolean,uuid,jsonb)'::regprocedure) LIKE '%choices'',COALESCE%' AS name",
         )
       ).rows[0].name,
-      null,
+      false,
     );
     assert.equal(
       (
@@ -5644,12 +5644,15 @@ test('history rollback refuses outside dependencies and reapply preserves runs a
     await client.query(
       'CREATE VIEW external_history AS SELECT vm_run_readable(NULL::uuid,NULL::bytea,NULL::uuid)',
     );
-    await assert.rejects(runMigrations({databaseUrl, direction: 'down'}), {
-      code: '2BP01',
-    });
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 22}),
+      {
+        code: '2BP01',
+      },
+    );
     assert.equal(await migrationCount(client), total);
     await client.query('DROP VIEW external_history');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 22});
     await runMigrations({databaseUrl});
     assert.equal((await journey(client, f)).run.id, f.run.id);
     assert.equal((await results(client, f, true)).result.total, 1);
@@ -5705,5 +5708,43 @@ test('old reusable media and an answer waiting behind history disable follow the
       await client.query('ROLLBACK');
       await other.end();
     }
+  });
+});
+
+test('empty result choices survive upgrade, rollback, failed rollback and reapply', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      choiceMode: 'multiple',
+      minChoices: 0,
+      maxChoices: 2,
+      anonymous: false,
+    });
+    await cast(client, f, ballotInput(f.question, {choices: []}));
+    const read = async () => (await results(client, f, true)).result;
+    assert.deepEqual((await read()).people[0].choices, []);
+    const signature = 'vm_results_before_review(uuid,bytea,boolean,uuid,jsonb)';
+    const definition = (
+      await client.query('SELECT pg_get_functiondef($1::regprocedure) AS sql', [
+        signature,
+      ])
+    ).rows[0].sql;
+    // Refuse a rollback when another change replaced the expected expression
+    await client.query(
+      definition.replace("'choices',COALESCE", "'choices', COALESCE"),
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down'}),
+      /Missing empty result choices expression/,
+    );
+    assert.equal(await migrationCount(client), total);
+    assert.equal((await read()).total, 1);
+    await client.query(definition);
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal((await read()).people[0].choices, null);
+    assert.equal((await read()).total, 1);
+    await runMigrations({databaseUrl});
+    assert.deepEqual((await read()).people[0].choices, []);
+    assert.equal((await read()).total, 1);
   });
 });

@@ -6,6 +6,8 @@ import CreateRoom from './create-room';
 import {roomDestination} from '../lib/rooms';
 import Link from 'next/link';
 import {ArrowUpRight, Trash2, Plus, LogIn} from 'lucide-react';
+import {SegmentedControl} from '../components/ui/segmented-control';
+import motion from '../components/ui/motion.module.css';
 import {Button} from '../components/ui/button';
 import {TextField} from '../components/ui/text-field';
 import {Form} from '../components/ui/form';
@@ -79,32 +81,20 @@ export default function RoomEntry() {
 
   return (
     <div className="mx-auto my-auto w-full max-w-105 py-12 lg:py-8">
-      <div
-        className="flex gap-1 rounded-2xl border border-border/70 bg-ink/4 p-1.5"
-        role="group"
-        aria-label="Действие с комнатой"
-      >
-        <Button
-          variant="switch"
-          startIcon={<Plus />}
-          aria-pressed={mode === 'create'}
-          onClick={() => {
-            setMode('create');
-            setInvalid(false);
-          }}
-        >
-          Создать
-        </Button>
-        <Button
-          variant="switch"
-          startIcon={<LogIn />}
-          aria-pressed={mode === 'join'}
-          onClick={() => setMode('join')}
-        >
-          Войти
-        </Button>
-      </div>
-      <div className="pt-8">
+      <SegmentedControl
+        label="Действие с комнатой"
+        value={mode}
+        className="rounded-2xl border border-border/70 p-1.5"
+        items={[
+          {id: 'create', label: 'Создать', icon: <Plus />},
+          {id: 'join', label: 'Войти', icon: <LogIn />},
+        ]}
+        onChange={(next) => {
+          setMode(next as 'create' | 'join');
+          if (next === 'create') setInvalid(false);
+        }}
+      />
+      <div key={mode} className={`${motion.content} pt-8`}>
         <h1 className="text-3xl font-semibold tracking-tight">
           {mode === 'create' ? 'Новая комната' : 'Вход в комнату'}
         </h1>

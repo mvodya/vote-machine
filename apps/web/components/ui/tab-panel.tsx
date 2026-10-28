@@ -1,6 +1,9 @@
-import type {ReactNode} from 'react';
+'use client';
+import motion from './motion.module.css';
+import {useLayoutEffect, useState, type ReactNode} from 'react';
+import {useTabMotion} from './tab-panels';
 
-// Link a panel to its tab and hide inactive content from keyboard users
+// Keep outgoing content visible but inert until the new panel finishes entering
 export function TabPanel({
   group,
   id,
@@ -8,27 +11,65 @@ export function TabPanel({
   className = '',
   children,
 }: {
-  // Shared prefix used by the matching tab list
+  // Names shared by the tab list and its content
   group: string;
-  // This panel's tab ID
   id: string;
-  // Current selected tab ID
   value: string;
-  // Optional layout styles
+  // Layout styles belong to the moving content
   className?: string;
-  // Panel content may keep local editor state while hidden
   children: ReactNode;
 }) {
+  const transition = useTabMotion();
+  const active = value === id;
+  const leaving = !active && transition?.from === id;
+  const [cached, setCached] = useState<ReactNode>(active ? children : null);
+  // Preserve the actual mounted tree, including media and form state
+  if (active && cached !== children) setCached(children);
+  if (!active && !leaving && cached !== null) setCached(null);
+  const version = transition?.version;
+  const ready = transition?.ready;
+  useLayoutEffect(() => {
+    if (!active || !ready || version === undefined) return;
+    // Media and request loading must never delay tab navigation
+    ready(version);
+  }, [active, ready, version]);
+  const running = transition?.phase === 'running';
+  const phase = leaving
+    ? running
+      ? 'exit'
+      : undefined
+    : active && running
+      ? 'enter'
+      : undefined;
+  // Settle after the click target is known, before opening any popup
+  function settle() {
+    if (transition) transition.finish(transition.version);
+  }
   return (
     <div
       id={`${group}-panel-${id}`}
       role="tabpanel"
       aria-labelledby={`${group}-tab-${id}`}
-      hidden={value !== id}
+      hidden={!active && !leaving}
+      aria-hidden={!active || undefined}
+      inert={!active}
       tabIndex={-1}
-      className={`min-w-0 rounded-xl outline-none ${className}`}
+      data-motion={phase}
+      data-slide-direction={transition?.direction}
+      onClickCapture={settle}
+      onKeyDownCapture={settle}
+      className={`${motion.panel} col-start-1 row-start-1 min-w-0 rounded-xl outline-none`}
     >
-      {children}
+      <div
+        data-tab-slide=""
+        className={`${motion.slide} min-w-0 ${className}`}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget && transition)
+            transition.finish(transition.version);
+        }}
+      >
+        {active ? children : leaving ? cached : children}
+      </div>
     </div>
   );
 }

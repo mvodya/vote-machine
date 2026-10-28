@@ -38,6 +38,7 @@ import {
   type QuestionInput,
 } from '../../../lib/questions';
 
+import {TabPanels} from '../../../components/ui/tab-panels';
 import {TabPanel} from '../../../components/ui/tab-panel';
 import {Tabs} from '../../../components/ui/tabs';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
@@ -516,332 +517,334 @@ export function QuestionEditor({
         className="mt-6 space-y-6"
         onSubmit={(event) => void save(event)}
       >
-        <TabPanel group={prefix} id="editing" value={section}>
-          <fieldset disabled={busy || locked} className="min-w-0 space-y-6">
-            <MarkdownField
-              roomId={roomId}
-              onUploadChange={uploadChanged}
-              readOnly={locked}
-              id={`${prefix}-content`}
-              label="Текст вопроса"
-              hint="До 20 000 символов"
-              value={value.content}
-              rows={5}
-              onChange={(source) => field('content', source)}
-            />
-
-            <section aria-label="Варианты ответа" className="space-y-4">
-              <h3 className="font-semibold">Варианты ответа</h3>
-              {value.choices.map((choice, index) => (
-                <div
-                  key={choice.localKey}
-                  className="rounded-xl border border-border bg-page/50 p-4"
-                >
-                  <MarkdownField
-                    roomId={roomId}
-                    onUploadChange={uploadChanged}
-                    readOnly={locked}
-                    id={`${prefix}-option-${choice.localKey}`}
-                    label={`Вариант ${index + 1}`}
-                    hint="До 5 000 символов"
-                    value={choice.content}
-                    rows={2}
-                    onChange={(source) =>
-                      setValue((old) => ({
-                        ...old,
-                        choices: old.choices.map((item, position) =>
-                          position === index
-                            ? {...item, content: source}
-                            : item,
-                        ),
-                      }))
-                    }
-                  />
-                  <div className="mt-2 flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      aria-label={`Поднять вариант ${index + 1}`}
-                      startIcon={<ArrowUp />}
-                      disabled={index === 0 || busy || locked}
-                      onClick={() => move(index, -1)}
-                    />
-                    <Button
-                      variant="ghost"
-                      aria-label={`Опустить вариант ${index + 1}`}
-                      startIcon={<ArrowDown />}
-                      disabled={
-                        index === value.choices.length - 1 || busy || locked
-                      }
-                      onClick={() => move(index, 1)}
-                    />
-                    <Button
-                      variant="ghost"
-                      aria-label={`Удалить вариант ${index + 1}`}
-                      startIcon={<Trash2 />}
-                      onClick={() =>
-                        choices(
-                          value.choices.filter(
-                            (_, position) => position !== index,
-                          ),
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-              <Button
-                variant="secondary"
-                startIcon={<Plus />}
-                disabled={value.choices.length >= 100 || busy || locked}
-                onClick={() =>
-                  choices([
-                    ...value.choices,
-                    {content: '', localKey: crypto.randomUUID()},
-                  ])
-                }
-              >
-                Добавить вариант
-              </Button>
-            </section>
-          </fieldset>
-        </TabPanel>
-        <TabPanel
-          group={prefix}
-          id="settings"
-          value={section}
-          className="space-y-6"
-        >
-          <fieldset disabled={busy || locked}>
-            {' '}
-            <div className="grid gap-5 sm:grid-cols-3">
-              <SelectField
-                id={`${prefix}-mode`}
-                label="Выбор ответа"
-                value={value.choiceMode}
-                onChange={(event) => {
-                  const mode = event.target
-                    .value as QuestionInput['choiceMode'];
-                  setValue((old) => ({
-                    ...old,
-                    choiceMode: mode,
-                    minChoices: 1,
-                    maxChoices:
-                      mode === 'single' ? 1 : Math.max(1, old.choices.length),
-                  }));
-                }}
-              >
-                <option value="single">Один вариант</option>
-                <option value="multiple">Несколько вариантов</option>
-              </SelectField>
-              {value.choiceMode === 'multiple' && (
-                <>
-                  <TextField
-                    id={`${prefix}-min`}
-                    label="Минимум вариантов"
-                    type="number"
-                    min={0}
-                    max={Math.max(1, value.choices.length)}
-                    value={value.minChoices}
-                    onChange={(event) =>
-                      field('minChoices', Number(event.target.value))
-                    }
-                  />
-                  <TextField
-                    id={`${prefix}-max`}
-                    label="Максимум вариантов"
-                    type="number"
-                    min={Math.max(1, value.minChoices)}
-                    max={Math.max(1, value.choices.length)}
-                    value={value.maxChoices}
-                    onChange={(event) =>
-                      field('maxChoices', Number(event.target.value))
-                    }
-                  />
-                </>
-              )}
-            </div>
-          </fieldset>
-          <fieldset disabled={busy}>
-            {' '}
-            <section
-              aria-label="Настройки вопроса"
-              className="space-y-4 border-t border-border pt-5"
-            >
-              <h3 className="font-semibold">Настройки вопроса</h3>
-              <CheckboxField
-                id={`${prefix}-results`}
-                label="Публиковать результаты участникам"
-                checked={value.shareResults}
-                onChange={(event) =>
-                  field('shareResults', event.target.checked)
-                }
+        <TabPanels group={prefix} value={section}>
+          <TabPanel group={prefix} id="editing" value={section}>
+            <fieldset disabled={busy || locked} className="min-w-0 space-y-6">
+              <MarkdownField
+                roomId={roomId}
+                onUploadChange={uploadChanged}
+                readOnly={locked}
+                id={`${prefix}-content`}
+                label="Текст вопроса"
+                hint="До 20 000 символов"
+                value={value.content}
+                rows={5}
+                onChange={(source) => field('content', source)}
               />
-              {value.shareResults && (
-                <SelectField
-                  id={`${prefix}-publication`}
-                  label="Когда публиковать результаты"
-                  value={value.publication}
-                  onChange={(event) =>
-                    field(
-                      'publication',
-                      event.target.value as QuestionInput['publication'],
-                    )
+
+              <section aria-label="Варианты ответа" className="space-y-4">
+                <h3 className="font-semibold">Варианты ответа</h3>
+                {value.choices.map((choice, index) => (
+                  <div
+                    key={choice.localKey}
+                    className="rounded-xl border border-border bg-page/50 p-4"
+                  >
+                    <MarkdownField
+                      roomId={roomId}
+                      onUploadChange={uploadChanged}
+                      readOnly={locked}
+                      id={`${prefix}-option-${choice.localKey}`}
+                      label={`Вариант ${index + 1}`}
+                      hint="До 5 000 символов"
+                      value={choice.content}
+                      rows={2}
+                      onChange={(source) =>
+                        setValue((old) => ({
+                          ...old,
+                          choices: old.choices.map((item, position) =>
+                            position === index
+                              ? {...item, content: source}
+                              : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <div className="mt-2 flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        aria-label={`Поднять вариант ${index + 1}`}
+                        startIcon={<ArrowUp />}
+                        disabled={index === 0 || busy || locked}
+                        onClick={() => move(index, -1)}
+                      />
+                      <Button
+                        variant="ghost"
+                        aria-label={`Опустить вариант ${index + 1}`}
+                        startIcon={<ArrowDown />}
+                        disabled={
+                          index === value.choices.length - 1 || busy || locked
+                        }
+                        onClick={() => move(index, 1)}
+                      />
+                      <Button
+                        variant="ghost"
+                        aria-label={`Удалить вариант ${index + 1}`}
+                        startIcon={<Trash2 />}
+                        onClick={() =>
+                          choices(
+                            value.choices.filter(
+                              (_, position) => position !== index,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="secondary"
+                  startIcon={<Plus />}
+                  disabled={value.choices.length >= 100 || busy || locked}
+                  onClick={() =>
+                    choices([
+                      ...value.choices,
+                      {content: '', localKey: crypto.randomUUID()},
+                    ])
                   }
                 >
-                  <option value="after_answer">После ответа</option>
-                  <option value="after_close">После закрытия вопроса</option>
+                  Добавить вариант
+                </Button>
+              </section>
+            </fieldset>
+          </TabPanel>
+          <TabPanel
+            group={prefix}
+            id="settings"
+            value={section}
+            className="space-y-6"
+          >
+            <fieldset disabled={busy || locked}>
+              {' '}
+              <div className="grid gap-5 sm:grid-cols-3">
+                <SelectField
+                  id={`${prefix}-mode`}
+                  label="Выбор ответа"
+                  value={value.choiceMode}
+                  onChange={(event) => {
+                    const mode = event.target
+                      .value as QuestionInput['choiceMode'];
+                    setValue((old) => ({
+                      ...old,
+                      choiceMode: mode,
+                      minChoices: 1,
+                      maxChoices:
+                        mode === 'single' ? 1 : Math.max(1, old.choices.length),
+                    }));
+                  }}
+                >
+                  <option value="single">Один вариант</option>
+                  <option value="multiple">Несколько вариантов</option>
                 </SelectField>
-              )}
-              <CheckboxField
-                disabled={busy || state === 'open' || state === 'scheduled'}
-                id={`${prefix}-hide`}
-                label="Скрывать результаты до окончания голосования, включая администратора"
-                checked={value.hideResultsUntilEnd}
-                onChange={(event) =>
-                  field('hideResultsUntilEnd', event.target.checked)
-                }
-              />
-              <CheckboxField
-                id={`${prefix}-skip`}
-                label="Разрешить пропуск вопроса"
-                checked={value.allowSkip ?? false}
-                onChange={(event) => field('allowSkip', event.target.checked)}
-              />
-              <CheckboxField
-                id={`${prefix}-change`}
-                label="Разрешить изменение ответа"
-                checked={value.allowAnswerChange}
-                onChange={(event) =>
-                  field('allowAnswerChange', event.target.checked)
-                }
-              />
-              <CheckboxField
-                id={`${prefix}-anonymous`}
-                label="Анонимные ответы"
-                disabled={
-                  busy || (saved?.editLocked !== null && saved !== null)
-                }
-                hint="В результатах не будет видно, с какой ссылки получен ответ"
-                checked={value.anonymous}
-                onChange={(event) => field('anonymous', event.target.checked)}
-              />
-            </section>
-          </fieldset>
-        </TabPanel>
-        <TabPanel
-          group={prefix}
-          id="management"
-          value={section}
-          className="space-y-5"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
-              <QuestionAction
-                state={state}
-                busy={busy || uploads > 0 || electorateLoading}
-                onClick={() =>
-                  void save(undefined, state === 'open' ? 'closed' : 'open')
-                }
-              />
-              {state === 'scheduled' && (
-                <Button
-                  variant="secondary"
-                  disabled={busy || dirty}
-                  onClick={() => void cancelStart()}
-                >
-                  Отменить запуск
-                </Button>
-              )}
-              {saved && saved.state !== 'draft' && (
-                <Button
-                  variant="secondary"
-                  startIcon={<FilePenLine />}
-                  disabled={busy || dirty}
-                  onClick={() => setMakeDraft(true)}
-                >
-                  Сделать черновиком
-                </Button>
-              )}
+                {value.choiceMode === 'multiple' && (
+                  <>
+                    <TextField
+                      id={`${prefix}-min`}
+                      label="Минимум вариантов"
+                      type="number"
+                      min={0}
+                      max={Math.max(1, value.choices.length)}
+                      value={value.minChoices}
+                      onChange={(event) =>
+                        field('minChoices', Number(event.target.value))
+                      }
+                    />
+                    <TextField
+                      id={`${prefix}-max`}
+                      label="Максимум вариантов"
+                      type="number"
+                      min={Math.max(1, value.minChoices)}
+                      max={Math.max(1, value.choices.length)}
+                      value={value.maxChoices}
+                      onChange={(event) =>
+                        field('maxChoices', Number(event.target.value))
+                      }
+                    />
+                  </>
+                )}
+              </div>
+            </fieldset>
+            <fieldset disabled={busy}>
+              {' '}
+              <section
+                aria-label="Настройки вопроса"
+                className="space-y-4 border-t border-border pt-5"
+              >
+                <h3 className="font-semibold">Настройки вопроса</h3>
+                <CheckboxField
+                  id={`${prefix}-results`}
+                  label="Публиковать результаты участникам"
+                  checked={value.shareResults}
+                  onChange={(event) =>
+                    field('shareResults', event.target.checked)
+                  }
+                />
+                {value.shareResults && (
+                  <SelectField
+                    id={`${prefix}-publication`}
+                    label="Когда публиковать результаты"
+                    value={value.publication}
+                    onChange={(event) =>
+                      field(
+                        'publication',
+                        event.target.value as QuestionInput['publication'],
+                      )
+                    }
+                  >
+                    <option value="after_answer">После ответа</option>
+                    <option value="after_close">После закрытия вопроса</option>
+                  </SelectField>
+                )}
+                <CheckboxField
+                  disabled={busy || state === 'open' || state === 'scheduled'}
+                  id={`${prefix}-hide`}
+                  label="Скрывать результаты до окончания голосования, включая администратора"
+                  checked={value.hideResultsUntilEnd}
+                  onChange={(event) =>
+                    field('hideResultsUntilEnd', event.target.checked)
+                  }
+                />
+                <CheckboxField
+                  id={`${prefix}-skip`}
+                  label="Разрешить пропуск вопроса"
+                  checked={value.allowSkip ?? false}
+                  onChange={(event) => field('allowSkip', event.target.checked)}
+                />
+                <CheckboxField
+                  id={`${prefix}-change`}
+                  label="Разрешить изменение ответа"
+                  checked={value.allowAnswerChange}
+                  onChange={(event) =>
+                    field('allowAnswerChange', event.target.checked)
+                  }
+                />
+                <CheckboxField
+                  id={`${prefix}-anonymous`}
+                  label="Анонимные ответы"
+                  disabled={
+                    busy || (saved?.editLocked !== null && saved !== null)
+                  }
+                  hint="В результатах не будет видно, с какой ссылки получен ответ"
+                  checked={value.anonymous}
+                  onChange={(event) => field('anonymous', event.target.checked)}
+                />
+              </section>
+            </fieldset>
+          </TabPanel>
+          <TabPanel
+            group={prefix}
+            id="management"
+            value={section}
+            className="space-y-5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                <QuestionAction
+                  state={state}
+                  busy={busy || uploads > 0 || electorateLoading}
+                  onClick={() =>
+                    void save(undefined, state === 'open' ? 'closed' : 'open')
+                  }
+                />
+                {state === 'scheduled' && (
+                  <Button
+                    variant="secondary"
+                    disabled={busy || dirty}
+                    onClick={() => void cancelStart()}
+                  >
+                    Отменить запуск
+                  </Button>
+                )}
+                {saved && saved.state !== 'draft' && (
+                  <Button
+                    variant="secondary"
+                    startIcon={<FilePenLine />}
+                    disabled={busy || dirty}
+                    onClick={() => setMakeDraft(true)}
+                  >
+                    Сделать черновиком
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
-          <CheckboxField
-            id={`${prefix}-auto-complete`}
-            label="Закрыть, когда ответят все выбранные участники"
-            checked={value.closeWhenAllAnswered ?? false}
-            disabled={busy || state === 'open' || state === 'scheduled'}
-            onChange={(event) =>
-              field('closeWhenAllAnswered', event.target.checked)
-            }
-          />
-          {value.closeWhenAllAnswered && (
-            <ExpectedLinks
-              roomId={roomId}
-              selected={value.expectedLinkIds ?? []}
+            <CheckboxField
+              id={`${prefix}-auto-complete`}
+              label="Закрыть, когда ответят все выбранные участники"
+              checked={value.closeWhenAllAnswered ?? false}
               disabled={busy || state === 'open' || state === 'scheduled'}
-              onChange={(ids) => field('expectedLinkIds', ids)}
-              onBusy={setElectorateLoading}
-              onDenied={onDenied}
+              onChange={(event) =>
+                field('closeWhenAllAnswered', event.target.checked)
+              }
             />
-          )}
-          {saved?.closedReason === 'all_voted' && (
-            <p className="text-sm text-muted">
-              Все выбранные участники ответили
-            </p>
-          )}
-          {saved?.expectedTotal !== undefined && saved.expectedTotal > 0 && (
-            <p className="text-sm text-muted">
-              Ответили по выбранным ссылкам: {saved.expectedAnswered} из{' '}
-              {saved.expectedTotal}
-            </p>
-          )}
-          <CheckboxField
-            id={`${prefix}-scheduled`}
-            label="Отложенный старт"
-            checked={start.deadlineMode !== 'none'}
-            disabled={busy}
-            onChange={(event) =>
-              setStart((old) => ({
-                ...old,
-                deadlineMode: event.target.checked ? 'duration' : 'none',
-              }))
-            }
-          />
-          {start.deadlineMode !== 'none' && (
+            {value.closeWhenAllAnswered && (
+              <ExpectedLinks
+                roomId={roomId}
+                selected={value.expectedLinkIds ?? []}
+                disabled={busy || state === 'open' || state === 'scheduled'}
+                onChange={(ids) => field('expectedLinkIds', ids)}
+                onBusy={setElectorateLoading}
+                onDenied={onDenied}
+              />
+            )}
+            {saved?.closedReason === 'all_voted' && (
+              <p className="text-sm text-muted">
+                Все выбранные участники ответили
+              </p>
+            )}
+            {saved?.expectedTotal !== undefined && saved.expectedTotal > 0 && (
+              <p className="text-sm text-muted">
+                Ответили по выбранным ссылкам: {saved.expectedAnswered} из{' '}
+                {saved.expectedTotal}
+              </p>
+            )}
+            <CheckboxField
+              id={`${prefix}-scheduled`}
+              label="Отложенный старт"
+              checked={start.deadlineMode !== 'none'}
+              disabled={busy}
+              onChange={(event) =>
+                setStart((old) => ({
+                  ...old,
+                  deadlineMode: event.target.checked ? 'duration' : 'none',
+                }))
+              }
+            />
+            {start.deadlineMode !== 'none' && (
+              <QuestionDeadline
+                purpose="start"
+                value={start}
+                onChange={setStart}
+                timeZone={timeZone}
+                disabled={busy}
+                at={saved?.scheduledAt}
+              />
+            )}
             <QuestionDeadline
-              purpose="start"
-              value={start}
-              onChange={setStart}
+              value={deadline}
+              onChange={setDeadline}
               timeZone={timeZone}
               disabled={busy}
-              at={saved?.scheduledAt}
+              at={
+                saved?.state === 'open'
+                  ? saved.closesAt
+                  : saved?.state === 'scheduled'
+                    ? saved.deadlineMode === 'duration' &&
+                      saved.scheduledAt &&
+                      saved.closeAfterSeconds
+                      ? new Date(
+                          Date.parse(saved.scheduledAt) +
+                            saved.closeAfterSeconds * 1000,
+                        ).toISOString()
+                      : saved.closesAt
+                    : null
+              }
             />
-          )}
-          <QuestionDeadline
-            value={deadline}
-            onChange={setDeadline}
-            timeZone={timeZone}
-            disabled={busy}
-            at={
-              saved?.state === 'open'
-                ? saved.closesAt
-                : saved?.state === 'scheduled'
-                  ? saved.deadlineMode === 'duration' &&
-                    saved.scheduledAt &&
-                    saved.closeAfterSeconds
-                    ? new Date(
-                        Date.parse(saved.scheduledAt) +
-                          saved.closeAfterSeconds * 1000,
-                      ).toISOString()
-                    : saved.closesAt
-                  : null
-            }
-          />
-          {saved?.editLocked !== null && saved && (
-            <p className="text-xs text-muted">
-              При повторном открытии прежние голоса сохраняются
-            </p>
-          )}
-        </TabPanel>
+            {saved?.editLocked !== null && saved && (
+              <p className="text-xs text-muted">
+                При повторном открытии прежние голоса сохраняются
+              </p>
+            )}
+          </TabPanel>
+        </TabPanels>
         {error && (
           <p role="alert" className="text-sm text-error-ink">
             {error}

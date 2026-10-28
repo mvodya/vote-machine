@@ -1,4 +1,5 @@
 'use client';
+import motion from './motion.module.css';
 import {useEffect, useId, useRef, useState, type ReactNode} from 'react';
 
 // Keep small information cards inside the visible screen
@@ -27,7 +28,11 @@ export function Popover({
     // Recheck bounds after scrolling or changing the phone orientation
     function place() {
       const anchor = button.current!.getBoundingClientRect();
-      const box = card.current!.getBoundingClientRect();
+      // Entry scaling must not change the final popup position
+      const box = {
+        width: card.current!.offsetWidth,
+        height: card.current!.offsetHeight,
+      };
       setPosition({
         left: Math.max(
           12,
@@ -87,8 +92,11 @@ export function Popover({
           id={id}
           role="dialog"
           aria-label={label}
-          style={position}
-          className="fixed z-50 max-h-[calc(100svh-1.5rem)] w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-border bg-panel p-5 text-left text-xs leading-5 font-normal text-ink shadow-xl"
+          style={{
+            ...position,
+            transformOrigin: side === 'top' ? 'bottom right' : 'top right',
+          }}
+          className={`${motion.popover} fixed z-50 max-h-[calc(100svh-1.5rem)] w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-border bg-panel p-5 text-left text-xs leading-5 font-normal text-ink shadow-xl`}
         >
           {children}
         </div>

@@ -247,7 +247,7 @@ function Bars({
                 className="h-2 overflow-hidden rounded-full bg-accent"
               >
                 <div
-                  className="h-full rounded-full bg-primary"
+                  className="h-full rounded-full bg-primary motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out"
                   style={{width: `${(item.count / maximum) * 100}%`}}
                 />
               </div>

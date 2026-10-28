@@ -377,7 +377,10 @@ test('home actions have icons and a clear dark selection while preferences scrol
     ctx.fillStyle = getComputedStyle(element.parentElement!).backgroundColor;
     ctx.fillRect(0, 0, 1, 1);
     const parent = ctx.getImageData(0, 0, 1, 1).data;
-    ctx.fillStyle = getComputedStyle(element).backgroundColor;
+    const fill =
+      element.parentElement!.querySelector('[data-selection-indicator]') ??
+      element;
+    ctx.fillStyle = getComputedStyle(fill).backgroundColor;
     ctx.fillRect(0, 0, 1, 1);
     const active = ctx.getImageData(0, 0, 1, 1).data;
     const luminance = (rgb: Uint8ClampedArray) =>

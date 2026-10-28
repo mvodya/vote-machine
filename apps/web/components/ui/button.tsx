@@ -16,8 +16,10 @@ const variants = {
     'min-h-11 border border-border bg-panel px-4 py-2.5 text-sm text-ink shadow-xs hover:border-ink/25 hover:bg-page',
   switch:
     'min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-muted hover:text-ink aria-pressed:border-primary/35 aria-pressed:bg-selected aria-pressed:text-ink aria-pressed:shadow-xs',
+  selector:
+    'relative z-10 min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-muted hover:text-ink aria-pressed:text-ink',
   ghost: 'min-h-10 p-2.5 text-sm text-muted hover:bg-ink/5 hover:text-ink',
-  tab: 'min-w-0 flex-1 flex-col px-1.5 py-3 text-[11px] text-muted hover:bg-page aria-selected:bg-accent aria-selected:text-ink sm:flex-none sm:flex-row sm:px-5 sm:text-sm',
+  tab: 'min-w-0 flex-1 flex-col px-1.5 py-3 text-[11px] text-muted hover:bg-page aria-selected:text-ink sm:flex-none sm:flex-row sm:px-5 sm:text-sm',
 };
 
 type Props = ComponentProps<'button'> & {
@@ -47,7 +49,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`inline-flex items-center gap-2 rounded-xl font-medium leading-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ink disabled:pointer-events-none disabled:opacity-45 [&_svg]:size-4 [&_svg]:shrink-0 ${fullWidth ? 'w-full justify-between' : 'justify-center'} ${variants[variant]} ${className}`}
+      className={`inline-flex items-center gap-2 rounded-xl font-medium leading-5 transition-[background-color,color,border-color,box-shadow,opacity,scale] duration-200 ease-out motion-safe:active:scale-[0.97] motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ink disabled:pointer-events-none disabled:opacity-45 [&_svg]:size-4 [&_svg]:shrink-0 ${fullWidth ? 'w-full justify-between' : 'justify-center'} ${variants[variant]} ${className}`}
       {...props}
     >
       {startIcon && (

@@ -25,7 +25,12 @@ export function Loading({
   rows?: number;
 }) {
   return (
-    <div role="status" aria-label={label} className="space-y-4 py-5">
+    <div
+      data-loading-placeholder=""
+      role="status"
+      aria-label={label}
+      className="space-y-4 py-5"
+    >
       <span className="sr-only">{label}</span>
       <div aria-hidden="true" className="space-y-4 motion-safe:animate-pulse">
         {Array.from({length: rows}, (_, index) => (

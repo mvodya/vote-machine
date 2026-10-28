@@ -1,5 +1,6 @@
 'use client';
-import type {ReactNode} from 'react';
+import {useState, type ReactNode} from 'react';
+import {SelectionIndicator} from './selection-indicator';
 import {Button} from './button';
 
 type Tab = {
@@ -29,22 +30,47 @@ export function Tabs({
   // Name of the tab group
   label: string;
 }) {
+  const index = items.findIndex((tab) => tab.id === value);
+  // Derive direction only from a committed selection, including confirmed exits
+  const [selection, setSelection] = useState({
+    value,
+    index,
+    direction: 'forward',
+  });
+  if (selection.value !== value)
+    setSelection({
+      value,
+      index,
+      direction: index < selection.index ? 'backward' : 'forward',
+    });
   return (
     <div
-      className="flex min-w-0 gap-1 rounded-2xl border border-border bg-panel p-1.5 shadow-xs"
+      className="relative isolate flex min-w-0 gap-1 rounded-2xl border border-border bg-panel p-1.5 shadow-xs"
+      data-slide-direction={selection.direction}
       role="tablist"
       aria-label={label}
     >
+      <SelectionIndicator
+        value={value}
+        itemsKey={items.map((tab) => `${tab.id}:${tab.label}`).join('|')}
+        selector='[role="tab"][aria-selected="true"]'
+        className="border-border/60 bg-accent shadow-xs"
+      />
       {items.map((tab, index) => (
         <Button
           key={tab.id}
           variant="tab"
+          className="relative z-10"
           role="tab"
           id={`${group}-tab-${tab.id}`}
           aria-controls={`${group}-panel-${tab.id}`}
           aria-selected={value === tab.id}
           tabIndex={value === tab.id ? 0 : -1}
-          onClick={() => onChange(tab.id)}
+          onClick={(event) => {
+            // Safari may leave focus inside the panel that is about to hide
+            event.currentTarget.focus({preventScroll: true});
+            onChange(tab.id);
+          }}
           onKeyDown={(event) => {
             // Arrow keys wrap across the ends of the list
             let next = index;
