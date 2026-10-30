@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {Loading} from '../../../components/ui/loading';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {
@@ -24,7 +25,6 @@ import {Countdown} from '../../../components/countdown';
 import {useQuestionPresence} from '../../../lib/use-question-presence';
 import {Results} from '../../../components/results';
 import {AnswerForm} from './answer-form';
-
 // Keep snapshots fresh while the participant moves between tabs
 export function ParticipantJourney({
   linkId,
@@ -35,6 +35,7 @@ export function ParticipantJourney({
   // Remove private content when the session is revoked
   onDenied: () => void;
 }) {
+  const {t, localeTag} = useI18n();
   const live = useLive(`/api/vote/${linkId}/events`, onDenied);
   const [runId, setRunId] = useState<string | null>(null);
   const newRun = useRef<string | null>(null);
@@ -211,39 +212,55 @@ export function ParticipantJourney({
   return (
     <div className="mt-6 space-y-5">
       <Tabs
-        label="Вкладки участника"
+        label={t('Вкладки участника')}
         group="participant-tabs"
         value={section}
         onChange={(next) => {
           if (!busy) setSection(next);
         }}
         items={[
-          {id: 'question', label: 'Вопрос', icon: <MessageSquare />},
-          {id: 'list', label: 'Список вопросов', icon: <ListChecks />},
+          {
+            id: 'question',
+            label: t('Вопрос'),
+            icon: <MessageSquare />,
+          },
+          {
+            id: 'list',
+            label: t('Список вопросов'),
+            icon: <ListChecks />,
+          },
           ...(snapshot?.resultsAvailable
-            ? [{id: 'results', label: 'Результаты', icon: <ChartColumn />}]
+            ? [
+                {
+                  id: 'results',
+                  label: t('Результаты'),
+                  icon: <ChartColumn />,
+                },
+              ]
             : []),
         ]}
       />
       {notice && (
         <p role="status" className="text-sm text-muted">
-          {notice}
+          {t(notice)}
         </p>
       )}
       {failed && (
         <p role="alert" className="text-sm text-error-ink">
-          Не удалось обновить вопросы, пробуем снова
+          {t('Не удалось обновить вопросы, пробуем снова')}
         </p>
       )}
       <TabPanels group="participant-tabs" value={section}>
         <TabPanel group="participant-tabs" id="question" value={section}>
           {section === 'question' && (
-            <Panel aria-label="Текущий вопрос">
+            <Panel aria-label={t('Текущий вопрос')}>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                 <p className="text-sm text-muted">
                   {snapshot
-                    ? `Осталось вопросов: ${snapshot.progress.pending}`
-                    : 'Загружаем вопросы…'}
+                    ? t('Осталось вопросов: {value0}', {
+                        value0: snapshot.progress.pending,
+                      })
+                    : t('Загружаем вопросы…')}
                 </p>
                 <Countdown
                   at={
@@ -262,7 +279,7 @@ export function ParticipantJourney({
                     disabled={busy}
                     onClick={closeReview}
                   >
-                    Закрыть
+                    {t('Закрыть')}
                   </Button>
                 )}
               </div>
@@ -286,7 +303,7 @@ export function ParticipantJourney({
                       setReview(false);
                       setSection('list');
                     }
-                    refresh('Ответ принят');
+                    refresh(t('Ответ принят'));
                   }}
                   onSkip={() => {
                     moveFocus.current = true;
@@ -304,17 +321,17 @@ export function ParticipantJourney({
                     icon={<ListChecks />}
                     title={
                       snapshot.upcoming
-                        ? 'Ожидание открытия вопроса'
+                        ? t('Ожидание открытия вопроса')
                         : snapshot.progress.pending
-                          ? 'Остались вопросы без ответа'
+                          ? t('Остались вопросы без ответа')
                           : snapshot.questions.length || snapshot.progress.total
-                            ? 'Все вопросы пройдены'
-                            : 'Ожидание вопросов'
+                            ? t('Все вопросы пройдены')
+                            : t('Ожидание вопросов')
                     }
                     description={
                       snapshot.upcoming
                         ? markdownSummary(snapshot.upcoming.preview)
-                        : 'Ответы и пропущенные вопросы доступны в списке'
+                        : t('Ответы и пропущенные вопросы доступны в списке')
                     }
                   />
                   <Button
@@ -322,7 +339,7 @@ export function ParticipantJourney({
                     startIcon={<ListChecks />}
                     onClick={() => setSection('list')}
                   >
-                    К списку вопросов
+                    {t('К списку вопросов')}
                   </Button>
                   {snapshot.run &&
                     snapshot.repeatAllowed &&
@@ -333,23 +350,23 @@ export function ParticipantJourney({
                         disabled={busy}
                         onClick={() => void repeat()}
                       >
-                        Ответить еще раз
+                        {t('Ответить еще раз')}
                       </Button>
                     )}
                 </>
               ) : (
-                <Loading label="Загружаем вопрос…" rows={2} />
+                <Loading label={t('Загружаем вопрос…')} rows={2} />
               )}
             </Panel>
           )}
         </TabPanel>
         <TabPanel group="participant-tabs" id="list" value={section}>
           {section === 'list' && (
-            <Panel aria-label="Список вопросов участника">
+            <Panel aria-label={t('Список вопросов участника')}>
               {snapshot?.run && (snapshot.runs?.length ?? 0) > 1 && (
                 <SelectField
                   id="voting-run"
-                  label="Прохождение"
+                  label={t('Прохождение')}
                   value={runId ?? snapshot.run.id}
                   disabled={busy}
                   onChange={(event) => {
@@ -363,7 +380,7 @@ export function ParticipantJourney({
                 >
                   {snapshot.runs?.map((run) => (
                     <option key={run.id} value={run.id}>
-                      {new Intl.DateTimeFormat('ru-RU', {
+                      {new Intl.DateTimeFormat(localeTag, {
                         dateStyle: 'short',
                         timeStyle: 'medium',
                         timeZone: snapshot.timeZone,
@@ -385,7 +402,7 @@ export function ParticipantJourney({
                         disabled={busy || !item.canChoose}
                         onClick={() => choose(item.id, item.answered)}
                       >
-                        {markdownSummary(item.preview) || 'Вопрос'}
+                        {markdownSummary(item.preview) || t('Вопрос')}
                       </Button>
                       <p className="mt-1 flex items-center gap-2 text-xs text-muted">
                         {item.answered && (
@@ -395,13 +412,13 @@ export function ParticipantJourney({
                           />
                         )}
                         {item.answered
-                          ? 'Ответ сохранен'
+                          ? t('Ответ сохранен')
                           : item.state === 'scheduled'
-                            ? 'Ожидание открытия'
+                            ? t('Ожидание открытия')
                             : item.canChoose
-                              ? 'Без ответа'
-                              : 'Сначала ответьте на обязательный вопрос'}
-                        {item.state === 'closed' ? ' · Закрыт' : ''}
+                              ? t('Без ответа')
+                              : t('Сначала ответьте на обязательный вопрос')}
+                        {item.state === 'closed' ? t(' · Закрыт') : ''}
                       </p>
                     </div>
                     <Countdown
@@ -419,10 +436,10 @@ export function ParticipantJourney({
                 ))}
               </ul>
               {snapshot?.questions.length === 0 && (
-                <p className="text-sm text-muted">Вопросов пока нет</p>
+                <p className="text-sm text-muted">{t('Вопросов пока нет')}</p>
               )}
               <Pagination
-                label="Страницы вопросов участника"
+                label={t('Страницы вопросов участника')}
                 page={cursors.length}
                 hasNext={Boolean(snapshot?.nextCursor)}
                 busy={busy}

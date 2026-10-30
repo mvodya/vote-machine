@@ -1,5 +1,6 @@
+'use client';
+import {useI18n} from '../language-provider';
 import type {ReactNode} from 'react';
-
 export interface FieldProps {
   // Input ID used by its label
   id: string;
@@ -33,19 +34,22 @@ export function Field({
   hint,
   error,
   children,
-}: FieldProps & {children: ReactNode}) {
+}: FieldProps & {
+  children: ReactNode;
+}) {
+  const {t} = useI18n();
   return (
     <div className="min-w-0">
       <label
         className="block text-sm font-medium leading-6 text-ink"
         htmlFor={id}
       >
-        {label}
+        {t(label)}
       </label>
       {children}
       {hint && (
         <p id={`${id}-hint`} className="mt-2 text-xs leading-5 text-muted">
-          {hint}
+          {t(hint)}
         </p>
       )}
       {error && (
@@ -54,7 +58,7 @@ export function Field({
           role="alert"
           className="mt-2 text-sm text-error-ink"
         >
-          {error}
+          {t(error)}
         </p>
       )}
     </div>

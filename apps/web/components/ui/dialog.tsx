@@ -1,9 +1,9 @@
 'use client';
+import {useI18n} from '../language-provider';
 import motion from './motion.module.css';
 import {useEffect, useId, useRef, type ReactNode} from 'react';
 import {X} from 'lucide-react';
 import {Button} from './button';
-
 // Keep a small modal on screen and return focus to its opener
 export function Dialog({
   title,
@@ -14,6 +14,7 @@ export function Dialog({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const {t} = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
   useEffect(() => {
@@ -61,7 +62,7 @@ export function Dialog({
         </h2>
         <Button
           variant="ghost"
-          aria-label="Закрыть"
+          aria-label={t('Закрыть')}
           startIcon={<X />}
           onClick={onClose}
         />

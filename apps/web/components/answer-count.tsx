@@ -1,8 +1,7 @@
 'use client';
-
+import {useI18n} from './language-provider';
 import {useEffect, useRef} from 'react';
 import {Check} from 'lucide-react';
-
 // Show new answers without moving the counter or nearby buttons
 export function AnswerCount({
   count,
@@ -10,10 +9,10 @@ export function AnswerCount({
   // Latest saved answer count from the room snapshot
   count: number;
 }) {
+  const {t} = useI18n();
   const previous = useRef(count);
   const layer = useRef<HTMLSpanElement>(null);
   const flights = useRef(new Map<Animation, HTMLSpanElement>());
-
   useEffect(() => {
     const active = flights.current;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -34,7 +33,6 @@ export function AnswerCount({
       clear();
     };
   }, []);
-
   useEffect(() => {
     const added = count - previous.current;
     previous.current = count;
@@ -81,10 +79,9 @@ export function AnswerCount({
       };
     }
   }, [count]);
-
   return (
     <span
-      aria-label={`Количество ответов: ${count}`}
+      aria-label={t('Количество ответов: {value0}', {value0: count})}
       className="inline-flex items-center gap-1 text-xs text-muted"
     >
       <Check aria-hidden="true" className="size-4" />

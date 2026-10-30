@@ -1,9 +1,9 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useEffect, useRef, useState} from 'react';
 import {Panel} from '../../../components/ui/panel';
 import {CheckboxField} from '../../../components/ui/checkbox-field';
 import {validCursor} from '../../../lib/voting-links';
-
 type Policy = {
   // Rule for questions that have not opened yet
   lockAfterOpen: boolean;
@@ -31,6 +31,7 @@ export function QuestionPolicy({
   // Leave settings if access is lost
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   // Last saved rule and room version
   const [policy, setPolicy] = useState<Policy | null>(null);
   // Current checkbox value
@@ -71,7 +72,6 @@ export function QuestionPolicy({
     void load();
     return () => controller.abort();
   }, [path, onDenied]);
-
   // Refresh a stale version and retry only the selected setting
   async function save(next: boolean) {
     if (running.current || !policy) return;
@@ -125,19 +125,23 @@ export function QuestionPolicy({
     }
   }
   return (
-    <Panel aria-label="Редактирование вопросов">
-      <h2 className="mb-5 text-lg font-semibold">Редактирование вопросов</h2>
+    <Panel aria-label={t('Редактирование вопросов')}>
+      <h2 className="mb-5 text-lg font-semibold">
+        {t('Редактирование вопросов')}
+      </h2>
       <CheckboxField
         id="question-edit-rule"
-        label="Запретить редактирование после открытия"
-        hint="Правило фиксируется для каждого вопроса при первом открытии, черновики всегда редактируемы"
+        label={t('Запретить редактирование после открытия')}
+        hint={t(
+          'Правило фиксируется для каждого вопроса при первом открытии, черновики всегда редактируемы',
+        )}
         disabled={!policy || busy}
         checked={locked}
         onChange={(event) => void save(event.target.checked)}
       />
       {(busy || notice) && (
         <p role="status" className="mt-4 text-sm text-muted">
-          {busy ? 'Сохраняем…' : notice}
+          {busy ? t('Сохраняем…') : notice}
         </p>
       )}
     </Panel>

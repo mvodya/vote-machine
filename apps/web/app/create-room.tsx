@@ -1,5 +1,5 @@
 'use client';
-
+import {useI18n} from '../components/language-provider';
 import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {useRouter} from 'next/navigation';
 import {isRoom, secretPattern} from '../lib/rooms';
@@ -7,9 +7,9 @@ import {ArrowUpRight} from 'lucide-react';
 import {Button} from '../components/ui/button';
 import {TextField} from '../components/ui/text-field';
 import {Form} from '../components/ui/form';
-
 // Show the form for a new room
 export default function CreateRoom() {
+  const {t} = useI18n();
   const router = useRouter();
   // Name typed in the form
   const [name, setName] = useState('');
@@ -21,7 +21,6 @@ export default function CreateRoom() {
   const pending = useRef<AbortController | null>(null);
   // Stop late replies when the user leaves the form
   useEffect(() => () => pending.current?.abort(), []);
-
   // Create the room and open its admin link
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,7 +35,7 @@ export default function CreateRoom() {
       const response = await fetch('/api/rooms', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name}),
+        body: JSON.stringify({name: name.trim() || t('Новая комната')}),
         signal: AbortSignal.any([
           controller.signal,
           AbortSignal.timeout(12000),
@@ -61,16 +60,15 @@ export default function CreateRoom() {
       setBusy(false);
     }
   }
-
   return (
     <Form onSubmit={(event) => void create(event)}>
       <TextField
         id="room-name"
-        label="Название комнаты"
+        label={t('Название комнаты')}
         value={name}
         maxLength={200}
-        placeholder="Например, встреча команды"
-        hint="Можно оставить пустым и изменить позже"
+        placeholder={t('Например, встреча команды')}
+        hint={t('Можно оставить пустым и изменить позже')}
         onChange={(event) => setName(event.target.value)}
       />
       <Button
@@ -79,11 +77,11 @@ export default function CreateRoom() {
         disabled={busy}
         endIcon={<ArrowUpRight size={20} />}
       >
-        {busy ? 'Создаем…' : 'Создать комнату'}
+        {busy ? t('Создаем…') : t('Создать комнату')}
       </Button>
       {error && (
         <p role="alert" className="mt-4 text-sm text-error-ink">
-          Не удалось создать комнату, попробуйте снова
+          {t('Не удалось создать комнату, попробуйте снова')}
         </p>
       )}
     </Form>

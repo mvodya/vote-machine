@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {memo, useMemo} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -6,6 +7,13 @@ import {assetId, type MediaViewer} from '../lib/assets';
 import {safeMarkdownLink} from '../lib/markdown';
 import {Media} from './media';
 
+// Translate the fallback without replacing working media players
+function UnsupportedMedia() {
+  const {t} = useI18n();
+  return (
+    <span className="text-muted">{t('Внешние файлы не поддерживаются')}</span>
+  );
+}
 // Use the same safe renderer for editor previews and saved content
 function MarkdownContent({
   source,
@@ -39,7 +47,7 @@ function MarkdownContent({
             displayWidth={width}
           />
         ) : (
-          <span className="text-muted">Внешние файлы не поддерживаются</span>
+          <UnsupportedMedia />
         );
       },
     }),
@@ -86,7 +94,6 @@ function MarkdownContent({
     </div>
   );
 }
-
 // Keep other fields from rebuilding unchanged media previews
 export const Markdown = memo(
   MarkdownContent,

@@ -1,5 +1,6 @@
-import {render, screen} from '@testing-library/react';
+import {fireEvent, render, screen} from '@testing-library/react';
 import {expect, it, vi} from 'vitest';
+import {LanguageProvider, useI18n} from '../components/language-provider';
 import {Markdown} from '../components/markdown';
 import {
   markdownAssets,
@@ -108,4 +109,45 @@ it('keeps media mounted on parent edits and accepts a bounded display width', as
   rerender(<Markdown viewer={{roomId: room}} source={`Updated ${source}`} />);
   expect(screen.getByRole('img')).toBe(photo);
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+// Exercise a context change without replacing the Markdown parent
+function ChangeLanguage() {
+  const {setLocale} = useI18n();
+  return <button onClick={() => setLocale('en')}>English</button>;
+}
+
+it('keeps a loaded video mounted when the interface language changes', async () => {
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      asset: {
+        id,
+        kind: 'video',
+        mime: 'video/mp4',
+        width: 2,
+        height: 2,
+        bytes: 100,
+      },
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const {container} = render(
+    <LanguageProvider initialLocale="ru">
+      <ChangeLanguage />
+      <Markdown
+        viewer={{roomId: room}}
+        source={`![Clip](asset:${id})\n\n![External](https://example.com/photo.png)`}
+      />
+    </LanguageProvider>,
+  );
+  await vi.waitFor(() =>
+    expect(container.querySelector('video')).not.toBeNull(),
+  );
+  const video = container.querySelector('video');
+  fireEvent.click(screen.getByRole('button', {name: 'English'}));
+  expect(container.querySelector('video')).toBe(video);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByText('External files are not supported', {exact: true}),
+  ).toBeVisible();
 });

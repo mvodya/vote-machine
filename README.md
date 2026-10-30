@@ -18,12 +18,13 @@
 - **Shared-device voting** - manual response entry and reusable voting links for multiple people using one device
 - **Result exports** - CSV and XLSX workbooks with multiple sheets
 - **Interface** - customizable room themes synced across admin and participant views, a responsive mobile layout, dark mode, sound alerts and accessibility support
+- **i18n support**
 
 Administrators share links with participants themselves. The admin link grants full access to the room
 
 ## Installation
 
-Requires Git, Node.js 24 and Docker with Compose v2. Docker Desktop includes Compose
+Requires Git, Node.js 24 and Docker.
 
 ```sh
 git clone https://github.com/mvodya/vote-machine.git

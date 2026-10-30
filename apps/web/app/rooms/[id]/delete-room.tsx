@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useRef, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {Trash2} from 'lucide-react';
@@ -6,7 +7,6 @@ import {Button} from '../../../components/ui/button';
 import {Panel} from '../../../components/ui/panel';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
 import {isRoom, type Room} from '../../../lib/rooms';
-
 // Fetch the current revision before confirming permanent deletion
 export function DeleteRoom({
   room,
@@ -17,6 +17,7 @@ export function DeleteRoom({
   // Remove private content when access is lost
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   const router = useRouter();
   const trigger = useRef<HTMLButtonElement>(null);
   const [revision, setRevision] = useState<string | null>(null);
@@ -74,10 +75,10 @@ export function DeleteRoom({
     }
   }
   return (
-    <Panel aria-label="Удаление комнаты">
-      <h2 className="text-lg font-semibold">Удаление комнаты</h2>
+    <Panel aria-label={t('Удаление комнаты')}>
+      <h2 className="text-lg font-semibold">{t('Удаление комнаты')}</h2>
       <p className="mt-3 text-sm text-muted">
-        Удаляются вопросы, ответы, ссылки участников и доступ к комнате
+        {t('Удаляются вопросы, ответы, ссылки участников и доступ к комнате')}
       </p>
       <Button
         ref={trigger}
@@ -87,22 +88,25 @@ export function DeleteRoom({
         disabled={busy}
         onClick={() => void confirm()}
       >
-        Удалить комнату
+        {t('Удалить комнату')}
       </Button>
       {error && revision === null && (
         <p role="alert" className="mt-3 text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
       {revision !== null && (
         <ConfirmDialog
-          title="Удалить комнату?"
+          title={t('Удалить комнату?')}
           returnFocusRef={trigger}
-          description={`Комната «${room.name}», ее вопросы, ответы и ссылки будут удалены Восстановление возможно только из резервной копии`}
-          confirmLabel="Удалить комнату"
-          busyLabel="Удаляем…"
+          description={t(
+            'Комната «{value0}», ее вопросы, ответы и ссылки будут удалены Восстановление возможно только из резервной копии',
+            {value0: room.name},
+          )}
+          confirmLabel={t('Удалить комнату')}
+          busyLabel={t('Удаляем…')}
           busy={busy}
-          error={error}
+          error={t(error)}
           onConfirm={() => void remove()}
           onClose={() => {
             setRevision(null);

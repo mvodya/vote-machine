@@ -1,10 +1,10 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useState} from 'react';
 import {ExternalLink} from 'lucide-react';
 import {Dialog} from './ui/dialog';
 import {Button} from './ui/button';
 import {Spinner} from './ui/loading';
-
 // Use the protected PNG route for both the preview and its own page
 export function LinkQrDialog({
   roomId,
@@ -17,6 +17,7 @@ export function LinkQrDialog({
   name: string;
   onClose: () => void;
 }) {
+  const {t} = useI18n();
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -27,7 +28,7 @@ export function LinkQrDialog({
       {loading && !failed && (
         <div
           role="status"
-          aria-label="Загружаем QR код"
+          aria-label={t('Загружаем QR код')}
           className="flex aspect-square items-center justify-center"
         >
           <Spinner />
@@ -42,7 +43,7 @@ export function LinkQrDialog({
             src={`${path}?attempt=${attempt}`}
             width={768}
             height={768}
-            alt={`QR код ссылки: ${name}`}
+            alt={t('QR код ссылки: {value0}', {value0: name})}
             onLoad={() => setLoading(false)}
             onError={() => {
               setLoading(false);
@@ -54,7 +55,7 @@ export function LinkQrDialog({
       )}
       {failed && (
         <div role="alert" className="space-y-3 text-sm">
-          <p>Не удалось загрузить QR код</p>
+          <p>{t('Не удалось загрузить QR код')}</p>
           <Button
             variant="secondary"
             onClick={() => {
@@ -63,7 +64,7 @@ export function LinkQrDialog({
               setAttempt((value) => value + 1);
             }}
           >
-            Попробовать снова
+            {t('Попробовать снова')}
           </Button>
         </div>
       )}
@@ -74,7 +75,7 @@ export function LinkQrDialog({
         disabled={loading || failed}
         onClick={() => window.open(path, '_blank', 'noopener,noreferrer')}
       >
-        Открыть QR код отдельно
+        {t('Открыть QR код отдельно')}
       </Button>
     </Dialog>
   );

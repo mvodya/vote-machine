@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {playSound} from '../../../lib/audio';
 import {useId, useRef, useState, type FormEvent} from 'react';
 import {Check, SkipForward} from 'lucide-react';
@@ -10,7 +11,6 @@ import {ChoiceField} from '../../../components/ui/choice-field';
 import {markdownSummary} from '../../../lib/markdown';
 import {isAnswer, type Answer} from '../../../lib/ballots';
 import type {Question} from '../../../lib/questions';
-
 // Keep a failed request identity so a retry cannot create a second vote
 export function AnswerForm({
   linkId,
@@ -48,6 +48,7 @@ export function AnswerForm({
   // Keep navigation still while a vote is saving
   onBusy: (value: boolean) => void;
 }) {
+  const {t, localeTag} = useI18n();
   const [selected, setSelected] = useState<string[]>(answer?.choices ?? []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -114,12 +115,14 @@ export function AnswerForm({
       if (response.status === 409) {
         onRefresh(
           body.error === 'closed'
-            ? 'Вопрос закрыт, ответ не принят'
+            ? t('Вопрос закрыт, ответ не принят')
             : body.error === 'used'
-              ? 'Ваш ответ уже сохранен'
+              ? t('Ваш ответ уже сохранен')
               : body.error === 'sequence'
-                ? 'Сначала ответьте на обязательный вопрос'
-                : 'Вопрос или ваш ответ изменился, проверьте актуальные данные',
+                ? t('Сначала ответьте на обязательный вопрос')
+                : t(
+                    'Вопрос или ваш ответ изменился, проверьте актуальные данные',
+                  ),
         );
         return;
       }
@@ -144,34 +147,42 @@ export function AnswerForm({
       <Markdown source={question.content} viewer={viewer} />
       {question.closesAt && (
         <p className="mt-2 text-xs text-muted">
-          Срок:{' '}
+          {t('Срок:')}{' '}
           <time dateTime={question.closesAt}>
-            {formatTime(question.closesAt, timeZone)}
+            {formatTime(question.closesAt, timeZone, localeTag)}
           </time>
         </p>
       )}
       {answer && (
         <p role="status" className="mt-4 text-sm text-success-ink">
           {answer.hidden
-            ? 'Ответ сохранен с другого устройства'
-            : 'Ваш ответ сохранен'}
+            ? t('Ответ сохранен с другого устройства')
+            : t('Ваш ответ сохранен')}
         </p>
       )}
       {question.state === 'closed' && (
-        <p className="mt-3 text-sm text-muted">Вопрос закрыт</p>
+        <p className="mt-3 text-sm text-muted">{t('Вопрос закрыт')}</p>
       )}
       <Form className="mt-5" onSubmit={(event) => void submit(event)}>
         <fieldset disabled={busy || !canVote} className="min-w-0 space-y-3">
           <legend className="mb-3 text-sm font-medium">
             {question.choiceMode === 'single'
-              ? 'Выберите один вариант'
-              : `Выберите от ${question.minChoices} до ${question.maxChoices} вариантов`}
+              ? t('Выберите один вариант')
+              : t('Выберите от {value0} до {value1} вариантов', {
+                  value0: question.minChoices,
+                  value1: question.maxChoices,
+                })}
           </legend>
           {question.choices.map((choice, index) => (
             <ChoiceField
               key={choice.id}
               id={`${prefix}-${choice.id}`}
-              label={markdownSummary(choice.content) || `Вариант ${index + 1}`}
+              label={
+                markdownSummary(choice.content) ||
+                t('Вариант {value0}', {
+                  value0: index + 1,
+                })
+              }
               multiple={question.choiceMode === 'multiple'}
               checked={selected.includes(choice.id!)}
               disabled={busy || !canVote}
@@ -193,17 +204,17 @@ export function AnswerForm({
         </fieldset>
         {error && (
           <p role="alert" className="text-sm text-error-ink">
-            {error}
+            {t(error)}
           </p>
         )}
         <div className="flex flex-wrap gap-3">
           {canVote && (
             <Button type="submit" startIcon={<Check />} disabled={busy}>
               {busy
-                ? 'Сохраняем…'
+                ? t('Сохраняем…')
                 : answer || alreadyAnswered
-                  ? 'Изменить ответ'
-                  : 'Отправить ответ'}
+                  ? t('Изменить ответ')
+                  : t('Отправить ответ')}
             </Button>
           )}
           {question.state === 'open' &&
@@ -217,18 +228,18 @@ export function AnswerForm({
                 disabled={busy}
                 onClick={onSkip}
               >
-                Пропустить вопрос
+                {t('Пропустить вопрос')}
               </Button>
             )}
         </div>
         {question.editLocked && (
           <p className="text-xs text-muted">
-            Администратор не может редактировать этот вопрос
+            {t('Администратор не может редактировать этот вопрос')}
           </p>
         )}
         {question.anonymous && (
           <p className="text-xs text-muted">
-            Администратор не видит, с какой ссылки получен ответ
+            {t('Администратор не видит, с какой ссылки получен ответ')}
           </p>
         )}
       </Form>

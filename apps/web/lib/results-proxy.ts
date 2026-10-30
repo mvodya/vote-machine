@@ -1,3 +1,4 @@
+import {localeFromRequest} from './i18n/translate';
 import {publicRoomReport} from './room-report';
 import {NextResponse} from 'next/server';
 import {roomIdPattern} from './rooms';
@@ -81,7 +82,11 @@ export async function resultsProxy(
       if (!report) throw new Error();
       if (exporting) {
         const {resultsWorkbook} = await import('./server/results-workbook');
-        const bytes = await resultsWorkbook(report, admin);
+        const bytes = await resultsWorkbook(
+          report,
+          admin,
+          localeFromRequest(request),
+        );
         return new Response(bytes, {
           headers: {
             ...headers,
@@ -100,7 +105,7 @@ export async function resultsProxy(
     if (query.has('question')) {
       if (!result || result.id !== query.get('question')) throw new Error();
       if (input.get('format') === 'csv') {
-        const csv = resultCsv(result);
+        const csv = resultCsv(result, localeFromRequest(request));
         if (csv === null)
           return NextResponse.json(
             {error: 'Results unavailable'},

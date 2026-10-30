@@ -1,9 +1,9 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useState} from 'react';
 import {SelectField} from '../../../components/ui/select-field';
 import {isRoom, type Room} from '../../../lib/rooms';
 import {localTimeZone} from '../../../lib/time';
-
 // Auto-save one shared zone without keeping a device-specific room setting
 export function RoomTimeZone({
   room,
@@ -20,6 +20,7 @@ export function RoomTimeZone({
   // Show a short save result
   onNotice: (value: string) => void;
 }) {
+  const {t} = useI18n();
   const [busy, setBusy] = useState(false);
   const local = localTimeZone();
   const zone = room.timeZone ?? local;
@@ -55,11 +56,11 @@ export function RoomTimeZone({
         const body = await response.json();
         if (!response.ok || !isRoom(body.room)) throw new Error();
         onSaved(body.room);
-        onNotice('Часовой пояс сохранен');
+        onNotice(t('Часовой пояс сохранен'));
         return;
       }
     } catch {
-      onNotice('Не удалось сохранить часовой пояс');
+      onNotice(t('Не удалось сохранить часовой пояс'));
     } finally {
       setBusy(false);
     }
@@ -67,15 +68,19 @@ export function RoomTimeZone({
   return (
     <SelectField
       id="room-time-zone"
-      label="Часовой пояс комнаты"
-      hint="Один часовой пояс для администратора и респондентов"
+      label={t('Часовой пояс комнаты')}
+      hint={t('Один часовой пояс для администратора и респондентов')}
       value={zone}
       disabled={busy}
       onChange={(event) => void save(event.target.value)}
     >
       {zones.map((item) => (
         <option key={item} value={item}>
-          {item === local ? `Местный (${item})` : item}
+          {item === local
+            ? t('Местный ({value0})', {
+                value0: item,
+              })
+            : item}
         </option>
       ))}
     </SelectField>

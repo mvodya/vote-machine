@@ -1,3 +1,5 @@
+'use client';
+import {useI18n} from './language-provider';
 import {
   CalendarClock,
   GitCommitHorizontal,
@@ -5,13 +7,13 @@ import {
   UserRound,
 } from 'lucide-react';
 import {Popover} from './ui/popover';
-
 // Keep the footer small and show build details only on request
 export function Footer() {
+  const {t} = useI18n();
   return (
     <footer className="absolute inset-x-5 bottom-2 text-right text-[10px] leading-4 font-normal text-muted/45 sm:inset-x-8 lg:inset-x-12">
       <Popover
-        label="О приложении"
+        label={t('О приложении')}
         side="top"
         className="py-1"
         trigger={
@@ -42,14 +44,14 @@ export function Footer() {
           <div>
             <dt className="flex items-center gap-2 text-muted">
               <GitCommitHorizontal aria-hidden="true" className="size-4" />
-              Версия
+              {t('Версия')}
             </dt>
             <dd className="font-mono">{process.env.NEXT_PUBLIC_GIT_COMMIT}</dd>
           </div>
           <div>
             <dt className="flex items-center gap-2 text-muted">
               <CalendarClock aria-hidden="true" className="size-4" />
-              Сборка frontend, UTC
+              {t('Сборка frontend, UTC')}
             </dt>
             <dd>
               <time dateTime={process.env.NEXT_PUBLIC_BUILD_TIME}>

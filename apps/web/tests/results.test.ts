@@ -103,3 +103,15 @@ it('keeps empty submitted answers in admin results for old and new readers', () 
     ),
   ).toBeNull();
 });
+
+it('translates CSV headers without changing user option text', () => {
+  const csv = resultCsv(
+    {
+      ...publicResult(result, false)!,
+      options: [{id, content: 'Ответы', count: 1, percent: 100}],
+    },
+    'en',
+  )!;
+  expect(csv).toContain('"Option","Votes","Percentage"');
+  expect(csv).toContain('"Ответы","1","100"');
+});

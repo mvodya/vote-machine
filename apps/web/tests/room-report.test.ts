@@ -151,3 +151,20 @@ it('keeps revoked and disabled reports unavailable to exports', async () => {
     expect(await response.text()).not.toContain('Private upstream details');
   }
 });
+
+it('localizes workbook labels without translating room names or question content', async () => {
+  const book = new ExcelJS.Workbook();
+  const localized = {
+    ...report,
+    roomName: 'Настройки',
+    sheets: [{...report.sheets[0], content: 'Ответы'}],
+  };
+  await book.xlsx.load(
+    new Uint8Array(await resultsWorkbook(localized, true, 'en')).buffer,
+  );
+  expect(book.worksheets[0].name).toBe('Summary');
+  expect(book.worksheets[0].getCell('A1').value).toBe('Room');
+  expect(book.worksheets[0].getCell('B1').value).toBe('Настройки');
+  expect(book.worksheets[1].getCell('B1').value).toBe('Ответы');
+  expect(book.worksheets.at(-1)!.name).toBe('By participant');
+});

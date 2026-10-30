@@ -13,8 +13,12 @@ export function validTimeZone(value: unknown): value is string {
   }
 }
 // Format an instant in the shared room zone
-export function formatTime(value: string, zone = localTimeZone()) {
-  return new Intl.DateTimeFormat('ru-RU', {
+export function formatTime(
+  value: string,
+  zone = localTimeZone(),
+  locale = 'ru-RU',
+) {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: zone,
     dateStyle: 'short',
     timeStyle: 'medium',

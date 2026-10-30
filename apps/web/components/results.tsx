@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useEffect, useRef, useState} from 'react';
 import {ChartColumn, Download, Expand, Minimize, Monitor} from 'lucide-react';
 import {useLive} from '../lib/use-live';
@@ -39,6 +40,7 @@ export function Results({
   runId?: string | null;
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   const live = useLive(
     `/api/${admin ? 'rooms' : 'vote'}/${id}/events`,
     onDenied,
@@ -187,29 +189,29 @@ export function Results({
                   .catch(() => {});
               }}
             >
-              На весь экран
+              {t('На весь экран')}
             </Button>
             <a
               className="inline-flex items-center gap-2 rounded-xl px-3 text-sm"
               href={`/rooms/${id}`}
             >
               <Minimize className="size-4" />
-              Вернуться в комнату
+              {t('Вернуться в комнату')}
             </a>
           </div>
         )}
         {!projector && (
           <Panel>
-            <h2 className="text-lg font-semibold">Результаты</h2>
+            <h2 className="text-lg font-semibold">{t('Результаты')}</h2>
             {page?.questions.length === 0 && (
               <EmptyState
                 icon={<ChartColumn />}
-                title="Результатов пока нет"
-                description="Здесь появятся результаты голосования"
+                title={t('Результатов пока нет')}
+                description={t('Здесь появятся результаты голосования')}
               />
             )}
             {!page && !failed && (
-              <Loading label="Загружаем список результатов…" />
+              <Loading label={t('Загружаем список результатов…')} />
             )}
             <ul className="mt-4 divide-y divide-border">
               {page?.questions.map((question) => (
@@ -217,7 +219,9 @@ export function Results({
                   <Button
                     variant="ghost"
                     className="h-auto w-full justify-start whitespace-normal px-3 border border-transparent text-left aria-[current=true]:border-primary/35 aria-[current=true]:bg-selected aria-[current=true]:text-ink"
-                    aria-label={`Результаты: ${markdownSummary(question.content) || 'Вопрос'}`}
+                    aria-label={t('Результаты: {value0}', {
+                      value0: markdownSummary(question.content) || t('Вопрос'),
+                    })}
                     aria-current={selected === question.id ? 'true' : undefined}
                     onClick={() => {
                       if (selected === question.id) {
@@ -238,18 +242,18 @@ export function Results({
                       setResult(null);
                     }}
                   >
-                    {markdownSummary(question.content) || 'Вопрос'}
+                    {markdownSummary(question.content) || t('Вопрос')}
                   </Button>
                   {!question.available && (
                     <p className="mx-px px-3 text-xs text-muted">
-                      Результаты пока недоступны
+                      {t('Результаты пока недоступны')}
                     </p>
                   )}
                 </li>
               ))}
             </ul>
             <Pagination
-              label="Страницы результатов"
+              label={t('Страницы результатов')}
               page={cursors.length}
               hasNext={Boolean(page?.nextCursor)}
               busy={false}
@@ -263,15 +267,15 @@ export function Results({
         )}
         <Panel
           ref={detailPanel}
-          aria-label="Итоги вопроса"
+          aria-label={t('Итоги вопроса')}
           className="scroll-mt-5"
         >
           {selected && !result && !failed && (
-            <Loading label="Загружаем результаты…" rows={2} />
+            <Loading label={t('Загружаем результаты…')} rows={2} />
           )}
           {failed && (
             <p role="alert" className="text-sm text-error-ink">
-              Не удалось обновить результаты
+              {t('Не удалось обновить результаты')}
             </p>
           )}
           {!projector && admin && selected && result && !result.available && (
@@ -282,17 +286,22 @@ export function Results({
               className="mt-4 inline-flex items-center gap-2 text-sm"
             >
               <Monitor className="size-4" />
-              Открыть проектор
+              {t('Открыть проектор')}
             </a>
           )}
-          {!selected && <p className="text-sm text-muted">Выберите вопрос</p>}
+          {!selected && (
+            <p className="text-sm text-muted">{t('Выберите вопрос')}</p>
+          )}
           {projector && result?.content && !result.available && (
             <>
               <h1 className="text-2xl font-semibold">
                 {markdownSummary(result.content)}
               </h1>
               <div className="my-6 flex justify-between gap-4">
-                <span>Ответы: {result.answerCount ?? 0}</span>
+                <span>
+                  {t('Ответы: ')}
+                  {result.answerCount ?? 0}
+                </span>
                 <Countdown
                   at={result.scheduledAt ?? result.closesAt}
                   kind={result.scheduledAt ? 'start' : 'close'}
@@ -301,7 +310,9 @@ export function Results({
             </>
           )}
           {result && !result.available && (
-            <p className="text-sm text-muted">Результаты пока недоступны</p>
+            <p className="text-sm text-muted">
+              {t('Результаты пока недоступны')}
+            </p>
           )}
           {result?.available && (
             <>
@@ -313,7 +324,10 @@ export function Results({
                     : {roomId: result.roomId!, linkId: id}
                 }
               />
-              <p className="mt-4 font-medium">Ответы: {result.total}</p>
+              <p className="mt-4 font-medium">
+                {t('Ответы: ')}
+                {result.total}
+              </p>
               <ul className="mt-4 space-y-4">
                 {result.options?.map((option) => (
                   <li key={option.id}>
@@ -326,7 +340,10 @@ export function Results({
                       }
                     />
                     <div className="mt-2 flex justify-between text-sm tabular-nums">
-                      <span>Голосов: {option.count}</span>
+                      <span>
+                        {t('Голосов: ')}
+                        {option.count}
+                      </span>
                       <span>{option.percent}%</span>
                     </div>
                     <div
@@ -343,7 +360,7 @@ export function Results({
               </ul>
               {result.choiceMode === 'multiple' && (
                 <p className="mt-4 text-xs text-muted">
-                  Проценты от числа ответов, сумма может превышать 100%
+                  {t('Проценты от числа ответов, сумма может превышать 100%')}
                 </p>
               )}
               {!projector && (
@@ -353,7 +370,7 @@ export function Results({
                     startIcon={<Download />}
                     onClick={() => void download()}
                   >
-                    Скачать CSV
+                    {t('Скачать CSV')}
                   </Button>
                   {admin && (
                     <a
@@ -363,7 +380,7 @@ export function Results({
                       className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm"
                     >
                       <Monitor className="size-4" />
-                      Открыть проектор
+                      {t('Открыть проектор')}
                     </a>
                   )}
                 </div>
@@ -372,7 +389,7 @@ export function Results({
                 <dl className="mt-5 space-y-2 text-sm">
                   {Object.entries(result.sources).map(([source, count]) => (
                     <div key={source} className="flex justify-between gap-3">
-                      <dt>{sourceNames[source]}</dt>
+                      <dt>{t(sourceNames[source])}</dt>
                       <dd>{count}</dd>
                     </div>
                   ))}
@@ -380,12 +397,12 @@ export function Results({
               )}
               {result.people && (
                 <section className="mt-6 border-t border-border pt-4">
-                  <h3 className="font-medium">Индивидуальные ответы</h3>
+                  <h3 className="font-medium">{t('Индивидуальные ответы')}</h3>
                   <ul className="mt-3 divide-y divide-border">
                     {result.people.map((person) => (
                       <li key={person.id} className="py-3 text-sm">
                         <p className="font-medium">
-                          {person.name || sourceNames[person.source]}
+                          {person.name || t(sourceNames[person.source])}
                         </p>
                         <p className="mt-1 text-muted">
                           {person.choices
@@ -402,7 +419,7 @@ export function Results({
                     ))}
                   </ul>
                   <Pagination
-                    label="Страницы индивидуальных ответов"
+                    label={t('Страницы индивидуальных ответов')}
                     page={peopleCursors.length}
                     hasNext={Boolean(result.nextPeopleCursor)}
                     busy={false}

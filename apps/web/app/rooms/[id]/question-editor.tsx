@@ -1,10 +1,10 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useLive} from '../../../lib/use-live';
 import {QuestionAction} from '../../../components/question-action';
 import {ExpectedLinks} from '../../../components/expected-links';
 import {ManualVoting} from './manual-voting';
 import {markdownAssets} from '../../../lib/markdown';
-
 import {useCallback, useEffect, useId, useState, type FormEvent} from 'react';
 import {
   ArrowDown,
@@ -37,7 +37,6 @@ import {
   type Question,
   type QuestionInput,
 } from '../../../lib/questions';
-
 import {TabPanels} from '../../../components/ui/tab-panels';
 import {TabPanel} from '../../../components/ui/tab-panel';
 import {Tabs} from '../../../components/ui/tabs';
@@ -95,7 +94,6 @@ function deadlineKey(value: DeadlineValue) {
           Number(value.duration) * Number(value.unit) || value.duration,
         ];
 }
-
 // Save content, settings and lifecycle as one versioned document
 export function QuestionEditor({
   roomId,
@@ -123,6 +121,7 @@ export function QuestionEditor({
   // Tell room navigation about unsaved work
   onDirtyChange?: (value: boolean) => void;
 }) {
+  const {t} = useI18n();
   const [saved, setSaved] = useState(question);
   const [value, setValue] = useState(() =>
     editorValue(question ?? emptyQuestion()),
@@ -166,7 +165,6 @@ export function QuestionEditor({
     onDirtyChange?.(dirty || busy);
   }, [dirty, busy, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
-
   useEffect(() => {
     const ids = [
       ...new Set(
@@ -461,7 +459,7 @@ export function QuestionEditor({
   }
   return (
     <Panel>
-      <SectionHeader title={saved ? 'Вопрос' : 'Новый вопрос'}>
+      <SectionHeader title={saved ? t('Вопрос') : t('Новый вопрос')}>
         <div className="flex flex-wrap gap-2">
           {dirty ? (
             <>
@@ -477,7 +475,7 @@ export function QuestionEditor({
                 }
                 disabled={busy || uploads > 0 || electorateLoading}
               >
-                {busy ? 'Сохраняем…' : 'Сохранить изменения'}
+                {busy ? t('Сохраняем…') : t('Сохранить изменения')}
               </Button>
               <Button
                 variant="secondary"
@@ -485,7 +483,7 @@ export function QuestionEditor({
                 disabled={busy || uploads > 0 || electorateLoading}
                 onClick={() => setDiscard(true)}
               >
-                Отменить
+                {t('Отменить')}
               </Button>
             </>
           ) : (
@@ -494,21 +492,33 @@ export function QuestionEditor({
               startIcon={<ArrowLeft />}
               onClick={onClose}
             >
-              Вернуться
+              {t('Вернуться')}
             </Button>
           )}
         </div>
       </SectionHeader>
       <div className="mt-5">
         <Tabs
-          label="Разделы вопроса"
+          label={t('Разделы вопроса')}
           group={prefix}
           value={section}
           onChange={setSection}
           items={[
-            {id: 'editing', label: 'Редактирование', icon: <Pencil />},
-            {id: 'settings', label: 'Настройки', icon: <Settings />},
-            {id: 'management', label: 'Управление', icon: <Play />},
+            {
+              id: 'editing',
+              label: t('Редактирование'),
+              icon: <Pencil />,
+            },
+            {
+              id: 'settings',
+              label: t('Настройки'),
+              icon: <Settings />,
+            },
+            {
+              id: 'management',
+              label: t('Управление'),
+              icon: <Play />,
+            },
           ]}
         />
       </div>
@@ -525,15 +535,15 @@ export function QuestionEditor({
                 onUploadChange={uploadChanged}
                 readOnly={locked}
                 id={`${prefix}-content`}
-                label="Текст вопроса"
-                hint="До 20 000 символов"
+                label={t('Текст вопроса')}
+                hint={t('До 20 000 символов')}
                 value={value.content}
                 rows={5}
                 onChange={(source) => field('content', source)}
               />
 
-              <section aria-label="Варианты ответа" className="space-y-4">
-                <h3 className="font-semibold">Варианты ответа</h3>
+              <section aria-label={t('Варианты ответа')} className="space-y-4">
+                <h3 className="font-semibold">{t('Варианты ответа')}</h3>
                 {value.choices.map((choice, index) => (
                   <div
                     key={choice.localKey}
@@ -544,8 +554,8 @@ export function QuestionEditor({
                       onUploadChange={uploadChanged}
                       readOnly={locked}
                       id={`${prefix}-option-${choice.localKey}`}
-                      label={`Вариант ${index + 1}`}
-                      hint="До 5 000 символов"
+                      label={t('Вариант {value0}', {value0: index + 1})}
+                      hint={t('До 5 000 символов')}
                       value={choice.content}
                       rows={2}
                       onChange={(source) =>
@@ -562,14 +572,18 @@ export function QuestionEditor({
                     <div className="mt-2 flex justify-end gap-1">
                       <Button
                         variant="ghost"
-                        aria-label={`Поднять вариант ${index + 1}`}
+                        aria-label={t('Поднять вариант {value0}', {
+                          value0: index + 1,
+                        })}
                         startIcon={<ArrowUp />}
                         disabled={index === 0 || busy || locked}
                         onClick={() => move(index, -1)}
                       />
                       <Button
                         variant="ghost"
-                        aria-label={`Опустить вариант ${index + 1}`}
+                        aria-label={t('Опустить вариант {value0}', {
+                          value0: index + 1,
+                        })}
                         startIcon={<ArrowDown />}
                         disabled={
                           index === value.choices.length - 1 || busy || locked
@@ -578,7 +592,9 @@ export function QuestionEditor({
                       />
                       <Button
                         variant="ghost"
-                        aria-label={`Удалить вариант ${index + 1}`}
+                        aria-label={t('Удалить вариант {value0}', {
+                          value0: index + 1,
+                        })}
                         startIcon={<Trash2 />}
                         onClick={() =>
                           choices(
@@ -602,7 +618,7 @@ export function QuestionEditor({
                     ])
                   }
                 >
-                  Добавить вариант
+                  {t('Добавить вариант')}
                 </Button>
               </section>
             </fieldset>
@@ -618,7 +634,7 @@ export function QuestionEditor({
               <div className="grid gap-5 sm:grid-cols-3">
                 <SelectField
                   id={`${prefix}-mode`}
-                  label="Выбор ответа"
+                  label={t('Выбор ответа')}
                   value={value.choiceMode}
                   onChange={(event) => {
                     const mode = event.target
@@ -632,14 +648,14 @@ export function QuestionEditor({
                     }));
                   }}
                 >
-                  <option value="single">Один вариант</option>
-                  <option value="multiple">Несколько вариантов</option>
+                  <option value="single">{t('Один вариант')}</option>
+                  <option value="multiple">{t('Несколько вариантов')}</option>
                 </SelectField>
                 {value.choiceMode === 'multiple' && (
                   <>
                     <TextField
                       id={`${prefix}-min`}
-                      label="Минимум вариантов"
+                      label={t('Минимум вариантов')}
                       type="number"
                       min={0}
                       max={Math.max(1, value.choices.length)}
@@ -650,7 +666,7 @@ export function QuestionEditor({
                     />
                     <TextField
                       id={`${prefix}-max`}
-                      label="Максимум вариантов"
+                      label={t('Максимум вариантов')}
                       type="number"
                       min={Math.max(1, value.minChoices)}
                       max={Math.max(1, value.choices.length)}
@@ -666,13 +682,13 @@ export function QuestionEditor({
             <fieldset disabled={busy}>
               {' '}
               <section
-                aria-label="Настройки вопроса"
+                aria-label={t('Настройки вопроса')}
                 className="space-y-4 border-t border-border pt-5"
               >
-                <h3 className="font-semibold">Настройки вопроса</h3>
+                <h3 className="font-semibold">{t('Настройки вопроса')}</h3>
                 <CheckboxField
                   id={`${prefix}-results`}
-                  label="Публиковать результаты участникам"
+                  label={t('Публиковать результаты участникам')}
                   checked={value.shareResults}
                   onChange={(event) =>
                     field('shareResults', event.target.checked)
@@ -681,7 +697,7 @@ export function QuestionEditor({
                 {value.shareResults && (
                   <SelectField
                     id={`${prefix}-publication`}
-                    label="Когда публиковать результаты"
+                    label={t('Когда публиковать результаты')}
                     value={value.publication}
                     onChange={(event) =>
                       field(
@@ -690,14 +706,18 @@ export function QuestionEditor({
                       )
                     }
                   >
-                    <option value="after_answer">После ответа</option>
-                    <option value="after_close">После закрытия вопроса</option>
+                    <option value="after_answer">{t('После ответа')}</option>
+                    <option value="after_close">
+                      {t('После закрытия вопроса')}
+                    </option>
                   </SelectField>
                 )}
                 <CheckboxField
                   disabled={busy || state === 'open' || state === 'scheduled'}
                   id={`${prefix}-hide`}
-                  label="Скрывать результаты до окончания голосования, включая администратора"
+                  label={t(
+                    'Скрывать результаты до окончания голосования, включая администратора',
+                  )}
                   checked={value.hideResultsUntilEnd}
                   onChange={(event) =>
                     field('hideResultsUntilEnd', event.target.checked)
@@ -705,13 +725,13 @@ export function QuestionEditor({
                 />
                 <CheckboxField
                   id={`${prefix}-skip`}
-                  label="Разрешить пропуск вопроса"
+                  label={t('Разрешить пропуск вопроса')}
                   checked={value.allowSkip ?? false}
                   onChange={(event) => field('allowSkip', event.target.checked)}
                 />
                 <CheckboxField
                   id={`${prefix}-change`}
-                  label="Разрешить изменение ответа"
+                  label={t('Разрешить изменение ответа')}
                   checked={value.allowAnswerChange}
                   onChange={(event) =>
                     field('allowAnswerChange', event.target.checked)
@@ -719,11 +739,13 @@ export function QuestionEditor({
                 />
                 <CheckboxField
                   id={`${prefix}-anonymous`}
-                  label="Анонимные ответы"
+                  label={t('Анонимные ответы')}
                   disabled={
                     busy || (saved?.editLocked !== null && saved !== null)
                   }
-                  hint="В результатах не будет видно, с какой ссылки получен ответ"
+                  hint={t(
+                    'В результатах не будет видно, с какой ссылки получен ответ',
+                  )}
                   checked={value.anonymous}
                   onChange={(event) => field('anonymous', event.target.checked)}
                 />
@@ -751,7 +773,7 @@ export function QuestionEditor({
                     disabled={busy || dirty}
                     onClick={() => void cancelStart()}
                   >
-                    Отменить запуск
+                    {t('Отменить запуск')}
                   </Button>
                 )}
                 {saved && saved.state !== 'draft' && (
@@ -761,14 +783,14 @@ export function QuestionEditor({
                     disabled={busy || dirty}
                     onClick={() => setMakeDraft(true)}
                   >
-                    Сделать черновиком
+                    {t('Сделать черновиком')}
                   </Button>
                 )}
               </div>
             </div>
             <CheckboxField
               id={`${prefix}-auto-complete`}
-              label="Закрыть, когда ответят все выбранные участники"
+              label={t('Закрыть, когда ответят все выбранные участники')}
               checked={value.closeWhenAllAnswered ?? false}
               disabled={busy || state === 'open' || state === 'scheduled'}
               onChange={(event) =>
@@ -787,18 +809,19 @@ export function QuestionEditor({
             )}
             {saved?.closedReason === 'all_voted' && (
               <p className="text-sm text-muted">
-                Все выбранные участники ответили
+                {t('Все выбранные участники ответили')}
               </p>
             )}
             {saved?.expectedTotal !== undefined && saved.expectedTotal > 0 && (
               <p className="text-sm text-muted">
-                Ответили по выбранным ссылкам: {saved.expectedAnswered} из{' '}
-                {saved.expectedTotal}
+                {t('Ответили по выбранным ссылкам:')}
+                {saved.expectedAnswered}
+                {t(' из')} {saved.expectedTotal}
               </p>
             )}
             <CheckboxField
               id={`${prefix}-scheduled`}
-              label="Отложенный старт"
+              label={t('Отложенный старт')}
               checked={start.deadlineMode !== 'none'}
               disabled={busy}
               onChange={(event) =>
@@ -840,24 +863,24 @@ export function QuestionEditor({
             />
             {saved?.editLocked !== null && saved && (
               <p className="text-xs text-muted">
-                При повторном открытии прежние голоса сохраняются
+                {t('При повторном открытии прежние голоса сохраняются')}
               </p>
             )}
           </TabPanel>
         </TabPanels>
         {error && (
           <p role="alert" className="text-sm text-error-ink">
-            {error}
+            {t(error)}
           </p>
         )}
         {conflict && (
           <Button variant="secondary" onClick={onReload}>
-            Загрузить актуальную версию
+            {t('Загрузить актуальную версию')}
           </Button>
         )}
         {locked && (
           <p className="text-xs text-muted">
-            Администратор не может редактировать содержимое этого вопроса
+            {t('Администратор не может редактировать содержимое этого вопроса')}
           </p>
         )}
       </Form>
@@ -871,32 +894,38 @@ export function QuestionEditor({
       )}
       {reopen && (
         <ConfirmDialog
-          title="Открыть вопрос повторно?"
-          description="Результаты снова будут скрыты до окончания Уже увиденные и скачанные итоги отозвать нельзя"
-          confirmLabel="Открыть вопрос"
+          title={t('Открыть вопрос повторно?')}
+          description={t(
+            'Результаты снова будут скрыты до окончания Уже увиденные и скачанные итоги отозвать нельзя',
+          )}
+          confirmLabel={t('Открыть вопрос')}
           busy={busy}
-          error={error}
+          error={t(error)}
           onClose={() => setReopen(false)}
           onConfirm={() => void save(undefined, 'open')}
         />
       )}
       {makeDraft && (
         <ConfirmDialog
-          title="Сделать вопрос черновиком?"
-          description="Все ответы будут удалены, вопрос будет скрыт от респондентов"
-          confirmLabel="Сделать черновиком"
+          title={t('Сделать вопрос черновиком?')}
+          description={t(
+            'Все ответы будут удалены, вопрос будет скрыт от респондентов',
+          )}
+          confirmLabel={t('Сделать черновиком')}
           busy={busy}
-          error={error}
+          error={t(error)}
           onConfirm={() => void resetAnswers()}
           onClose={() => setMakeDraft(false)}
         />
       )}
       {discard && (
         <ConfirmDialog
-          title="Отменить изменения?"
-          description="Несохраненные изменения во всех разделах вопроса будут потеряны"
-          confirmLabel="Отменить изменения"
-          cancelLabel="Продолжить редактирование"
+          title={t('Отменить изменения?')}
+          description={t(
+            'Несохраненные изменения во всех разделах вопроса будут потеряны',
+          )}
+          confirmLabel={t('Отменить изменения')}
+          cancelLabel={t('Продолжить редактирование')}
           busy={false}
           onClose={() => setDiscard(false)}
           onConfirm={reset}

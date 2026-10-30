@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useEffect, useState} from 'react';
 import {ChartColumn, Check, Download, Users} from 'lucide-react';
 import {useLive} from '../lib/use-live';
@@ -7,13 +8,11 @@ import {markdownSummary} from '../lib/markdown';
 import {Panel} from './ui/panel';
 import {Button} from './ui/button';
 import {Loading, Spinner} from './ui/loading';
-
 const sources: Record<string, string> = {
   personal: 'Персональные ссылки',
   reusable: 'Многоразовые ссылки',
   admin_manual: 'Ручной ввод',
 };
-
 // Use the same filtered snapshot for counters and charts
 export function RoomSummary({
   id,
@@ -26,6 +25,7 @@ export function RoomSummary({
   runId?: string | null;
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   const live = useLive(
     `/api/${admin ? 'rooms' : 'vote'}/${id}/events`,
     onDenied,
@@ -117,11 +117,11 @@ export function RoomSummary({
   }
   if (unavailable) return null;
   return (
-    <Panel aria-label="Общие результаты">
+    <Panel aria-label={t('Общие результаты')}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h2 className="inline-flex items-center gap-2 text-lg font-semibold">
           <ChartColumn aria-hidden="true" className="size-5" />
-          Общие результаты
+          {t('Общие результаты')}
         </h2>
         {report && (
           <Button
@@ -130,19 +130,19 @@ export function RoomSummary({
             disabled={downloading}
             onClick={() => void download()}
           >
-            {downloading ? 'Готовим XLSX…' : 'Скачать XLSX'}
+            {downloading ? t('Готовим XLSX…') : t('Скачать XLSX')}
           </Button>
         )}
       </div>
-      {loading && <Loading label="Загружаем сводку…" rows={2} />}
+      {loading && <Loading label={t('Загружаем сводку…')} rows={2} />}
       {failed && (
         <p role="alert" className="text-sm text-error-ink">
-          Не удалось загрузить сводку
+          {t('Не удалось загрузить сводку')}
         </p>
       )}
       {exportError && (
         <p role="alert" className="mb-4 text-sm text-error-ink">
-          Не удалось скачать XLSX, попробуйте снова
+          {t('Не удалось скачать XLSX, попробуйте снова')}
         </p>
       )}
       {report && (
@@ -151,7 +151,7 @@ export function RoomSummary({
             <div>
               <dt className="flex items-center gap-2 text-sm text-muted">
                 <Users aria-hidden="true" className="size-4" />
-                Проголосовало
+                {t('Проголосовало')}
               </dt>
               <dd className="mt-1 text-2xl font-semibold tabular-nums">
                 {report.participants}
@@ -160,7 +160,7 @@ export function RoomSummary({
             <div>
               <dt className="flex items-center gap-2 text-sm text-muted">
                 <Check aria-hidden="true" className="size-4" />
-                Ответы
+                {t('Ответы')}
               </dt>
               <dd className="mt-1 text-2xl font-semibold tabular-nums">
                 {report.answers}
@@ -169,39 +169,45 @@ export function RoomSummary({
           </dl>
           <div className="grid gap-6 lg:grid-cols-2">
             <Bars
-              title="Ответы по вопросам"
+              title={t('Ответы по вопросам')}
               items={report.questions.slice(0, 10).map((q) => ({
                 id: q.id,
-                label: markdownSummary(q.content) || 'Без текста',
+                label: markdownSummary(q.content) || t('Без текста'),
                 count: q.answers,
               }))}
             />
             <Bars
-              title="Источники ответов"
+              title={t('Источники ответов')}
               items={report.sources.map((source) => ({
                 id: source.kind,
-                label: sources[source.kind],
+                label: t(sources[source.kind]),
                 count: source.answers,
               }))}
             />
             {admin && (
               <>
                 <Bars
-                  title="Ответы по ссылкам"
+                  title={t('Ответы по ссылкам')}
                   items={report.links.slice(0, 10).map((link) => ({
                     id: link.id,
-                    label: `${link.name} (участников: ${link.participants})`,
+                    label: t('{value0} (участников: {value1})', {
+                      value0: link.name,
+                      value1: link.participants,
+                    }),
                     count: link.answers,
                   }))}
                 />
                 <Bars
-                  title="Многоразовые ссылки"
+                  title={t('Многоразовые ссылки')}
                   items={report.links
                     .filter((link) => link.mode === 'reusable')
                     .slice(0, 10)
                     .map((link) => ({
                       id: link.id,
-                      label: `${link.name} (участников: ${link.participants})`,
+                      label: t('{value0} (участников: {value1})', {
+                        value0: link.name,
+                        value1: link.participants,
+                      }),
                       count: link.answers,
                     }))}
                 />
@@ -209,9 +215,11 @@ export function RoomSummary({
             )}
           </div>
           <p className="mt-5 text-xs leading-5 text-muted">
-            Скрытые до окончания вопросы не учитываются
+            {t('Скрытые до окончания вопросы не учитываются')}
             {admin
-              ? ', разбивка по ссылкам и участникам исключает анонимные вопросы'
+              ? t(
+                  ', разбивка по ссылкам и участникам исключает анонимные вопросы',
+                )
               : ''}
           </p>
         </>
@@ -219,21 +227,25 @@ export function RoomSummary({
     </Panel>
   );
 }
-
 // Keep chart labels readable without depending on color alone
 function Bars({
   title,
   items,
 }: {
   title: string;
-  items: {id: string; label: string; count: number}[];
+  items: {
+    id: string;
+    label: string;
+    count: number;
+  }[];
 }) {
+  const {t} = useI18n();
   const maximum = Math.max(1, ...items.map((item) => item.count));
   return (
     <section>
       <h3 className="mb-3 text-sm font-medium">{title}</h3>
       {!items.length ? (
-        <p className="text-xs text-muted">Нет ответов</p>
+        <p className="text-xs text-muted">{t('Нет ответов')}</p>
       ) : (
         <ul className="space-y-3">
           {items.map((item) => (

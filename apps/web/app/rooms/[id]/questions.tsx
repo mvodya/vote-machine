@@ -1,5 +1,5 @@
 'use client';
-
+import {useI18n} from '../../../components/language-provider';
 import {AnswerCount} from '../../../components/answer-count';
 import {Loading} from '../../../components/ui/loading';
 import {useLive} from '../../../lib/use-live';
@@ -23,7 +23,6 @@ import {formatTime, localTimeZone} from '../../../lib/time';
 import {Countdown} from '../../../components/countdown';
 import {QuestionAction} from '../../../components/question-action';
 import {QuestionEditor} from './question-editor';
-
 // Show question metadata and open the full editor on demand
 export function Questions({
   roomId,
@@ -40,6 +39,7 @@ export function Questions({
   // Tell room tabs when the editor is open
   onEditingChange?: (value: boolean) => void;
 }) {
+  const {t, localeTag} = useI18n();
   // Compare real snapshots so old closed questions do not flash on arrival
   const prior = useRef(new Map<string, string>());
   const closeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -81,7 +81,6 @@ export function Questions({
     async function load() {
       await Promise.resolve();
       if (controller.signal.aborted) return;
-
       setFailed(false);
       try {
         const response = await fetch(
@@ -250,7 +249,7 @@ export function Questions({
     <>
       {opening ? (
         <Panel>
-          <Loading label="Открываем вопрос…" rows={4} />
+          <Loading label={t('Открываем вопрос…')} rows={4} />
         </Panel>
       ) : editing !== null ? (
         <QuestionEditor
@@ -277,7 +276,7 @@ export function Questions({
         />
       ) : (
         <Panel>
-          <SectionHeader title="Вопросы">
+          <SectionHeader title={t('Вопросы')}>
             <Button
               startIcon={<Plus />}
               disabled={busy}
@@ -287,30 +286,30 @@ export function Questions({
                 setNotice('');
               }}
             >
-              Создать вопрос
+              {t('Создать вопрос')}
             </Button>
           </SectionHeader>
           {loading ? (
-            <Loading label="Загружаем вопросы…" />
+            <Loading label={t('Загружаем вопросы…')} />
           ) : failed ? (
             <div role="alert" className="py-8">
-              <p>Не удалось загрузить вопросы</p>
+              <p>{t('Не удалось загрузить вопросы')}</p>
               <Button className="mt-3" onClick={reload}>
-                Попробовать снова
+                {t('Попробовать снова')}
               </Button>
             </div>
           ) : items.length === 0 ? (
             <EmptyState
               icon={<ListChecks size={32} />}
-              title="Вопросов пока нет"
-              description="Создайте черновик вопроса"
+              title={t('Вопросов пока нет')}
+              description={t('Создайте черновик вопроса')}
             />
           ) : (
             <ul className="-mx-5 divide-y divide-border sm:-mx-6">
               {items.map((item) => (
                 <li
                   key={item.id}
-                  aria-label={markdownSummary(item.preview) || 'Без текста'}
+                  aria-label={markdownSummary(item.preview) || t('Без текста')}
                   className={`flex flex-col gap-3 px-5 py-5 sm:flex-row sm:px-6 sm:items-center sm:justify-between ${recentlyClosed.has(item.id) ? 'animate-question-closed' : ''}`}
                   data-recently-closed={
                     recentlyClosed.has(item.id) ? 'true' : undefined
@@ -318,33 +317,38 @@ export function Questions({
                 >
                   <div className="min-w-0">
                     <h3 className="font-medium whitespace-pre-wrap break-words">
-                      {markdownSummary(item.preview) || 'Без текста'}
+                      {markdownSummary(item.preview) || t('Без текста')}
                     </h3>
                     <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
                       <span>
                         {item.state === 'scheduled'
-                          ? 'Ожидание открытия'
+                          ? t('Ожидание открытия')
                           : item.state === 'draft'
-                            ? 'Черновик'
+                            ? t('Черновик')
                             : item.state === 'open'
-                              ? 'Открыт'
-                              : 'Закрыт'}
+                              ? t('Открыт')
+                              : t('Закрыт')}
                       </span>
                       <span>
                         {item.choiceMode === 'single'
-                          ? 'Один вариант'
-                          : 'Несколько вариантов'}
+                          ? t('Один вариант')
+                          : t('Несколько вариантов')}
                       </span>
-                      <span>Вариантов: {item.choiceCount}</span>
+                      <span>
+                        {t('Вариантов: ')}
+                        {item.choiceCount}
+                      </span>
                       <time dateTime={item.createdAt}>
-                        {formatTime(item.createdAt, timeZone)}
+                        {formatTime(item.createdAt, timeZone, localeTag)}
                       </time>
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <AnswerCount count={item.answerCount ?? 0} />
                     <span
-                      aria-label={`Смотрят вопрос: ${item.viewerCount ?? 0}`}
+                      aria-label={t('Смотрят вопрос: {value0}', {
+                        value0: item.viewerCount ?? 0,
+                      })}
                       className="inline-flex items-center gap-1 text-xs text-muted"
                     >
                       <Eye aria-hidden="true" className="size-4" />
@@ -365,7 +369,7 @@ export function Questions({
                       state={item.state}
                       busy={busy}
                       compact
-                      name={markdownSummary(item.preview) || 'Без текста'}
+                      name={markdownSummary(item.preview) || t('Без текста')}
                       onClick={() => {
                         if (item.state !== 'open' && item.editLocked !== null)
                           setReopening(item);
@@ -378,13 +382,16 @@ export function Questions({
                       disabled={busy}
                       onClick={() => void open(item.id)}
                     >
-                      {item.editLocked ? 'Просмотреть' : 'Редактировать'}
+                      {item.editLocked ? t('Просмотреть') : t('Редактировать')}
                     </Button>
                     {
                       <Button
                         variant="ghost"
-                        title="Удалить вопрос"
-                        aria-label={`Удалить вопрос: ${markdownSummary(item.preview) || 'Без текста'}`}
+                        title={t('Удалить вопрос')}
+                        aria-label={t('Удалить вопрос: {value0}', {
+                          value0:
+                            markdownSummary(item.preview) || t('Без текста'),
+                        })}
                         startIcon={<Trash2 />}
                         disabled={busy}
                         onClick={() => {
@@ -400,7 +407,7 @@ export function Questions({
           )}
           {!loading && !failed && (
             <Pagination
-              label="Страницы вопросов"
+              label={t('Страницы вопросов')}
               page={cursors.length}
               hasNext={Boolean(next)}
               busy={busy}
@@ -419,15 +426,17 @@ export function Questions({
         </Panel>
       )}
       <p role="status" className="mt-4 text-sm text-muted">
-        {notice}
+        {t(notice)}
       </p>
       {reopening && (
         <ConfirmDialog
-          title="Открыть вопрос повторно?"
-          description="Прежние ответы сохранятся Если включено скрытие результатов, они снова будут недоступны до окончания Уже увиденные итоги отозвать нельзя"
-          confirmLabel="Открыть вопрос"
+          title={t('Открыть вопрос повторно?')}
+          description={t(
+            'Прежние ответы сохранятся Если включено скрытие результатов, они снова будут недоступны до окончания Уже увиденные итоги отозвать нельзя',
+          )}
+          confirmLabel={t('Открыть вопрос')}
           busy={busy}
-          error={notice}
+          error={t(notice)}
           onClose={() => setReopening(null)}
           onConfirm={() => {
             void toggle(reopening).then(() => setReopening(null));
@@ -436,11 +445,11 @@ export function Questions({
       )}
       {deleting && (
         <ConfirmDialog
-          title="Удалить вопрос?"
-          description="Вопрос, его варианты и все ответы будут удалены"
-          confirmLabel="Удалить"
+          title={t('Удалить вопрос?')}
+          description={t('Вопрос, его варианты и все ответы будут удалены')}
+          confirmLabel={t('Удалить')}
           busy={busy}
-          error={notice}
+          error={t(notice)}
           onConfirm={() => void remove()}
           onClose={() => setDeleting(null)}
         />

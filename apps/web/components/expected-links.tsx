@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {Spinner} from './ui/loading';
 import {useEffect, useState} from 'react';
 import {CheckboxField} from './ui/checkbox-field';
@@ -20,6 +21,7 @@ export function ExpectedLinks({
   onBusy: (busy: boolean) => void;
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   const [links, setLinks] = useState<VotingLink[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -71,11 +73,14 @@ export function ExpectedLinks({
   );
   return (
     <section
-      aria-label="Ожидаемые участники"
+      aria-label={t('Ожидаемые участники')}
       className="space-y-3 rounded-2xl border border-border p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-medium">Ожидаемые участники: {selected.length}</h3>
+        <h3 className="font-medium">
+          {t('Ожидаемые участники: ')}
+          {selected.length}
+        </h3>
         <Button
           variant="ghost"
           disabled={disabled}
@@ -85,19 +90,20 @@ export function ExpectedLinks({
             )
           }
         >
-          Выбрать действующие ссылки
+          {t('Выбрать действующие ссылки')}
         </Button>
       </div>
       <p className="text-xs text-muted">
-        Многоразовые и безымянные ручные ответы не заменяют выбранных
-        участников, завершение закроет прием всех ответов
+        {t(
+          'Многоразовые и безымянные ручные ответы не заменяют выбранных участников, завершение закроет прием всех ответов',
+        )}
       </p>
       <div className="max-h-72 space-y-2 overflow-y-auto">
         {links.map((link) => (
           <CheckboxField
             key={link.id}
             id={`expected-${link.id}`}
-            label={`${link.name}${link.revoked ? ' (отозвана)' : ''}`}
+            label={`${link.name}${link.revoked ? t(' (отозвана)') : ''}`}
             disabled={disabled || link.revoked}
             checked={selected.includes(link.id)}
             onChange={(event) =>
@@ -110,15 +116,17 @@ export function ExpectedLinks({
           />
         ))}
       </div>
-      {missing.length > 0 && <Spinner label="Загружаем выбранные ссылки…" />}
+      {missing.length > 0 && (
+        <Spinner label={t('Загружаем выбранные ссылки…')} />
+      )}
       {!selected.length && (
         <p className="text-sm text-error-ink">
-          Выберите хотя бы одну персональную ссылку
+          {t('Выберите хотя бы одну персональную ссылку')}
         </p>
       )}
       {error && (
         <p role="alert" className="text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
     </section>

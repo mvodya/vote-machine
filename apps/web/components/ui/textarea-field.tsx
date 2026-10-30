@@ -1,6 +1,6 @@
+'use client';
 import type {ComponentProps} from 'react';
 import {Field, controlClass, fieldDescription, type FieldProps} from './field';
-
 // Show a list or longer text with the shared field styles
 export function TextareaField({
   id,

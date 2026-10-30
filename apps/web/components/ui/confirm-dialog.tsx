@@ -1,8 +1,8 @@
 'use client';
+import {useI18n} from '../language-provider';
 import motion from './motion.module.css';
 import {useEffect, useId, useRef, type RefObject} from 'react';
 import {Button} from './button';
-
 // Confirm an action before changing saved data
 export function ConfirmDialog({
   title,
@@ -37,6 +37,7 @@ export function ConfirmDialog({
   // Return without changing data
   onClose: () => void;
 }) {
+  const {t} = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
   const descriptionId = useId();
@@ -100,7 +101,7 @@ export function ConfirmDialog({
       </p>
       {error && (
         <p role="alert" className="mt-3 text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
       <div className="mt-6 flex flex-wrap justify-end gap-3">
@@ -110,10 +111,10 @@ export function ConfirmDialog({
           disabled={busy}
           onClick={onClose}
         >
-          {cancelLabel}
+          {t(cancelLabel)}
         </Button>
         <Button disabled={busy} onClick={onConfirm}>
-          {busy ? busyLabel : confirmLabel}
+          {t(busy ? busyLabel : confirmLabel)}
         </Button>
       </div>
     </dialog>

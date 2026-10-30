@@ -178,6 +178,10 @@ test('two editors reject old revisions and keep unsaved text until explicit relo
       .getByRole('button', {name: 'Редактировать', exact: true})
       .click();
     await page.getByLabel('Текст вопроса', {exact: true}).fill('First edit');
+    // Keep this revision before the other editor saves
+    await second
+      .getByLabel('Текст вопроса', {exact: true})
+      .fill('Second unsaved edit');
     await page
       .getByRole('button', {name: 'Сохранить изменения', exact: true})
       .first()
@@ -185,9 +189,6 @@ test('two editors reject old revisions and keep unsaved text until explicit relo
     await expect(
       page.getByText('Изменения сохранены', {exact: true}),
     ).toBeVisible();
-    await second
-      .getByLabel('Текст вопроса', {exact: true})
-      .fill('Second unsaved edit');
     await second
       .getByRole('button', {name: 'Сохранить изменения', exact: true})
       .first()

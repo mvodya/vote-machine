@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {CalendarClock, Hourglass, Infinity as InfinityIcon} from 'lucide-react';
 import {TemporalField} from './ui/temporal-field';
 import {wallTime} from '../lib/time';
@@ -7,7 +8,6 @@ import {SelectField} from './ui/select-field';
 import {SegmentedControl} from './ui/segmented-control';
 import {Countdown} from './countdown';
 import {Help} from './ui/help';
-
 export interface DeadlineValue {
   // No deadline, an absolute wall time or a relative duration
   deadlineMode: 'none' | 'absolute' | 'duration';
@@ -37,8 +37,9 @@ export function QuestionDeadline({
   // Disable input during a save
   disabled?: boolean;
 }) {
+  const {t} = useI18n();
   const start = purpose === 'start';
-  const title = start ? 'Время открытия' : 'Срок закрытия';
+  const title = start ? t('Время открытия') : t('Срок закрытия');
   const [date = '', time = ''] = value.wall.split('T');
   return (
     <section
@@ -48,16 +49,16 @@ export function QuestionDeadline({
       <div className="flex items-center justify-between gap-3">
         <h3 className="font-medium">{title}</h3>
         <Help label={title}>
-          Точное время задается в часовом поясе комнаты
+          {t('Точное время задается в часовом поясе комнаты')}
           <span className="mt-2 block">
             {start
-              ? 'Отсчет начинается после нажатия «Открыть вопрос»'
-              : 'Отсчет начинается при фактическом открытии вопроса'}
+              ? t('Отсчет начинается после нажатия «Открыть вопрос»')
+              : t('Отсчет начинается при фактическом открытии вопроса')}
           </span>
         </Help>
       </div>
       <SegmentedControl
-        label={start ? 'Вид отложенного старта' : 'Вид срока'}
+        label={start ? t('Вид отложенного старта') : t('Вид срока')}
         value={value.deadlineMode}
         disabled={disabled}
         onChange={(mode) =>
@@ -68,12 +69,22 @@ export function QuestionDeadline({
         }
         items={[
           ...(!start
-            ? [{id: 'none', label: 'Без срока', icon: <InfinityIcon />}]
+            ? [
+                {
+                  id: 'none',
+                  label: t('Без срока'),
+                  icon: <InfinityIcon />,
+                },
+              ]
             : []),
-          {id: 'absolute', label: 'Дата и время', icon: <CalendarClock />},
+          {
+            id: 'absolute',
+            label: t('Дата и время'),
+            icon: <CalendarClock />,
+          },
           {
             id: 'duration',
-            label: start ? 'Через время' : 'После открытия',
+            label: start ? t('Через время') : t('После открытия'),
             icon: <Hourglass />,
           },
         ]}
@@ -82,7 +93,7 @@ export function QuestionDeadline({
         <div className="grid gap-4 sm:grid-cols-2">
           <TemporalField
             id={`${purpose}-date`}
-            label={start ? 'Дата открытия' : 'Дата закрытия'}
+            label={start ? t('Дата открытия') : t('Дата закрытия')}
             kind="date"
             now={() =>
               wallTime(new Date().toISOString(), timeZone).split('T')[0]
@@ -93,7 +104,7 @@ export function QuestionDeadline({
           />
           <TemporalField
             id={`${purpose}-time`}
-            label={start ? 'Время открытия' : 'Время закрытия'}
+            label={start ? t('Время открытия') : t('Время закрытия')}
             kind="time"
             now={() =>
               wallTime(new Date().toISOString(), timeZone).split('T')[1]
@@ -103,7 +114,8 @@ export function QuestionDeadline({
             onChange={(next) => onChange({...value, wall: `${date}T${next}`})}
           />
           <p className="text-xs text-muted sm:col-span-2">
-            Часовой пояс комнаты: {timeZone}
+            {t('Часовой пояс комнаты:')}
+            {timeZone}
           </p>
         </div>
       )}
@@ -111,7 +123,7 @@ export function QuestionDeadline({
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             id={`${purpose}-duration`}
-            label={start ? 'Открыть через' : 'Закрыть через'}
+            label={start ? t('Открыть через') : t('Закрыть через')}
             type="number"
             min={1}
             step={1}
@@ -123,21 +135,21 @@ export function QuestionDeadline({
           />
           <SelectField
             id={`${purpose}-unit`}
-            label={start ? 'Единица времени открытия' : 'Единица времени'}
+            label={start ? t('Единица времени открытия') : t('Единица времени')}
             value={value.unit}
             disabled={disabled}
             onChange={(event) => onChange({...value, unit: event.target.value})}
           >
-            <option value="60">Минуты</option>
-            <option value="3600">Часы</option>
-            <option value="86400">Дни</option>
-            <option value="1">Секунды</option>
+            <option value="60">{t('Минуты')}</option>
+            <option value="3600">{t('Часы')}</option>
+            <option value="86400">{t('Дни')}</option>
+            <option value="1">{t('Секунды')}</option>
           </SelectField>
         </div>
       )}
       {start && (
         <p className="text-xs text-muted">
-          Вопрос не запустится, пока вы не нажмете «Открыть вопрос»
+          {t('Вопрос не запустится, пока вы не нажмете «Открыть вопрос»')}
         </p>
       )}
       {at && (

@@ -1,3 +1,4 @@
+import {translate, type Locale} from './i18n/translate';
 import {roomIdPattern, secretPattern, validName} from './rooms';
 
 export type LinkMode = 'personal' | 'reusable';
@@ -114,13 +115,22 @@ function csvCell(value: string) {
   return `"${safe.replaceAll('"', '""')}"`;
 }
 // Export every row, with no secret for revoked links
-export function linksCsv(links: ExportLink[], origin: string) {
+export function linksCsv(
+  links: ExportLink[],
+  origin: string,
+  locale: Locale = 'ru',
+) {
   const rows = [
-    ['Имя', 'Режим', 'Статус', 'Ссылка'],
+    ['Имя', 'Режим', 'Статус', 'Ссылка'].map((label) =>
+      translate(locale, label),
+    ),
     ...links.map((link) => [
       link.name,
-      link.mode === 'personal' ? 'Персональная' : 'Многоразовая',
-      link.revoked ? 'Отозвана' : 'Действует',
+      translate(
+        locale,
+        link.mode === 'personal' ? 'Персональная' : 'Многоразовая',
+      ),
+      translate(locale, link.revoked ? 'Отозвана' : 'Действует'),
       !link.revoked && link.token && secretPattern.test(link.token)
         ? votingUrl(origin, link.id, link.token)
         : '',

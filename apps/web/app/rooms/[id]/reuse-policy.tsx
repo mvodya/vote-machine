@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useEffect, useState} from 'react';
 import {CheckboxField} from '../../../components/ui/checkbox-field';
 import {Panel} from '../../../components/ui/panel';
@@ -10,6 +11,7 @@ export function ReusePolicy({
   roomId: string;
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   const [policy, setPolicy] = useState<{
     enabled: boolean;
     revision: string;
@@ -75,12 +77,14 @@ export function ReusePolicy({
   }
   return (
     <Panel>
-      <h2 className="mb-4 text-lg font-semibold">Повторное голосование</h2>
+      <h2 className="mb-4 text-lg font-semibold">
+        {t('Повторное голосование')}
+      </h2>
       {policy && (
         <CheckboxField
           id="reusable-repeat"
-          label="Разрешить повторное голосование с одного устройства"
-          hint="Для многоразовых ссылок"
+          label={t('Разрешить повторное голосование с одного устройства')}
+          hint={t('Для многоразовых ссылок')}
           checked={policy.enabled}
           disabled={busy}
           onChange={(event) => void save(event.target.checked)}
@@ -88,7 +92,7 @@ export function ReusePolicy({
       )}
       {error && (
         <p role="alert" className="mt-3 text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
     </Panel>

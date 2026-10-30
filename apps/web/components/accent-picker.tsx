@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useEffect, useState} from 'react';
 import {Check} from 'lucide-react';
 import {Button} from './ui/button';
@@ -29,6 +30,7 @@ export function AccentPicker({
   roomId: string;
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   const [selected, setSelected] = useState(() =>
     typeof document === 'undefined'
       ? 'green'
@@ -81,7 +83,7 @@ export function AccentPicker({
   return (
     <fieldset className="mt-6">
       <legend className="mb-3 text-sm font-medium">
-        Акцентный цвет комнаты
+        {t('Акцентный цвет комнаты')}
       </legend>
       <div className="flex flex-wrap gap-2">
         {accents.map((color, index) => (
@@ -89,8 +91,8 @@ export function AccentPicker({
             key={color}
             variant="swatch"
             disabled={busy}
-            title={labels[index]}
-            aria-label={labels[index]}
+            title={t(labels[index])}
+            aria-label={t(labels[index])}
             aria-pressed={selected === color}
             onClick={() => void save(color)}
           >
@@ -105,7 +107,7 @@ export function AccentPicker({
       </div>
       {error && (
         <p role="alert" className="mt-2 text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
     </fieldset>

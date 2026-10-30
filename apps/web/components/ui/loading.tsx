@@ -1,7 +1,10 @@
+'use client';
+import {useI18n} from '../language-provider';
 import {LoaderCircle} from 'lucide-react';
 
 // Use a compact busy state when a placeholder would hide useful content
 export function Spinner({label = 'Загружаем…'}: {label?: string}) {
+  const {t} = useI18n();
   return (
     <span
       role="status"
@@ -11,7 +14,7 @@ export function Spinner({label = 'Загружаем…'}: {label?: string}) {
         aria-hidden="true"
         className="size-4 motion-safe:animate-spin"
       />
-      {label}
+      {t(label)}
     </span>
   );
 }
@@ -24,14 +27,15 @@ export function Loading({
   label?: string;
   rows?: number;
 }) {
+  const {t} = useI18n();
   return (
     <div
       data-loading-placeholder=""
       role="status"
-      aria-label={label}
+      aria-label={t(label)}
       className="space-y-4 py-5"
     >
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{t(label)}</span>
       <div aria-hidden="true" className="space-y-4 motion-safe:animate-pulse">
         {Array.from({length: rows}, (_, index) => (
           <div

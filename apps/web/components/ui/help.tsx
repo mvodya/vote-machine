@@ -1,7 +1,7 @@
 'use client';
+import {useI18n} from '../language-provider';
 import {useEffect, useId, useRef, useState, type ReactNode} from 'react';
 import {CircleHelp} from 'lucide-react';
-
 // Show short help on hover, focus or click
 export function Help({
   label,
@@ -15,6 +15,7 @@ export function Help({
   // Reusable help content
   children: ReactNode;
 }) {
+  const {t} = useI18n();
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -38,7 +39,9 @@ export function Help({
     >
       <button
         type="button"
-        aria-label={`Справка: ${label}`}
+        aria-label={t('Справка: {value0}', {
+          value0: label,
+        })}
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         aria-describedby={open ? id : undefined}

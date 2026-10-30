@@ -1,6 +1,8 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useEffect, useState} from 'react';
 import {Moon, Sun, Volume2, VolumeX} from 'lucide-react';
+import {LanguageMenu} from './language-menu';
 import {Button} from './ui/button';
 import {ConnectionIndicator} from './connection-indicator';
 import {prepareSounds, setSoundEnabled, unlockSound} from '../lib/audio';
@@ -18,6 +20,7 @@ function applyTheme(next: 'light' | 'dark') {
 }
 // Keep theme personal, the room palette is managed separately
 export function Preferences() {
+  const {t} = useI18n();
   const [sound, setSound] = useState(false);
   useEffect(() => {
     void prepareSounds();
@@ -67,14 +70,14 @@ export function Preferences() {
   return (
     <div
       className="inline-flex shrink-0 items-center gap-1"
-      aria-label="Вид и звук"
+      aria-label={t('Вид и звук')}
     >
       <ConnectionIndicator />
       <Button
         variant="ghost"
-        aria-label={sound ? 'Выключить звуки' : 'Включить звуки'}
+        aria-label={sound ? t('Выключить звуки') : t('Включить звуки')}
         aria-pressed={sound}
-        title={sound ? 'Выключить звуки' : 'Включить звуки'}
+        title={sound ? t('Выключить звуки') : t('Включить звуки')}
         onClick={() => {
           setSoundEnabled(!sound, true);
           setSound(!sound);
@@ -87,13 +90,14 @@ export function Preferences() {
       </Button>
       <Button
         variant="ghost"
-        aria-label="Переключить тему"
-        title="Переключить светлую и темную тему"
+        aria-label={t('Переключить тему')}
+        title={t('Переключить светлую и темную тему')}
         onClick={toggleTheme}
       >
         <Sun className="theme-sun" />
         <Moon className="theme-moon" />
       </Button>
+      <LanguageMenu />
     </div>
   );
 }

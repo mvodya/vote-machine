@@ -1,5 +1,6 @@
+'use client';
+import {useI18n} from '../language-provider';
 import {Button} from './button';
-
 // Use the same page controls for room lists
 export function Pagination({
   label,
@@ -22,6 +23,7 @@ export function Pagination({
   // Open the next cursor
   onNext: () => void;
 }) {
+  const {t} = useI18n();
   // Empty and single page lists need no controls
   if (page <= 1 && !hasNext) return null;
   return (
@@ -31,13 +33,16 @@ export function Pagination({
         disabled={busy || page <= 1}
         onClick={onPrevious}
       >
-        Назад
+        {t('Назад')}
       </Button>
-      <span className="text-sm text-muted" aria-label={`Страница ${page}`}>
+      <span
+        className="text-sm text-muted"
+        aria-label={t('Страница {value0}', {value0: page})}
+      >
         {page}
       </span>
       <Button variant="secondary" disabled={busy || !hasNext} onClick={onNext}>
-        Далее
+        {t('Далее')}
       </Button>
     </nav>
   );

@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useEffect, useState} from 'react';
 
 const phrases = [
@@ -25,8 +26,10 @@ const phrases = [
 
 // Reserve space so typing and line breaks never move the form
 export function HomeCaption() {
+  const {t} = useI18n();
   const [text, setText] = useState('');
   useEffect(() => {
+    const localized = phrases.map((phrase) => t(phrase));
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let timer: ReturnType<typeof setTimeout>;
     let index = 0;
@@ -37,13 +40,13 @@ export function HomeCaption() {
     function tick() {
       if (document.hidden) return;
       if (motion.matches) {
-        setText(phrases[0]);
+        setText(localized[0]);
         return;
       }
       length += deleting ? -1 : 1;
-      setText(phrases[index].slice(0, length));
+      setText(localized[index].slice(0, length));
       let delay = deleting ? 25 : 55;
-      if (length === phrases[index].length && !deleting) {
+      if (length === localized[index].length && !deleting) {
         deleting = true;
         delay = 5000;
       } else if (length === 0 && deleting) {
@@ -62,7 +65,7 @@ export function HomeCaption() {
       length = 0;
       deleting = false;
       if (document.hidden) return;
-      if (motion.matches) setText(phrases[0]);
+      if (motion.matches) setText(localized[0]);
       else {
         setText('');
         timer = setTimeout(tick, 400);
@@ -76,7 +79,7 @@ export function HomeCaption() {
       motion.removeEventListener('change', start);
       document.removeEventListener('visibilitychange', start);
     };
-  }, []);
+  }, [t]);
   return (
     <div
       data-home-caption

@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {Spinner} from './ui/loading';
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {useDeadlineSounds} from '../lib/use-deadline-sounds';
@@ -19,6 +20,7 @@ export function RoomExperience({
   onDenied: () => void;
   children: ReactNode;
 }) {
+  const {t} = useI18n();
   // Keep private content hidden until its palette is ready
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -95,8 +97,8 @@ export function RoomExperience({
         <Spinner
           label={
             failed
-              ? 'Не удалось загрузить настройки комнаты, повторяем'
-              : 'Открываем комнату…'
+              ? t('Не удалось загрузить настройки комнаты, повторяем')
+              : t('Открываем комнату…')
           }
         />
       </div>

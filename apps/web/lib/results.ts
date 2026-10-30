@@ -1,3 +1,4 @@
+import {translate, type Locale} from './i18n/translate';
 import {isRecord, validCursor} from './voting-links';
 import {roomIdPattern} from './rooms';
 export interface ResultOption {
@@ -225,12 +226,12 @@ function csvCell(value: unknown) {
   return `"${(/^[\s]*[=+@-]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
 }
 // Export only the already filtered aggregate view
-export function resultCsv(result: VoteResult) {
+export function resultCsv(result: VoteResult, locale: Locale = 'ru') {
   if (!result.available) return null;
   return (
     '\uFEFF' +
     [
-      ['Вариант', 'Голоса', 'Процент'],
+      ['Вариант', 'Голоса', 'Процент'].map((label) => translate(locale, label)),
       ...(result.options ?? []).map((option) => [
         option.content,
         option.count,

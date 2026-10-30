@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../language-provider';
 import {SegmentedControl} from './segmented-control';
 import {Spinner} from './loading';
 import {useEffect, useRef, useState} from 'react';
@@ -18,7 +19,6 @@ import {Button} from './button';
 import {TextareaField} from './textarea-field';
 import {Markdown} from '../markdown';
 import {acceptedMedia, maxUploadBytes, assetId} from '../../lib/assets';
-
 // Reuse source editing, safe preview and private uploads for every text field
 export function MarkdownField({
   id,
@@ -50,6 +50,7 @@ export function MarkdownField({
   // Track active uploads so the editor cannot save a partial upload
   onUploadChange: (delta: number) => void;
 }) {
+  const {t} = useI18n();
   // Text or rendered preview
   const [preview, setPreview] = useState(readOnly);
   // Whether this field has an upload in progress
@@ -123,7 +124,7 @@ export function MarkdownField({
         throw new Error('Не удалось загрузить файл');
       if (active.current)
         insert(
-          `![${body.kind === 'video' ? 'Видео' : 'Изображение'}](${body.source})`,
+          `![${body.kind === 'video' ? t('Видео') : t('Изображение')}](${body.source})`,
         );
     } catch (failure) {
       if (active.current)
@@ -143,79 +144,89 @@ export function MarkdownField({
         <>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <SegmentedControl
-              label={`Режим редактора: ${label}`}
+              label={t('Режим редактора: {value0}', {value0: label})}
               value={preview ? 'preview' : 'text'}
               className="inline-flex"
               items={[
-                {id: 'text', label: 'Текст', icon: <TextCursorInput />},
-                {id: 'preview', label: 'Предпросмотр', icon: <Eye />},
+                {
+                  id: 'text',
+                  label: t('Текст'),
+                  icon: <TextCursorInput />,
+                },
+                {
+                  id: 'preview',
+                  label: t('Предпросмотр'),
+                  icon: <Eye />,
+                },
               ]}
               onChange={(next) => setPreview(next === 'preview')}
             />
             <div
               role="toolbar"
-              aria-label={`Форматирование: ${label}`}
+              aria-label={t('Форматирование: {value0}', {value0: label})}
               className="flex flex-wrap items-center gap-0.5"
             >
               <Help label={label} align="start">
                 <span className="block">{hint}</span>
-                <span className="mt-2 block">Размер изображения</span>
+                <span className="mt-2 block">{t('Размер изображения')}</span>
                 <code className="mt-1 block whitespace-pre-wrap break-normal">
-                  {'![Описание](asset:ID\n  "width=320")'}
+                  {t('![Описание](asset:ID\n  "width=320")')}
                 </code>
               </Help>
               <Button
                 variant="ghost"
-                title="Жирный текст"
-                aria-label={`Жирный текст: ${label}`}
+                title={t('Жирный текст')}
+                aria-label={t('Жирный текст: {value0}', {value0: label})}
                 startIcon={<Bold />}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insert('**', '**', 'текст')}
+                onClick={() => insert('**', '**', t('текст'))}
               />
               <Button
                 variant="ghost"
-                title="Курсив"
-                aria-label={`Курсив: ${label}`}
+                title={t('Курсив')}
+                aria-label={t('Курсив: {value0}', {value0: label})}
                 startIcon={<Italic />}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insert('*', '*', 'текст')}
+                onClick={() => insert('*', '*', t('текст'))}
               />
               <Button
                 variant="ghost"
-                title="Ссылка"
-                aria-label={`Ссылка: ${label}`}
+                title={t('Ссылка')}
+                aria-label={t('Ссылка: {value0}', {value0: label})}
                 startIcon={<LinkIcon />}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insert('[', '](https://example.com)', 'ссылка')}
+                onClick={() =>
+                  insert('[', '](https://example.com)', t('ссылка'))
+                }
               />
               <Button
                 variant="ghost"
-                title="Список"
-                aria-label={`Список: ${label}`}
+                title={t('Список')}
+                aria-label={t('Список: {value0}', {value0: label})}
                 startIcon={<List />}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insert('\n- ', '', 'пункт')}
+                onClick={() => insert('\n- ', '', t('пункт'))}
               />
               <Button
                 variant="ghost"
-                title="Цитата"
-                aria-label={`Цитата: ${label}`}
+                title={t('Цитата')}
+                aria-label={t('Цитата: {value0}', {value0: label})}
                 startIcon={<Quote />}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insert('\n> ', '', 'цитата')}
+                onClick={() => insert('\n> ', '', t('цитата'))}
               />
               <Button
                 variant="ghost"
-                title="Код"
-                aria-label={`Код: ${label}`}
+                title={t('Код')}
+                aria-label={t('Код: {value0}', {value0: label})}
                 startIcon={<Code />}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insert('`', '`', 'код')}
+                onClick={() => insert('`', '`', t('код'))}
               />
               <Button
                 variant="ghost"
-                title="Добавить файл"
-                aria-label={`Добавить файл: ${label}`}
+                title={t('Добавить файл')}
+                aria-label={t('Добавить файл: {value0}', {value0: label})}
                 disabled={uploading}
                 startIcon={<Paperclip />}
                 onClick={() => picker.current?.click()}
@@ -229,7 +240,9 @@ export function MarkdownField({
         hidden
         type="file"
         accept={acceptedMedia}
-        aria-label={`Файл для ${label}`}
+        aria-label={t('Файл для {value0}', {
+          value0: label,
+        })}
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = '';
@@ -238,7 +251,7 @@ export function MarkdownField({
       />
       {readOnly || preview ? (
         <section
-          aria-label={`Предпросмотр: ${label}`}
+          aria-label={t('Предпросмотр: {value0}', {value0: label})}
           className="min-h-28 rounded-xl border border-border bg-panel px-4 py-2"
         >
           <Markdown source={value} viewer={{roomId}} />
@@ -256,10 +269,10 @@ export function MarkdownField({
           }}
         />
       )}
-      {uploading && <Spinner label="Загружаем и проверяем файл…" />}
+      {uploading && <Spinner label={t('Загружаем и проверяем файл…')} />}
       {error && (
         <p role="alert" className="mt-2 text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
     </div>

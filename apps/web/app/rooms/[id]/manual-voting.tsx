@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useEffect, useState} from 'react';
 import {ArrowRight} from 'lucide-react';
 import {AnswerForm} from '../../vote/[id]/answer-form';
@@ -18,6 +19,7 @@ function ManualVotingForm({
   onDenied: () => void;
   timeZone: string;
 }) {
+  const {t} = useI18n();
   const [linkId, setLinkId] = useState('');
   const [links, setLinks] = useState<VotingLink[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -97,14 +99,14 @@ function ManualVotingForm({
   }
   return (
     <section
-      aria-label="Ручное голосование"
+      aria-label={t('Ручное голосование')}
       className="space-y-4 border-t border-border pt-5"
     >
-      <h3 className="font-medium">Ручное голосование</h3>
+      <h3 className="font-medium">{t('Ручное голосование')}</h3>
       {saved ? (
         <>
           <p role="status" className="text-sm text-success-ink">
-            Голос сохранен
+            {t('Голос сохранен')}
           </p>
           <Button
             startIcon={<ArrowRight />}
@@ -114,14 +116,14 @@ function ManualVotingForm({
               setAttempt((value) => value + 1);
             }}
           >
-            Следующий голосующий
+            {t('Следующий голосующий')}
           </Button>
         </>
       ) : (
         <>
           <SelectField
             id="manual-source"
-            label="Источник голоса"
+            label={t('Источник голоса')}
             value={linkId}
             disabled={busy}
             onChange={(event) => {
@@ -130,7 +132,7 @@ function ManualVotingForm({
               setError('');
             }}
           >
-            <option value="">Новый ручной голос</option>
+            <option value="">{t('Новый ручной голос')}</option>
             {links
               .filter((link) => link.mode === 'personal' && !link.revoked)
               .map((link) => (
@@ -141,7 +143,7 @@ function ManualVotingForm({
           </SelectField>
           {next && (
             <Button variant="ghost" onClick={() => void more()}>
-              Еще респонденты
+              {t('Еще респонденты')}
             </Button>
           )}
           {context && (
@@ -169,20 +171,20 @@ function ManualVotingForm({
       )}
       {error && (
         <p role="alert" className="text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
     </section>
   );
 }
-
 // Open manual entry only when the admin asks for it
 export function ManualVoting(props: Parameters<typeof ManualVotingForm>[0]) {
+  const {t} = useI18n();
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-5">
       <Button variant="secondary" onClick={() => setOpen((value) => !value)}>
-        {open ? 'Скрыть ручной ввод' : 'Ввести голос вручную'}
+        {open ? t('Скрыть ручной ввод') : t('Ввести голос вручную')}
       </Button>
       {open && <ManualVotingForm {...props} />}
     </div>

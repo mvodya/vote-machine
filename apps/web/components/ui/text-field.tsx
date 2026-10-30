@@ -1,6 +1,6 @@
+'use client';
 import type {ComponentProps, ReactNode} from 'react';
 import {Field, controlClass, fieldDescription, type FieldProps} from './field';
-
 // Show a field with its label, hint and error
 export function TextField({
   id,

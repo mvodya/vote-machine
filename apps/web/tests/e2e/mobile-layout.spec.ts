@@ -79,8 +79,12 @@ test('participant media stays inside its block on narrow and landscape screens',
   expect(opened.status()).toBe(200);
   await page.goto(fixture.url);
   await expect(page.getByRole('heading', {name: 'Mobile media'})).toBeVisible();
-  await expect(page.locator('main img')).toHaveCount(4);
-  await expect(page.locator('main video')).toHaveCount(1);
+  const questionPanel = page.getByRole('region', {
+    name: 'Текущий вопрос',
+    exact: true,
+  });
+  await expect(questionPanel.locator('img')).toHaveCount(4);
+  await expect(questionPanel.locator('video')).toHaveCount(1);
   for (const [width, height] of [
     [320, 740],
     [390, 844],
@@ -90,7 +94,7 @@ test('participant media stays inside its block on narrow and landscape screens',
     // Check the content bounds instead of hiding overflow on the page
     await expect
       .poll(() =>
-        page.locator('main img, main video').evaluateAll((media) =>
+        questionPanel.locator('img, video').evaluateAll((media) =>
           media.every((element) => {
             const box = element.getBoundingClientRect();
             const block =

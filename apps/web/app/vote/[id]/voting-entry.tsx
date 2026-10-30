@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {Loading} from '../../../components/ui/loading';
 import {RoomExperience} from '../../../components/room-experience';
 import {useCallback, useEffect, useRef, useState} from 'react';
@@ -8,9 +9,9 @@ import {Button} from '../../../components/ui/button';
 import {ParticipantJourney} from './journey';
 import {roomIdPattern, secretPattern} from '../../../lib/rooms';
 import {isParticipant, type Participant} from '../../../lib/voting-links';
-
 // Check a participant link and keep its role separate from admin access
 export default function VotingEntry({id}: {id: string}) {
+  const {t} = useI18n();
   // Current access state
   const [state, setState] = useState<'loading' | 'ready' | 'denied' | 'error'>(
     'loading',
@@ -107,26 +108,28 @@ export default function VotingEntry({id}: {id: string}) {
         <div className="mx-auto max-w-5xl">
           <PageHeader />
           {state === 'loading' && (
-            <Loading label="Проверяем ссылку…" rows={2} />
+            <Loading label={t('Проверяем ссылку…')} rows={2} />
           )}
           {state === 'denied' && (
             <Panel className="mt-8">
-              <h1 className="text-2xl font-semibold">Ссылка недействительна</h1>
+              <h1 className="text-2xl font-semibold">
+                {t('Ссылка недействительна')}
+              </h1>
               <p className="mt-4 text-sm text-muted">
-                Запросите действующую ссылку у администратора
+                {t('Запросите действующую ссылку у администратора')}
               </p>
             </Panel>
           )}
           {state === 'error' && (
             <Panel className="mt-8">
               <h1 className="text-2xl font-semibold">
-                Не удалось открыть комнату
+                {t('Не удалось открыть комнату')}
               </h1>
               <Button
                 className="mt-5"
                 onClick={() => setAttempt((value) => value + 1)}
               >
-                Попробовать снова
+                {t('Попробовать снова')}
               </Button>
             </Panel>
           )}
@@ -138,8 +141,8 @@ export default function VotingEntry({id}: {id: string}) {
               <p className="mt-3 text-sm text-muted">
                 {participant.name} ·{' '}
                 {participant.mode === 'personal'
-                  ? 'Персональная ссылка'
-                  : 'Многоразовая ссылка'}
+                  ? t('Персональная ссылка')
+                  : t('Многоразовая ссылка')}
               </p>
               <ParticipantJourney linkId={id} onDenied={denyAccess} />
             </>

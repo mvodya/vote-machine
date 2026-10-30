@@ -1,7 +1,7 @@
+'use client';
 import {ChevronDown} from 'lucide-react';
 import type {ComponentProps} from 'react';
 import {Field, controlClass, fieldDescription, type FieldProps} from './field';
-
 // Use native choice controls with the shared labels and errors
 export function SelectField({
   id,

@@ -1,10 +1,10 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useEffect, useRef, useState} from 'react';
 import {useLive} from '../../../lib/use-live';
 import {Panel} from '../../../components/ui/panel';
 import {CheckboxField} from '../../../components/ui/checkbox-field';
 import {Spinner} from '../../../components/ui/loading';
-
 // Save only the room-wide summary rule so other settings stay intact
 export function ResultsPolicy({
   roomId,
@@ -13,6 +13,7 @@ export function ResultsPolicy({
   roomId: string;
   onDenied: () => void;
 }) {
+  const {t} = useI18n();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const saving = useRef(false);
   const serial = useRef(0);
@@ -84,14 +85,16 @@ export function ResultsPolicy({
   }
   return (
     <Panel>
-      <h2 className="mb-4 text-lg font-semibold">Общие результаты</h2>
+      <h2 className="mb-4 text-lg font-semibold">{t('Общие результаты')}</h2>
       {enabled === null ? (
         <Spinner />
       ) : (
         <CheckboxField
           id="show-all-results"
-          label="Показывать все результаты"
-          hint="Общая статистика для отвечающих, доступ к результатам отдельных вопросов задается в самих вопросах"
+          label={t('Показывать все результаты')}
+          hint={t(
+            'Общая статистика для отвечающих, доступ к результатам отдельных вопросов задается в самих вопросах',
+          )}
           checked={enabled}
           disabled={busy}
           onChange={(event) => void save(event.target.checked)}
@@ -99,7 +102,7 @@ export function ResultsPolicy({
       )}
       {error && (
         <p role="alert" className="mt-3 text-sm text-error-ink">
-          {error}
+          {t(error)}
         </p>
       )}
     </Panel>

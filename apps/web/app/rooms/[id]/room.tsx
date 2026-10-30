@@ -1,9 +1,9 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {Loading} from '../../../components/ui/loading';
 import {ResultsPolicy} from './results-policy';
 import {RoomExperience} from '../../../components/room-experience';
 import {AccentPicker} from '../../../components/accent-picker';
-
 import {useLive} from '../../../lib/use-live';
 import {Results} from '../../../components/results';
 import {ReusePolicy} from './reuse-policy';
@@ -13,7 +13,6 @@ import {RoomName} from './room-name';
 import {Questions} from './questions';
 import {QuestionPolicy} from './question-policy';
 import {Respondents} from './respondents';
-
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   ListChecks,
@@ -39,11 +38,10 @@ import {
   secretPattern,
   type Room,
 } from '../../../lib/rooms';
-
 type State = 'loading' | 'ready' | 'denied' | 'error';
-
 // Show the room and its admin tools
 export default function AdminRoom({id}: {id: string}) {
+  const {t} = useI18n();
   // Loading and access state of the page
   const [projector] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -76,7 +74,6 @@ export default function AdminRoom({id}: {id: string}) {
   const key = useRef<string | null>(null);
   // Whether this URL has already been read
   const captured = useRef(false);
-
   // Leave private panels when the session is rejected
   const denyAccess = useCallback(() => setState('denied'), []);
   const live = useLive(
@@ -106,7 +103,6 @@ export default function AdminRoom({id}: {id: string}) {
     void refreshRoom();
     return () => controller.abort();
   }, [id, state, live.version, denyAccess]);
-
   useEffect(() => {
     // Handle a new link opened on the same page
     function openLink() {
@@ -121,7 +117,6 @@ export default function AdminRoom({id}: {id: string}) {
     window.addEventListener('hashchange', openLink);
     return () => window.removeEventListener('hashchange', openLink);
   }, []);
-
   useEffect(() => {
     const controller = new AbortController();
     // Open a session or read the room with a saved one
@@ -207,7 +202,6 @@ export default function AdminRoom({id}: {id: string}) {
     void load();
     return () => controller.abort();
   }, [id, attempt]);
-
   useEffect(() => {
     // Read private link data only in open settings
     if (state !== 'ready' || section !== 'settings') return;
@@ -235,7 +229,6 @@ export default function AdminRoom({id}: {id: string}) {
     void loadLink();
     return () => controller.abort();
   }, [id, section, state, attempt]);
-
   // Copy the full admin link or suggest manual copying
   async function copy() {
     try {
@@ -246,7 +239,6 @@ export default function AdminRoom({id}: {id: string}) {
       setNotice('Выделите ссылку и скопируйте ее вручную');
     }
   }
-
   if (projector && state === 'ready')
     return (
       <RoomExperience
@@ -277,30 +269,34 @@ export default function AdminRoom({id}: {id: string}) {
       <main className="min-h-svh bg-page text-ink">
         <div className="mx-auto max-w-6xl px-4 pb-14 sm:px-8">
           <PageHeader className="border-b border-border py-5 sm:py-6" />
-          {state === 'loading' && <Loading label="Открываем комнату…" />}
+          {state === 'loading' && <Loading label={t('Открываем комнату…')} />}
           {state === 'denied' && (
             <Panel className="mt-8">
-              <h1 className="text-2xl font-semibold">Нет доступа к комнате</h1>
+              <h1 className="text-2xl font-semibold">
+                {t('Нет доступа к комнате')}
+              </h1>
               <p className="mt-4">
-                Откройте полную административную ссылку, которую вы сохранили
-                при создании комнаты
+                {t(
+                  'Откройте полную административную ссылку, которую вы сохранили при создании комнаты',
+                )}
               </p>
               <p className="mt-3">
-                Без ссылки и действующей сессии восстановить управление
-                невозможно
+                {t(
+                  'Без ссылки и действующей сессии восстановить управление невозможно',
+                )}
               </p>
             </Panel>
           )}
           {state === 'error' && (
             <Panel className="mt-8">
               <h1 className="text-2xl font-semibold">
-                Не удалось открыть комнату
+                {t('Не удалось открыть комнату')}
               </h1>
               <Button
                 className="mt-4"
                 onClick={() => setAttempt((value) => value + 1)}
               >
-                Попробовать снова
+                {t('Попробовать снова')}
               </Button>
             </Panel>
           )}
@@ -310,7 +306,7 @@ export default function AdminRoom({id}: {id: string}) {
                 {room.name}
               </h1>
               <Tabs
-                label="Разделы комнаты"
+                label={t('Разделы комнаты')}
                 group="room-sections"
                 value={section}
                 onChange={(value) => {
@@ -326,22 +322,22 @@ export default function AdminRoom({id}: {id: string}) {
                 items={[
                   {
                     id: 'questions',
-                    label: 'Вопросы',
+                    label: t('Вопросы'),
                     icon: <ListChecks size={18} />,
                   },
                   {
                     id: 'respondents',
-                    label: 'Респонденты',
+                    label: t('Респонденты'),
                     icon: <Users size={18} />,
                   },
                   {
                     id: 'results',
-                    label: 'Результаты',
+                    label: t('Результаты'),
                     icon: <ChartColumn size={18} />,
                   },
                   {
                     id: 'settings',
-                    label: 'Настройки',
+                    label: t('Настройки'),
                     icon: <Settings size={18} />,
                   },
                 ]}
@@ -376,9 +372,9 @@ export default function AdminRoom({id}: {id: string}) {
                   {section === 'settings' && (
                     <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.2fr]">
                       <div className="space-y-6">
-                        <Panel aria-label="Настройки комнаты">
+                        <Panel aria-label={t('Настройки комнаты')}>
                           <h2 className="mb-5 text-lg font-semibold">
-                            Комната
+                            {t('Комната')}
                           </h2>
                           <RoomName
                             room={room}
@@ -401,12 +397,12 @@ export default function AdminRoom({id}: {id: string}) {
                         <ResultsPolicy roomId={id} onDenied={denyAccess} />
                         <DeleteRoom room={room} onDenied={denyAccess} />
                       </div>
-                      <Panel aria-label="Административный доступ">
+                      <Panel aria-label={t('Административный доступ')}>
                         <h2 className="mb-3 text-lg font-semibold">
-                          Административный доступ
+                          {t('Административный доступ')}
                         </h2>
                         <p className="mb-5 text-sm">
-                          Ссылка дает полный доступ к управлению комнатой
+                          {t('Ссылка дает полный доступ к управлению комнатой')}
                         </p>
                         {link ? (
                           <>
@@ -419,8 +415,8 @@ export default function AdminRoom({id}: {id: string}) {
                                   variant="ghost"
                                   aria-label={
                                     linkVisible
-                                      ? 'Скрыть административную ссылку'
-                                      : 'Показать административную ссылку'
+                                      ? t('Скрыть административную ссылку')
+                                      : t('Показать административную ссылку')
                                   }
                                   onClick={() =>
                                     setLinkVisible((value) => !value)
@@ -430,7 +426,7 @@ export default function AdminRoom({id}: {id: string}) {
                                 </Button>
                               }
                               onClick={() => setLinkVisible(true)}
-                              label="Административная ссылка"
+                              label={t('Административная ссылка')}
                               className="font-mono"
                               readOnly
                               value={link}
@@ -442,14 +438,14 @@ export default function AdminRoom({id}: {id: string}) {
                               className="mt-4"
                               startIcon={<Copy />}
                             >
-                              Скопировать ссылку
+                              {t('Скопировать ссылку')}
                             </Button>
                           </>
                         ) : (
                           <Button
                             onClick={() => setAttempt((value) => value + 1)}
                           >
-                            Получить ссылку
+                            {t('Получить ссылку')}
                           </Button>
                         )}
                       </Panel>
@@ -459,9 +455,9 @@ export default function AdminRoom({id}: {id: string}) {
               </TabPanels>
               {destination !== null && (
                 <ConfirmDialog
-                  title="Выйти из редактирования вопроса без сохранений?"
-                  description="Несохраненные изменения будут потеряны"
-                  confirmLabel="Выйти"
+                  title={t('Выйти из редактирования вопроса без сохранений?')}
+                  description={t('Несохраненные изменения будут потеряны')}
+                  confirmLabel={t('Выйти')}
                   busy={false}
                   onClose={() => setDestination(null)}
                   onConfirm={() => {
@@ -474,7 +470,7 @@ export default function AdminRoom({id}: {id: string}) {
                 />
               )}
               <p role="status" className="mt-4 text-sm text-muted">
-                {notice}
+                {t(notice)}
               </p>
             </>
           )}

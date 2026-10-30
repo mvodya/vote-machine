@@ -13,7 +13,7 @@ export function Brand({className = ''}: {className?: string}) {
         height={40}
         className="size-8 shrink-0 sm:size-10"
       />
-      votemachine
+      <span className="max-[379px]:sr-only">votemachine</span>
     </div>
   );
 }

@@ -88,6 +88,12 @@ export function Popover({
       </button>
       {open && (
         <div
+          onClick={(event) => {
+            if ((event.target as Element).closest('[data-popover-close]')) {
+              setOpen(false);
+              button.current?.focus({preventScroll: true});
+            }
+          }}
           ref={card}
           id={id}
           role="dialog"

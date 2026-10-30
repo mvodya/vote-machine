@@ -1,11 +1,11 @@
 'use client';
+import {useI18n} from '../../../components/language-provider';
 import {useRef, useState} from 'react';
 import {Check} from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {TextField} from '../../../components/ui/text-field';
 import {Form} from '../../../components/ui/form';
 import {isRoom, type Room} from '../../../lib/rooms';
-
 // Save the room name on blur or with the field action
 export function RoomName({
   room,
@@ -22,6 +22,7 @@ export function RoomName({
   // Show a short save result
   onNotice: (value: string) => void;
 }) {
+  const {t} = useI18n();
   // Text currently shown in the field
   const [name, setName] = useState(room.name);
   // Whether a name request is running
@@ -32,7 +33,6 @@ export function RoomName({
   const running = useRef(false);
   // Save a newer blur after the current request finishes
   const pending = useRef(false);
-
   // Keep newer local text when an older save returns
   async function save() {
     if (running.current) {
@@ -70,10 +70,10 @@ export function RoomName({
           current.current = savedName;
           setName(savedName);
         }
-        onNotice('Название сохранено');
+        onNotice(t('Название сохранено'));
       } while (pending.current);
     } catch {
-      onNotice('Не удалось сохранить название, попробуйте снова');
+      onNotice(t('Не удалось сохранить название, попробуйте снова'));
     } finally {
       running.current = false;
       setSaving(false);
@@ -88,7 +88,7 @@ export function RoomName({
     >
       <TextField
         id="edit-name"
-        label="Название комнаты"
+        label={t('Название комнаты')}
         value={name}
         maxLength={200}
         onChange={(event) => {
@@ -101,8 +101,8 @@ export function RoomName({
           name !== room.name || saving ? (
             <Button
               variant="ghost"
-              aria-label="Сохранить название"
-              title="Сохранить название"
+              aria-label={t('Сохранить название')}
+              title={t('Сохранить название')}
               disabled={saving}
               startIcon={<Check />}
               onMouseDown={(event) => event.preventDefault()}

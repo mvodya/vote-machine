@@ -1,10 +1,10 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useEffect, useRef, useState} from 'react';
 import {RefreshCw} from 'lucide-react';
 import {Spinner} from './ui/loading';
 import {reportMediaFailure} from '../lib/media-events';
 import {assetPath, isAsset, type Asset, type MediaViewer} from '../lib/assets';
-
 // Read private metadata before choosing an image or video element
 export function Media({
   id,
@@ -21,6 +21,7 @@ export function Media({
   // Optional Markdown display width in pixels
   displayWidth?: number;
 }) {
+  const {t} = useI18n();
   // Safe public metadata from the access-checked route
   const [asset, setAsset] = useState<Asset | null>(null);
   // A deleted or unavailable file has no public fallback URL
@@ -136,18 +137,20 @@ export function Media({
   if (failed)
     return (
       <span className="text-sm text-muted">
-        {reason || `${alt || 'Файл'} - файл недоступен`}
+        {(reason && t(reason)) ||
+          t('{value0} - файл недоступен', {value0: alt || t('Файл')})}
         <button
           type="button"
           onClick={retry}
           className="ml-2 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-primary hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
         >
           <RefreshCw aria-hidden="true" className="size-4" />
-          Повторить загрузку
+          {t('Повторить загрузку')}
         </button>
       </span>
     );
-  if (!asset || asset.id !== id) return <Spinner label="Загружаем файл…" />;
+  if (!asset || asset.id !== id)
+    return <Spinner label={t('Загружаем файл…')} />;
   // Scale both sides together so rounded corners touch the actual picture
   const width = Math.min(
     displayWidth ?? asset.width,
@@ -168,10 +171,10 @@ export function Media({
           preload="metadata"
           width={asset.width}
           height={asset.height}
-          aria-label={alt || 'Видео'}
+          aria-label={alt || t('Видео')}
           src={attempt ? `${path}?retry=${attempt}` : path}
         >
-          Ваш браузер не поддерживает это видео
+          {t('Ваш браузер не поддерживает это видео')}
         </video>
       ) : (
         // Private images use the viewer cookie and cannot go through a public optimizer
@@ -179,7 +182,7 @@ export function Media({
         <img
           className="block h-auto w-full"
           src={path}
-          alt={alt || 'Изображение'}
+          alt={alt || t('Изображение')}
           width={asset.width}
           height={asset.height}
           loading="lazy"

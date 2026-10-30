@@ -1,3 +1,4 @@
+import {translate, type Locale} from '../i18n/translate';
 import ExcelJS from 'exceljs';
 import type {RoomReport} from '../room-report';
 import {markdownSummary} from '../markdown';
@@ -9,7 +10,12 @@ const kinds: Record<string, string> = {
 };
 
 // Build a workbook only from an already filtered server snapshot
-export async function resultsWorkbook(report: RoomReport, admin: boolean) {
+export async function resultsWorkbook(
+  report: RoomReport,
+  admin: boolean,
+  locale: Locale = 'ru',
+) {
+  const t = (message: string) => translate(locale, message);
   const book = new ExcelJS.Workbook();
   book.creator = 'Vote Machine';
   book.created = new Date();
@@ -21,7 +27,7 @@ export async function resultsWorkbook(report: RoomReport, admin: boolean) {
         .replace(/[\\/*?:\[\]\x00-\x1f]/g, ' ')
         .replace(/^'+|'+$/g, '')
         .trim()
-        .slice(0, 28) || 'Вопрос';
+        .slice(0, 28) || t('Вопрос');
     let name = base;
     let suffix = 1;
     while (names.has(name.toLowerCase()))
@@ -66,35 +72,37 @@ export async function resultsWorkbook(report: RoomReport, admin: boolean) {
     });
     return page;
   }
-  sheet('Сводка', [
-    ['Комната', report.roomName],
-    ['Участников', report.participants],
-    ['Ответов', report.answers],
+  sheet(t('Сводка'), [
+    [t('Комната'), report.roomName],
+    [t('Участников'), report.participants],
+    [t('Ответов'), report.answers],
     [
-      'Длинный текст продолжается на следующих строках с тем же ID или названием',
+      t(
+        'Длинный текст продолжается на следующих строках с тем же ID или названием',
+      ),
     ],
-    ['Вопрос', 'Ответы'],
+    [t('Вопрос'), t('Ответы')],
     ...report.questions.map((q) => [markdownSummary(q.content), q.answers]),
-    ['Источник', 'Ответы'],
-    ...report.sources.map((source) => [kinds[source.kind], source.answers]),
+    [t('Источник'), t('Ответы')],
+    ...report.sources.map((source) => [t(kinds[source.kind]), source.answers]),
     ...(admin
       ? [
-          ['Ссылка', 'Режим', 'Участники', 'Ответы'],
+          [t('Ссылка'), t('Режим'), t('Участники'), t('Ответы')],
           ...report.links.map((link) => [
             link.name,
-            link.mode === 'personal' ? 'Персональная' : 'Многоразовая',
+            link.mode === 'personal' ? t('Персональная') : t('Многоразовая'),
             link.participants,
             link.answers,
           ]),
-          ['Разбивка по ссылкам исключает анонимные вопросы'],
+          [t('Разбивка по ссылкам исключает анонимные вопросы')],
         ]
       : []),
   ]);
   report.sheets.forEach((q, index) => {
     sheet(`${index + 1} ${markdownSummary(q.content)}`, [
-      ['Вопрос', q.content],
-      ['Ответы', q.total],
-      ['Вариант', 'Голоса', 'Процент'],
+      [t('Вопрос'), q.content],
+      [t('Ответы'), q.total],
+      [t('Вариант'), t('Голоса'), t('Процент')],
       ...q.options.map((option) => [
         option.content,
         option.count,
@@ -104,17 +112,17 @@ export async function resultsWorkbook(report: RoomReport, admin: boolean) {
   });
   if (admin) {
     const questions = report.sheets.filter((q) => !q.anonymous);
-    sheet('По участникам', [
+    sheet(t('По участникам'), [
       [
-        'Участник / прохождение',
-        'Имя ссылки',
-        'Режим',
+        t('Участник / прохождение'),
+        t('Имя ссылки'),
+        t('Режим'),
         ...questions.map((q) => markdownSummary(q.content)),
       ],
       ...report.people.map((person) => [
         person.id,
         person.name ?? '',
-        kinds[person.kind],
+        t(kinds[person.kind]),
         ...questions.map((q) => {
           const answer = person.answers.find(
             (item) => item.questionId === q.id,
@@ -122,7 +130,7 @@ export async function resultsWorkbook(report: RoomReport, admin: boolean) {
           return answer
             ? answer.choices.length
               ? answer.choices.join('\n')
-              : 'Ответ без выбора вариантов'
+              : t('Ответ без выбора вариантов')
             : '';
         }),
       ]),

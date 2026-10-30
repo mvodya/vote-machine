@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from '../language-provider';
 import {useState} from 'react';
 import {
   CalendarDays,
@@ -11,7 +12,6 @@ import {TextField} from './text-field';
 import {SelectField} from './select-field';
 import {Button} from './button';
 import {Popover} from './popover';
-
 // Use the same calendar and time controls in Safari and Chrome
 export function TemporalField({
   id,
@@ -31,6 +31,7 @@ export function TemporalField({
   onChange: (value: string) => void;
   disabled?: boolean;
 }) {
+  const {t, localeTag} = useI18n();
   const [month, setMonth] = useState(() =>
     (kind === 'date'
       ? /^\d{4}-(0[1-9]|1[0-2])/.test(value)
@@ -59,7 +60,7 @@ export function TemporalField({
       type="text"
       value={value}
       disabled={disabled}
-      placeholder={kind === 'date' ? 'ГГГГ-ММ-ДД' : 'ЧЧ:ММ:СС'}
+      placeholder={kind === 'date' ? t('ГГГГ-ММ-ДД') : t('ЧЧ:ММ:СС')}
       className="pr-24 tabular-nums"
       autoComplete="off"
       pattern={
@@ -75,13 +76,13 @@ export function TemporalField({
             disabled={disabled}
             aria-label={
               kind === 'date'
-                ? `Установить текущую дату: ${label}`
-                : `Установить текущее время: ${label}`
+                ? t('Установить текущую дату: {value0}', {value0: label})
+                : t('Установить текущее время: {value0}', {value0: label})
             }
             title={
               kind === 'date'
-                ? 'Установить текущую дату'
-                : 'Установить текущее время'
+                ? t('Установить текущую дату')
+                : t('Установить текущее время')
             }
             onClick={() => onChange(now())}
           >
@@ -89,7 +90,9 @@ export function TemporalField({
           </Button>
           {!disabled && (
             <Popover
-              label={`Выбрать: ${label}`}
+              label={t('Выбрать: {value0}', {
+                value0: label,
+              })}
               className="size-10 text-muted hover:bg-accent"
               trigger={
                 kind === 'date' ? (
@@ -104,13 +107,13 @@ export function TemporalField({
                   <div className="mb-3 flex items-center justify-between">
                     <Button
                       variant="ghost"
-                      aria-label="Предыдущий месяц"
+                      aria-label={t('Предыдущий месяц')}
                       onClick={() => move(-1)}
                     >
                       <ChevronLeft />
                     </Button>
                     <span className="font-medium">
-                      {new Intl.DateTimeFormat('ru-RU', {
+                      {new Intl.DateTimeFormat(localeTag, {
                         month: 'long',
                         timeZone: 'UTC',
                       }).format(first)}{' '}
@@ -118,14 +121,22 @@ export function TemporalField({
                     </span>
                     <Button
                       variant="ghost"
-                      aria-label="Следующий месяц"
+                      aria-label={t('Следующий месяц')}
                       onClick={() => move(1)}
                     >
                       <ChevronRight />
                     </Button>
                   </div>
                   <div className="grid grid-cols-7 gap-1 text-center">
-                    {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => (
+                    {[
+                      t('Пн'),
+                      t('Вт'),
+                      t('Ср'),
+                      t('Чт'),
+                      t('Пт'),
+                      t('Сб'),
+                      t('Вс'),
+                    ].map((day) => (
                       <span key={day} className="py-1 text-muted">
                         {day}
                       </span>
@@ -152,7 +163,7 @@ export function TemporalField({
                 </>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {['Часы', 'Минуты', 'Секунды'].map((part, index) => (
+                  {[t('Часы'), t('Минуты'), t('Секунды')].map((part, index) => (
                     <SelectField
                       key={part}
                       id={`${id}-${index}`}

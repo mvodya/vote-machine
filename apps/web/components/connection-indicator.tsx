@@ -1,4 +1,5 @@
 'use client';
+import {useI18n} from './language-provider';
 import {useEffect, useState, useSyncExternalStore} from 'react';
 import {usePathname} from 'next/navigation';
 import {
@@ -19,7 +20,6 @@ import {
   subscribeConnection,
 } from '../lib/connection-state';
 import {Popover} from './ui/popover';
-
 interface Probe {
   // Safe API labels and the local time when the reply arrived
   apiId: string;
@@ -31,6 +31,7 @@ interface Probe {
 }
 // Inspect the existing SSE streams and a small end-to-end health probe
 export function ConnectionIndicator() {
+  const {t, localeTag} = useI18n();
   const pathname = usePathname();
   const streams = useSyncExternalStore(
     subscribeConnection,
@@ -95,7 +96,11 @@ export function ConnectionIndicator() {
     // Media failures keep only codes, never URLs or room content
     function media(event: Event) {
       const data = (
-        event as CustomEvent<{status: number; code?: number; at: number}>
+        event as CustomEvent<{
+          status: number;
+          code?: number;
+          at: number;
+        }>
       ).detail;
       if (Number.isInteger(data?.status) && Number.isFinite(data?.at))
         setMediaFailure((old) => ({...data, count: (old?.count ?? 0) + 1}));
@@ -132,19 +137,19 @@ export function ConnectionIndicator() {
   );
   const status =
     last === null || lost
-      ? 'Нет связи'
+      ? t('Нет связи')
       : last === undefined || stale || last > 800 || spread > 500
-        ? 'Нестабильное'
-        : 'Стабильное';
+        ? t('Нестабильное')
+        : t('Стабильное');
   const colors =
-    status === 'Нет связи'
+    status === t('Нет связи')
       ? 'from-red-300 to-red-600 shadow-red-500/50'
-      : status === 'Нестабильное'
+      : status === t('Нестабильное')
         ? 'from-yellow-200 to-amber-500 shadow-amber-400/50'
         : 'from-emerald-200 to-emerald-600 shadow-emerald-500/50';
   return (
     <Popover
-      label="Подключение"
+      label={t('Подключение')}
       className="size-10"
       trigger={
         <span
@@ -153,23 +158,32 @@ export function ConnectionIndicator() {
         />
       }
     >
-      <h2 className="mb-3 text-sm font-semibold">Подключение</h2>
+      <h2 className="mb-3 text-sm font-semibold">{t('Подключение')}</h2>
       <dl className="space-y-3 break-words">
-        <Detail icon={Activity} label="Состояние">
+        <Detail icon={Activity} label={t('Состояние')}>
           {status}
         </Detail>
-        <Detail icon={Gauge} label="Задержка">
-          {probe ? `${probe.ping} мс` : 'Проверяем…'}
+        <Detail icon={Gauge} label={t('Задержка')}>
+          {probe ? t('{value0} мс', {value0: probe.ping}) : t('Проверяем…')}
         </Detail>
         <div>
           <dt className="mb-2 flex items-center gap-2 text-muted">
             <History aria-hidden="true" className="size-4 shrink-0" />
-            Последние задержки
+            {t('Последние задержки')}
           </dt>
           <dd>
             <div
               role="img"
-              aria-label={`Последние задержки: ${samples.map((value) => (value === null ? 'нет связи' : `${value} мс`)).join(', ') || 'проверяем'}`}
+              aria-label={t('Последние задержки: {value0}', {
+                value0:
+                  samples
+                    .map((value) =>
+                      value === null
+                        ? t('нет связи')
+                        : t('{value0} мс', {value0: value}),
+                    )
+                    .join(', ') || t('проверяем'),
+              })}
               className="flex h-20 items-end gap-1 rounded-lg border border-border bg-page/50 p-2"
             >
               {Array.from({length: 20}, (_, index) => {
@@ -179,10 +193,10 @@ export function ConnectionIndicator() {
                     key={index}
                     title={
                       value === undefined
-                        ? 'Нет данных'
+                        ? t('Нет данных')
                         : value === null
-                          ? 'Нет связи'
-                          : `${value} мс`
+                          ? t('Нет связи')
+                          : t('{value0} мс', {value0: value})
                     }
                     className={`min-w-0 flex-1 rounded-t-sm ${value === null ? 'bg-error-ink' : value === undefined ? 'bg-border/40' : 'bg-primary/70'}`}
                     style={{
@@ -197,52 +211,70 @@ export function ConnectionIndicator() {
             </div>
           </dd>
         </div>
-        <Detail icon={Activity} label="Разброс задержки">
-          {spread} мс
+        <Detail icon={Activity} label={t('Разброс задержки')}>
+          {spread}
+          {t('мс')}
         </Detail>
-        <Detail icon={Clock} label="Время сервера, UTC">
+        <Detail icon={Clock} label={t('Время сервера, UTC')}>
           {probe
             ? new Date(
                 probe.serverTime + Math.max(0, clock - probe.received),
               ).toISOString()
-            : 'Нет данных'}
+            : t('Нет данных')}
         </Detail>
-        <Detail icon={Fingerprint} label="ID сессии">
+        <Detail icon={Fingerprint} label={t('ID сессии')}>
           <span className="font-mono">
-            {probe?.clientId || client || 'Проверяем…'}
+            {probe?.clientId || client || t('Проверяем…')}
           </span>
         </Detail>
         {mediaFailure && (
-          <Detail icon={TriangleAlert} label="Последняя ошибка медиа / всего">
-            HTTP {mediaFailure.status || 'Нет ответа'}
-            {mediaFailure.code ? `, плеер ${mediaFailure.code}` : ''} /{' '}
-            {mediaFailure.count}
+          <Detail
+            icon={TriangleAlert}
+            label={t('Последняя ошибка медиа / всего')}
+          >
+            HTTP {mediaFailure.status || t('Нет ответа')}
+            {mediaFailure.code
+              ? t(', плеер {value0}', {
+                  value0: mediaFailure.code,
+                })
+              : ''}{' '}
+            / {mediaFailure.count}
             <br />
-            {new Date(mediaFailure.at).toLocaleTimeString('ru-RU')}
+            {new Date(mediaFailure.at).toLocaleTimeString(localeTag)}
           </Detail>
         )}
         {streams.map((stream, index) => (
           <div key={index} className="space-y-2 border-t border-border pt-3">
-            <Detail icon={Radio} label={`Поток ${index + 1}`}>
+            <Detail
+              icon={Radio}
+              label={t('Поток {value0}', {
+                value0: index + 1,
+              })}
+            >
               {stream.status === 'connected'
-                ? 'Подключен'
+                ? t('Подключен')
                 : stream.status === 'connecting'
-                  ? 'Подключаем…'
-                  : 'Отключен'}
+                  ? t('Подключаем…')
+                  : t('Отключен')}
             </Detail>
-            <Detail icon={Server} label="API / коммит">
+            <Detail icon={Server} label={t('API / коммит')}>
               <span className="font-mono">
-                {stream.apiId || 'API не определен'} /{' '}
-                {stream.commit || 'Нет коммита'}
+                {stream.apiId || t('API не определен')} /{' '}
+                {stream.commit || t('Нет коммита')}
               </span>
             </Detail>
-            <Detail icon={RefreshCw} label="Переподключений">
+            <Detail icon={RefreshCw} label={t('Переподключений')}>
               {stream.reconnects}
             </Detail>
-            <Detail icon={Clock} label="Последнее событие">
+            <Detail icon={Clock} label={t('Последнее событие')}>
               {stream.lastEvent
-                ? `${Math.max(0, Math.round((clock - stream.lastEvent) / 1000))} с назад`
-                : 'Ожидаем'}
+                ? t('{value0} с назад', {
+                    value0: Math.max(
+                      0,
+                      Math.round((clock - stream.lastEvent) / 1000),
+                    ),
+                  })
+                : t('Ожидаем')}
             </Detail>
           </div>
         ))}
@@ -250,7 +282,6 @@ export function ConnectionIndicator() {
     </Popover>
   );
 }
-
 // Align small labels and keep their icons the same size
 function Detail({
   icon: Icon,

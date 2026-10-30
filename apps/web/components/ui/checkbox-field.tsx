@@ -1,7 +1,8 @@
+'use client';
+import {useI18n} from '../language-provider';
 import type {ComponentProps} from 'react';
 import {SelectionInput} from './selection-input';
 import {fieldDescription, type FieldProps} from './field';
-
 // Keep a checkbox next to its label and help text
 export function CheckboxField({
   id,
@@ -12,6 +13,7 @@ export function CheckboxField({
   'aria-describedby': describedBy,
   ...props
 }: Omit<ComponentProps<'input'>, 'type'> & FieldProps) {
+  const {t} = useI18n();
   return (
     <div className={className}>
       <label
@@ -39,7 +41,7 @@ export function CheckboxField({
           role="alert"
           className="mt-1 pl-7 text-sm text-error-ink"
         >
-          {error}
+          {t(error)}
         </p>
       )}
     </div>

@@ -1,5 +1,5 @@
 'use client';
-
+import {useI18n} from '../../../components/language-provider';
 import {LinkQrDialog} from '../../../components/link-qr-dialog';
 import {CheckboxField} from '../../../components/ui/checkbox-field';
 import {Loading} from '../../../components/ui/loading';
@@ -37,14 +37,12 @@ import {
   type ExportLink,
 } from '../../../lib/voting-links';
 import {secretPattern} from '../../../lib/rooms';
-
 type Confirmation = {
   // Link chosen by the admin
   link: VotingLink;
   // Action shown in the dialog
   action: 'revoke' | 'rotate';
 };
-
 // Manage links without loading any voting data
 export function Respondents({
   roomId,
@@ -55,9 +53,19 @@ export function Respondents({
   // Leave the panel when access is lost
   onDenied: () => void;
 }) {
+  const {t, locale} = useI18n();
   // Links on the current page
   const [online, setOnline] = useState<
-    Record<string, {online: number; questions: {id: string; preview: string}[]}>
+    Record<
+      string,
+      {
+        online: number;
+        questions: {
+          id: string;
+          preview: string;
+        }[];
+      }
+    >
   >({});
   const [qr, setQr] = useState<VotingLink | null>(null);
   const [editHistory, setEditHistory] = useState(false);
@@ -101,14 +109,12 @@ export function Respondents({
   const cursor = cursors[cursors.length - 1];
   const live = useLive(`/api/rooms/${roomId}/events`, onDenied);
   const base = `/api/rooms/${roomId}/links`;
-
   useEffect(() => {
     const controller = new AbortController();
     // Cancel old page requests when the panel or cursor changes
     async function load() {
       await Promise.resolve();
       if (controller.signal.aborted) return;
-
       setFailed(false);
       try {
         const response = await fetch(`${base}?after=${cursor}`, {
@@ -144,7 +150,6 @@ export function Respondents({
     void load();
     return () => controller.abort();
   }, [base, cursor, attempt, onDenied, live.version]);
-
   useEffect(() => {
     if (!links.length) return;
     const controller = new AbortController();
@@ -166,7 +171,10 @@ export function Respondents({
                 (item: {
                   id: string;
                   online: number;
-                  questions: {id: string; preview: string}[];
+                  questions: {
+                    id: string;
+                    preview: string;
+                  }[];
                 }) => [item.id, item],
               ),
             ),
@@ -180,7 +188,6 @@ export function Respondents({
   function reload() {
     setAttempt((value) => value + 1);
   }
-
   // Keep all writes on the same checked path
   async function write(path: string, method: string, body: unknown) {
     const response = await fetch(path, {
@@ -195,7 +202,6 @@ export function Respondents({
     }
     if (!response.ok) throw new Error('Write failed');
   }
-
   // Send the whole batch so one bad name cannot save half of it
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -217,8 +223,10 @@ export function Respondents({
     const values = batch
       ? entered.length
         ? entered
-        : Array.from({length: amount}, (_, index) => `Респондент ${index + 1}`)
-      : [name.trim() || 'Респондент'];
+        : Array.from({length: amount}, (_, index) =>
+            t('Респондент {value0}', {value0: index + 1}),
+          )
+      : [name.trim() || t('Респондент')];
     if (
       values.length > 100 ||
       values.some((value) => [...value].length > 200 || value.includes('\0'))
@@ -249,7 +257,6 @@ export function Respondents({
       setBusy(false);
     }
   }
-
   // Save a label without changing the link or its mode
   async function rename(event: FormEvent<HTMLFormElement>, link: VotingLink) {
     event.preventDefault();
@@ -260,7 +267,7 @@ export function Respondents({
     try {
       await write(`${base}/${link.id}`, 'PATCH', {
         action: 'rename',
-        name: editName.trim() || 'Респондент',
+        name: editName.trim() || t('Респондент'),
         ...(link.mode === 'reusable' ? {allowRunHistory: editHistory} : {}),
       });
       setEditing(null);
@@ -271,7 +278,6 @@ export function Respondents({
       setBusy(false);
     }
   }
-
   // Apply only the action confirmed in the open dialog
   async function confirm() {
     if (!confirmation || busy) return;
@@ -295,7 +301,6 @@ export function Respondents({
       setBusy(false);
     }
   }
-
   // Let the user copy by hand if clipboard access is blocked
   async function copyText(value: string) {
     try {
@@ -307,7 +312,6 @@ export function Respondents({
       setNotice('Выделите текст и скопируйте вручную');
     }
   }
-
   // Read the current key only when the admin asks for it
   async function copyLink(link: VotingLink) {
     // Do not send the same action twice
@@ -333,7 +337,6 @@ export function Respondents({
       setBusy(false);
     }
   }
-
   // Read every page only for an explicit copy or export request
   async function exportLinks(csv: boolean) {
     // Do not send the same action twice
@@ -379,7 +382,7 @@ export function Respondents({
       } while (true);
       if (csv) {
         const url = URL.createObjectURL(
-          new Blob([linksCsv(all, window.location.origin)], {
+          new Blob([linksCsv(all, window.location.origin, locale)], {
             type: 'text/csv;charset=utf-8',
           }),
         );
@@ -398,10 +401,9 @@ export function Respondents({
       setBusy(false);
     }
   }
-
   return (
     <Panel>
-      <SectionHeader title="Респонденты">
+      <SectionHeader title={t('Респонденты')}>
         <Button
           disabled={busy}
           onClick={() => {
@@ -410,44 +412,44 @@ export function Respondents({
           }}
           startIcon={<Plus />}
         >
-          Добавить респондентов
+          {t('Добавить респондентов')}
         </Button>
       </SectionHeader>
       {adding && (
         <div className="mt-5 mb-6 rounded-xl border border-border bg-page p-4 sm:p-5">
           <div
             className="mb-5 flex rounded-xl bg-ink/5 p-1"
-            aria-label="Способ добавления"
+            aria-label={t('Способ добавления')}
           >
             <Button
               variant="switch"
               aria-pressed={!batch}
               onClick={() => setBatch(false)}
             >
-              Один
+              {t('Один')}
             </Button>
             <Button
               variant="switch"
               aria-pressed={batch}
               onClick={() => setBatch(true)}
             >
-              Списком
+              {t('Списком')}
             </Button>
           </div>
           <Form onSubmit={(event) => void create(event)}>
             <SelectField
               id="link-mode"
-              label="Режим ссылки"
+              label={t('Режим ссылки')}
               value={mode}
               onChange={(event) => setMode(event.target.value as LinkMode)}
             >
-              <option value="personal">Персональная</option>
-              <option value="reusable">Многоразовая</option>
+              <option value="personal">{t('Персональная')}</option>
+              <option value="reusable">{t('Многоразовая')}</option>
             </SelectField>
             {mode === 'reusable' && (
               <CheckboxField
                 id="new-link-history"
-                label="Разрешить просмотр прошлых прохождений"
+                label={t('Разрешить просмотр прошлых прохождений')}
                 checked={allowRunHistory}
                 onChange={(event) => setAllowRunHistory(event.target.checked)}
               />
@@ -456,14 +458,16 @@ export function Respondents({
               <>
                 <TextareaField
                   id="link-names"
-                  label="Имена, по одному на строку"
-                  hint="Если имена не указаны, будут созданы нумерованные респонденты"
+                  label={t('Имена, по одному на строку')}
+                  hint={t(
+                    'Если имена не указаны, будут созданы нумерованные респонденты',
+                  )}
                   value={names}
                   onChange={(event) => setNames(event.target.value)}
                 />
                 <TextField
                   id="link-count"
-                  label="Количество без списка имен"
+                  label={t('Количество без списка имен')}
                   type="number"
                   min={1}
                   max={100}
@@ -475,8 +479,8 @@ export function Respondents({
             ) : (
               <TextField
                 id="link-name"
-                label="Имя респондента"
-                hint="Можно оставить пустым"
+                label={t('Имя респондента')}
+                hint={t('Можно оставить пустым')}
                 maxLength={200}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -484,14 +488,14 @@ export function Respondents({
             )}
             <div className="flex flex-wrap gap-3">
               <Button type="submit" disabled={busy}>
-                {busy ? 'Создаем…' : 'Создать ссылки'}
+                {busy ? t('Создаем…') : t('Создать ссылки')}
               </Button>
               <Button
                 variant="secondary"
                 disabled={busy}
                 onClick={() => setAdding(false)}
               >
-                Отмена
+                {t('Отмена')}
               </Button>
             </div>
           </Form>
@@ -504,7 +508,7 @@ export function Respondents({
           startIcon={<Copy />}
           onClick={() => void exportLinks(false)}
         >
-          Скопировать список
+          {t('Скопировать список')}
         </Button>
         <Button
           variant="secondary"
@@ -512,23 +516,23 @@ export function Respondents({
           startIcon={<Download />}
           onClick={() => void exportLinks(true)}
         >
-          Скачать CSV
+          {t('Скачать CSV')}
         </Button>
       </div>
       {loading ? (
-        <Loading label="Загружаем респондентов…" />
+        <Loading label={t('Загружаем респондентов…')} />
       ) : failed ? (
         <div role="alert" className="py-8">
-          <p>Не удалось загрузить список</p>
+          <p>{t('Не удалось загрузить список')}</p>
           <Button className="mt-3" onClick={reload}>
-            Попробовать снова
+            {t('Попробовать снова')}
           </Button>
         </div>
       ) : links.length === 0 ? (
         <EmptyState
           icon={<Users size={32} />}
-          title="Респондентов пока нет"
-          description="Добавьте респондентов для получения ссылок"
+          title={t('Респондентов пока нет')}
+          description={t('Добавьте респондентов для получения ссылок')}
         />
       ) : (
         <ul className="divide-y divide-border">
@@ -542,7 +546,7 @@ export function Respondents({
                 <Form onSubmit={(event) => void rename(event, link)}>
                   <TextField
                     id={`name-${link.id}`}
-                    label="Имя респондента"
+                    label={t('Имя респондента')}
                     maxLength={200}
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
@@ -550,7 +554,7 @@ export function Respondents({
                   {link.mode === 'reusable' && (
                     <CheckboxField
                       id={`history-${link.id}`}
-                      label="Разрешить просмотр прошлых прохождений"
+                      label={t('Разрешить просмотр прошлых прохождений')}
                       checked={editHistory}
                       disabled={busy}
                       onChange={(event) => setEditHistory(event.target.checked)}
@@ -558,14 +562,14 @@ export function Respondents({
                   )}
                   <div className="flex gap-2">
                     <Button type="submit" disabled={busy}>
-                      Сохранить
+                      {t('Сохранить')}
                     </Button>
                     <Button
                       variant="secondary"
                       disabled={busy}
                       onClick={() => setEditing(null)}
                     >
-                      Отмена
+                      {t('Отмена')}
                     </Button>
                   </div>
                 </Form>
@@ -576,15 +580,15 @@ export function Respondents({
                     <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted">
                       <span>
                         {link.mode === 'personal'
-                          ? 'Персональная'
-                          : 'Многоразовая'}
+                          ? t('Персональная')
+                          : t('Многоразовая')}
                       </span>
                       <span
                         className={
                           link.revoked ? 'text-error-ink' : 'text-success-ink'
                         }
                       >
-                        {link.revoked ? 'Отозвана' : 'Действует'}
+                        {link.revoked ? t('Отозвана') : t('Действует')}
                       </span>
                     </div>
                     {online[link.id] && (
@@ -592,19 +596,24 @@ export function Respondents({
                         <p className="flex flex-wrap gap-x-3 gap-y-1">
                           <span>
                             {link.mode === 'reusable'
-                              ? `Сейчас онлайн: ${online[link.id].online}`
+                              ? t('Сейчас онлайн: {value0}', {
+                                  value0: online[link.id].online,
+                                })
                               : online[link.id].online
-                                ? 'Онлайн'
-                                : 'Не в сети'}
+                                ? t('Онлайн')
+                                : t('Не в сети')}
                           </span>
                           {link.mode === 'reusable' && (
-                            <span>Заходов: {link.sessionCount ?? '0'}</span>
+                            <span>
+                              {t('Заходов: ')}
+                              {link.sessionCount ?? '0'}
+                            </span>
                           )}
                         </p>
                         {online[link.id].questions.map((question) => (
                           <p key={question.id}>
-                            Смотрит:{' '}
-                            {markdownSummary(question.preview) || 'Вопрос'}
+                            {t('Смотрит:')}{' '}
+                            {markdownSummary(question.preview) || t('Вопрос')}
                           </p>
                         ))}
                       </div>
@@ -618,13 +627,15 @@ export function Respondents({
                         startIcon={<Copy />}
                         onClick={() => void copyLink(link)}
                       >
-                        Скопировать ссылку
+                        {t('Скопировать ссылку')}
                       </Button>
                     )}
                     <Button
                       variant="ghost"
-                      title="Изменить имя"
-                      aria-label={`Изменить имя: ${link.name}`}
+                      title={t('Изменить имя')}
+                      aria-label={t('Изменить имя: {value0}', {
+                        value0: link.name,
+                      })}
                       disabled={busy}
                       startIcon={<Pencil />}
                       onClick={() => {
@@ -648,8 +659,10 @@ export function Respondents({
                     )}
                     <Button
                       variant="ghost"
-                      title="Перевыпустить ссылку"
-                      aria-label={`Перевыпустить ссылку: ${link.name}`}
+                      title={t('Перевыпустить ссылку')}
+                      aria-label={t('Перевыпустить ссылку: {value0}', {
+                        value0: link.name,
+                      })}
                       disabled={busy}
                       startIcon={<RefreshCw />}
                       onClick={() => {
@@ -660,8 +673,10 @@ export function Respondents({
                     {!link.revoked && (
                       <Button
                         variant="ghost"
-                        title="Отозвать ссылку"
-                        aria-label={`Отозвать ссылку: ${link.name}`}
+                        title={t('Отозвать ссылку')}
+                        aria-label={t('Отозвать ссылку: {value0}', {
+                          value0: link.name,
+                        })}
                         disabled={busy}
                         startIcon={<Ban />}
                         onClick={() => {
@@ -679,7 +694,7 @@ export function Respondents({
       )}
       {!loading && !failed && (
         <Pagination
-          label="Страницы респондентов"
+          label={t('Страницы респондентов')}
           page={cursors.length}
           hasNext={Boolean(next)}
           busy={busy}
@@ -696,13 +711,13 @@ export function Respondents({
         />
       )}
       <p role="status" className="mt-4 text-sm text-muted">
-        {notice}
+        {t(notice)}
       </p>
       {manualCopy && (
         <TextareaField
           id="copy-links"
           className="mt-4 font-mono text-xs"
-          label="Текст для копирования"
+          label={t('Текст для копирования')}
           value={manualCopy}
           readOnly
           onFocus={(event) => event.target.select()}
@@ -720,19 +735,23 @@ export function Respondents({
         <ConfirmDialog
           title={
             confirmation.action === 'revoke'
-              ? 'Отозвать ссылку?'
-              : 'Перевыпустить ссылку?'
+              ? t('Отозвать ссылку?')
+              : t('Перевыпустить ссылку?')
           }
           description={
             confirmation.action === 'revoke'
-              ? 'Ссылка и открытые по ней сессии перестанут работать'
-              : 'Старая ссылка и ее сессии перестанут работать, имя и использованное право голоса сохранятся'
+              ? t('Ссылка и открытые по ней сессии перестанут работать')
+              : t(
+                  'Старая ссылка и ее сессии перестанут работать, имя и использованное право голоса сохранятся',
+                )
           }
           confirmLabel={
-            confirmation.action === 'revoke' ? 'Отозвать' : 'Перевыпустить'
+            confirmation.action === 'revoke'
+              ? t('Отозвать')
+              : t('Перевыпустить')
           }
           busy={busy}
-          error={notice}
+          error={t(notice)}
           onConfirm={() => void confirm()}
           onClose={() => setConfirmation(null)}
         />

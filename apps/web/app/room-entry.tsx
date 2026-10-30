@@ -1,5 +1,5 @@
 'use client';
-
+import {useI18n} from '../components/language-provider';
 import {useEffect, useState, type FormEvent} from 'react';
 import {useRouter} from 'next/navigation';
 import CreateRoom from './create-room';
@@ -11,9 +11,9 @@ import motion from '../components/ui/motion.module.css';
 import {Button} from '../components/ui/button';
 import {TextField} from '../components/ui/text-field';
 import {Form} from '../components/ui/form';
-
 // Show recent rooms or the link entry form
 export default function RoomEntry() {
+  const {t} = useI18n();
   const router = useRouter();
   // Create mode or room entry mode
   const [mode, setMode] = useState<'create' | 'join'>('create');
@@ -22,7 +22,12 @@ export default function RoomEntry() {
   // Whether the typed link is invalid
   const [invalid, setInvalid] = useState(false);
   // Cached names from saved browser entries
-  const [rooms, setRooms] = useState<{id: string; name: string}[]>([]);
+  const [rooms, setRooms] = useState<
+    {
+      id: string;
+      name: string;
+    }[]
+  >([]);
   // Show link entry instead of saved rooms
   const [byLink, setByLink] = useState(false);
   // Error while reading or removing an entry
@@ -52,7 +57,6 @@ export default function RoomEntry() {
     void load();
     return () => controller.abort();
   }, [mode]);
-
   // Remove a browser entry without deleting its room
   async function remove(id: string) {
     try {
@@ -65,7 +69,6 @@ export default function RoomEntry() {
       setListError(true);
     }
   }
-
   // Open a checked link, including non-admin links
   function join(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,16 +81,23 @@ export default function RoomEntry() {
     setInvalid(false);
     router.push(destination);
   }
-
   return (
     <div className="mx-auto my-auto w-full max-w-105 py-12 lg:py-8">
       <SegmentedControl
-        label="Действие с комнатой"
+        label={t('Действие с комнатой')}
         value={mode}
         className="rounded-2xl border border-border/70 p-1.5"
         items={[
-          {id: 'create', label: 'Создать', icon: <Plus />},
-          {id: 'join', label: 'Войти', icon: <LogIn />},
+          {
+            id: 'create',
+            label: t('Создать'),
+            icon: <Plus />,
+          },
+          {
+            id: 'join',
+            label: t('Войти'),
+            icon: <LogIn />,
+          },
         ]}
         onChange={(next) => {
           setMode(next as 'create' | 'join');
@@ -96,14 +106,14 @@ export default function RoomEntry() {
       />
       <div key={mode} className={`${motion.content} pt-8`}>
         <h1 className="text-3xl font-semibold tracking-tight">
-          {mode === 'create' ? 'Новая комната' : 'Вход в комнату'}
+          {mode === 'create' ? t('Новая комната') : t('Вход в комнату')}
         </h1>
         <p className="mt-3 mb-7 text-sm leading-6 text-muted">
           {mode === 'create'
-            ? 'Создайте комнату для голосования'
+            ? t('Создайте комнату для голосования')
             : rooms.length && !byLink
-              ? 'Последние комнаты'
-              : 'Вставьте ссылку на комнату'}
+              ? t('Последние комнаты')
+              : t('Вставьте ссылку на комнату')}
         </p>
         {mode === 'create' ? (
           <CreateRoom />
@@ -125,7 +135,9 @@ export default function RoomEntry() {
                   </Link>
                   <Button
                     variant="ghost"
-                    aria-label={`Убрать комнату ${room.name} из списка`}
+                    aria-label={t('Убрать комнату {value0} из списка', {
+                      value0: room.name,
+                    })}
                     onClick={() => void remove(room.id)}
                   >
                     <Trash2 size={18} />
@@ -138,24 +150,24 @@ export default function RoomEntry() {
               className="mt-3 w-full text-xs underline underline-offset-4"
               onClick={() => setByLink(true)}
             >
-              Войти по ссылке
+              {t('Войти по ссылке')}
             </Button>
           </div>
         ) : (
           <Form onSubmit={join}>
             <TextField
               id="room-link"
-              label="Ссылка на комнату"
+              label={t('Ссылка на комнату')}
               value={link}
               required
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
               inputMode="url"
-              placeholder="Вставьте ссылку сюда"
+              placeholder={t('Вставьте ссылку сюда')}
               error={
                 invalid
-                  ? 'Вставьте корректную ссылку на комнату с этого сайта'
+                  ? t('Вставьте корректную ссылку на комнату с этого сайта')
                   : undefined
               }
               onChange={(event) => {
@@ -168,7 +180,7 @@ export default function RoomEntry() {
               fullWidth
               endIcon={<ArrowUpRight size={20} />}
             >
-              Войти в комнату
+              {t('Войти в комнату')}
             </Button>
             {rooms.length > 0 && (
               <Button
@@ -176,19 +188,19 @@ export default function RoomEntry() {
                 className="mt-3 w-full text-xs underline underline-offset-4"
                 onClick={() => setByLink(false)}
               >
-                Показать список ранее использованных комнат
+                {t('Показать список ранее использованных комнат')}
               </Button>
             )}
           </Form>
         )}
         {listError && (
           <p role="alert" className="mt-4 text-sm text-error-ink">
-            Не удалось обновить список комнат
+            {t('Не удалось обновить список комнат')}
           </p>
         )}
       </div>
       <p className="mt-7 text-center text-xs leading-5 text-muted">
-        Сохраните ссылку, чтобы вернуться в комнату
+        {t('Сохраните ссылку, чтобы вернуться в комнату')}
       </p>
     </div>
   );
