@@ -724,6 +724,14 @@ export function QuestionEditor({
                   }
                 />
                 <CheckboxField
+                  id={`${prefix}-hide-content`}
+                  label={t('Скрывать содержимое вопроса до открытия')}
+                  checked={value.hideUntilOpen ?? false}
+                  onChange={(event) =>
+                    field('hideUntilOpen', event.target.checked)
+                  }
+                />
+                <CheckboxField
                   id={`${prefix}-skip`}
                   label={t('Разрешить пропуск вопроса')}
                   checked={value.allowSkip ?? false}

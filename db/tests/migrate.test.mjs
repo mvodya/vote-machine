@@ -414,7 +414,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT pg_get_functiondef('vm_add_voting_links(uuid,bytea,jsonb)'::regprocedure) LIKE '%allowRunHistory%' AS name",
+          "SELECT column_default='true' AS name FROM information_schema.columns WHERE table_name='questions' AND column_name='hide_until_open'",
         )
       ).rows[0].name,
       false,
@@ -1086,6 +1086,7 @@ function questionDocument(extra = {}) {
     shareResults: false,
     publication: 'after_close',
     hideResultsUntilEnd: false,
+    hideUntilOpen: false,
     allowAnswerChange: false,
     anonymous: false,
     choices: [],
@@ -5714,7 +5715,7 @@ test('old reusable media and an answer waiting behind history disable follow the
 test('empty result choices survive upgrade, rollback, failed rollback and reapply', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 24});
     const f = await personalFixture(client, {
       choiceMode: 'multiple',
       minChoices: 0,
@@ -5738,7 +5739,7 @@ test('empty result choices survive upgrade, rollback, failed rollback and reappl
       runMigrations({databaseUrl, direction: 'down'}),
       /Missing empty result choices expression/,
     );
-    assert.equal(await migrationCount(client), total - 1);
+    assert.equal(await migrationCount(client), 24);
     assert.equal((await read()).total, 1);
     await client.query(definition);
     await runMigrations({databaseUrl, direction: 'down'});
@@ -5753,6 +5754,7 @@ test('empty result choices survive upgrade, rollback, failed rollback and reappl
 test('link creation saves history choices atomically and survives rollback and reapply', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
+    await runMigrations({databaseUrl, direction: 'down', count: total - 25});
     const admin = await adminRoom(client);
     const items = [
       {...linkItem('History', 'reusable'), allowRunHistory: true},
@@ -5790,7 +5792,7 @@ test('link creation saves history choices atomically and survives rollback and r
       runMigrations({databaseUrl, direction: 'down'}),
       /Missing link history insert/,
     );
-    assert.equal(await migrationCount(client), total);
+    assert.equal(await migrationCount(client), 25);
     await client.query(definition);
     await runMigrations({databaseUrl, direction: 'down'});
     assert.equal(
@@ -5817,6 +5819,174 @@ test('link creation saves history choices atomically and survives rollback and r
           {...linkItem('New', 'reusable'), allowRunHistory: true},
         ])
       )[0].allow_run_history,
+      true,
+    );
+  });
+});
+
+test('hidden scheduled content stays private until opening and rollback requires a choice', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {shareResults: true});
+    await cast(client, f, ballotInput(f.question));
+    await lifecycle(client, f.admin, f.question, 'close');
+    await client.query('UPDATE rooms SET show_all_results=true WHERE id=$1', [
+      f.admin.room.id,
+    ]);
+    const armed = await reviewSave(client, f, {
+      state: 'open',
+      startMode: 'duration',
+      startAfterSeconds: 600,
+      hideUntilOpen: true,
+    });
+    assert.equal(armed.status, 200);
+    assert.equal(armed.question.hideUntilOpen, true);
+    assert.equal(armed.question.state, 'scheduled');
+    const hidden = await journey(client, f, {selected: f.question.id});
+    assert.equal(hidden.current, null);
+    assert.deepEqual(hidden.questions, []);
+    assert.equal(hidden.upcoming.preview, '');
+    assert.ok(hidden.upcoming.scheduledAt);
+    const participantResults = await results(client, f, false);
+    assert.equal(participantResults.result.available, false);
+    const listed = (
+      await client.query("SELECT vm_results($1,$2,false,NULL,'{}') AS reply", [
+        f.link.id,
+        hash(f.session),
+      ])
+    ).rows[0].reply;
+    assert.deepEqual(listed.questions, []);
+    const report = (
+      await client.query(
+        'SELECT vm_room_report($1,$2,false,NULL,true) AS reply',
+        [f.link.id, hash(f.session)],
+      )
+    ).rows[0].reply;
+    assert.doesNotMatch(JSON.stringify(report), /Choose/);
+    assert.equal((await results(client, f, true)).result.available, true);
+    const before = await eventState(client, f, false);
+    assert.equal(
+      (await reviewSave(client, f, {hideUntilOpen: 'true'})).status,
+      400,
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down', count: total - 25}),
+      /Disable hidden question content/,
+    );
+    assert.equal(await migrationCount(client), total);
+    assert.equal((await journey(client, f)).upcoming.preview, '');
+    // Turning the setting off restores the old preview without opening
+    const visible = await reviewSave(client, f, {hideUntilOpen: false});
+    assert.equal(visible.status, 200);
+    assert.notEqual(
+      (await eventState(client, f, false)).version,
+      before.version,
+    );
+    assert.equal((await journey(client, f)).upcoming.preview, 'Choose');
+    await runMigrations({databaseUrl, direction: 'down', count: total - 25});
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await reviewSave(client, f, {hideUntilOpen: true})).status,
+      200,
+    );
+    // The scheduler reveals the saved content in the opening transaction
+    await client.query(
+      "UPDATE questions SET scheduled_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [f.question.id],
+    );
+    await client.query('SELECT vm_close_due()');
+    const revealed = await journey(client, f, {selected: f.question.id});
+    assert.equal(revealed.current.content, 'Choose');
+    assert.equal(revealed.current.choices.length, 2);
+    assert.equal(revealed.current.hideUntilOpen, true);
+  });
+});
+
+test('first scheduled opening hides text, choices and media while keeping the timer', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const asset = await readyAsset(client, admin);
+    const question = await readyQuestion(client, admin, {
+      content: `Secret ![Photo](asset:${asset.id})`,
+      hideUntilOpen: true,
+      assetRefs: [{position: -1, assetId: asset.id}],
+    });
+    const key = linkItem();
+    const [link] = await addLinks(client, admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const f = {admin, question, link, session};
+    const saved = await reviewSave(client, f, {
+      startMode: 'duration',
+      startAfterSeconds: 600,
+      assetRefs: [{position: -1, assetId: asset.id}],
+    });
+    assert.equal(saved.question.hideUntilOpen, true);
+    const armed = await lifecycle(client, admin, saved.question, 'open');
+    assert.equal(armed.question.state, 'scheduled');
+    const readAsset = async () =>
+      (
+        await client.query('SELECT vm_participant_asset($1,$2,$3) AS reply', [
+          link.id,
+          hash(session),
+          asset.id,
+        ])
+      ).rows[0].reply;
+    const hidden = await journey(client, f, {selected: question.id});
+    assert.equal(hidden.current, null);
+    assert.deepEqual(hidden.questions, []);
+    assert.equal(hidden.upcoming.preview, '');
+    assert.ok(hidden.upcoming.scheduledAt);
+    assert.doesNotMatch(JSON.stringify(hidden), /Secret|Photo|asset:/);
+    assert.equal((await readAsset()).status, 404);
+    assert.equal(
+      (await assetCall(client, admin, 'get', {}, asset.id)).status,
+      200,
+    );
+    await client.query(
+      "UPDATE questions SET scheduled_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [question.id],
+    );
+    await client.query('SELECT vm_close_due()');
+    assert.match((await journey(client, f)).current.content, /Secret/);
+    assert.equal((await readAsset()).status, 200);
+  });
+});
+
+test('hidden content default preserves saved choices through upgrade and rollback', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    await runMigrations({databaseUrl, direction: 'down'});
+    const admin = await adminRoom(client);
+    const old = await readyQuestion(client, admin, {hideUntilOpen: undefined});
+    assert.equal(old.hideUntilOpen, false);
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, old.id)).question
+        .hideUntilOpen,
+      false,
+    );
+    const fresh = await readyQuestion(client, admin, {
+      hideUntilOpen: undefined,
+    });
+    assert.equal(fresh.hideUntilOpen, true);
+    const explicit = await readyQuestion(client, admin, {hideUntilOpen: false});
+    assert.equal(explicit.hideUntilOpen, false);
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal(
+      (await questionCall(client, admin, 'get', {}, fresh.id)).question
+        .hideUntilOpen,
+      true,
+    );
+    assert.equal(
+      (await readyQuestion(client, admin, {hideUntilOpen: undefined}))
+        .hideUntilOpen,
+      false,
+    );
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await readyQuestion(client, admin, {hideUntilOpen: undefined}))
+        .hideUntilOpen,
       true,
     );
   });

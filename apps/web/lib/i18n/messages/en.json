@@ -537,5 +537,6 @@
   "ссылка": "link",
   "текст": "text",
   "цитата": "quote",
-  "Язык интерфейса": "Interface language"
+  "Язык интерфейса": "Interface language",
+  "Скрывать содержимое вопроса до открытия": "Hide question content until opening"
 }

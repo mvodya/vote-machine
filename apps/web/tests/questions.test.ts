@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import {
   emptyQuestion,
+  questionInput,
   isQuestionInput,
   isQuestion,
   validQuestionCursor,
@@ -46,6 +47,17 @@ function request(
 }
 
 describe('question documents', () => {
+  it('hides new question content by default', () => {
+    expect(emptyQuestion().hideUntilOpen).toBe(true);
+  });
+  it('keeps omitted visibility settings for the database default', () => {
+    const input = emptyQuestion();
+    delete input.hideUntilOpen;
+    expect(questionInput(input)).not.toHaveProperty('hideUntilOpen');
+    expect(questionInput({...input, hideUntilOpen: false}).hideUntilOpen).toBe(
+      false,
+    );
+  });
   it('accepts empty drafts and whole Unicode characters at the limits', () => {
     expect(
       isQuestionInput({
@@ -70,6 +82,8 @@ describe('question documents', () => {
     {choiceMode: 'multiple', minChoices: 2, maxChoices: 1},
     {choiceMode: 'single', maxChoices: 2},
     {anonymous: null},
+    {hideUntilOpen: null},
+    {hideUntilOpen: 'true'},
     {
       choices: [
         {id, content: 'A'},

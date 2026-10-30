@@ -29,6 +29,7 @@ export default defineConfig({
         '**/qr-history.spec.ts',
         '**/motion.spec.ts',
         '**/language.spec.ts',
+        '**/hidden-content.spec.ts',
       ],
       use: {browserName: 'webkit', viewport: {width: 1280, height: 800}},
     },
@@ -42,6 +43,7 @@ export default defineConfig({
         '**/qr-history.spec.ts',
         '**/motion.spec.ts',
         '**/language.spec.ts',
+        '**/hidden-content.spec.ts',
       ],
       use: {
         browserName: 'webkit',

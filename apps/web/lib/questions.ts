@@ -28,6 +28,8 @@ export interface QuestionInput {
   anonymous: boolean;
   // Allow a temporary skip without recording an answer
   allowSkip?: boolean;
+  // Keep scheduled content private until opening
+  hideUntilOpen?: boolean;
   // Completion is optional, electorate IDs belong only to admin replies
   closeWhenAllAnswered?: boolean;
   expectedLinkIds?: string[];
@@ -139,6 +141,8 @@ export function isQuestionInput(value: unknown): value is QuestionInput {
         ) &&
         new Set(value.expectedLinkIds).size ===
           value.expectedLinkIds.length)) &&
+    (value.hideUntilOpen === undefined ||
+      typeof value.hideUntilOpen === 'boolean') &&
     (value.allowSkip === undefined || typeof value.allowSkip === 'boolean') &&
     (value.publication === 'after_answer' ||
       value.publication === 'after_close')
@@ -222,6 +226,7 @@ export function emptyQuestion(): QuestionInput {
     allowAnswerChange: false,
     anonymous: false,
     allowSkip: false,
+    hideUntilOpen: true,
     choices: [{content: ''}, {content: ''}],
   };
 }
@@ -238,6 +243,9 @@ export function questionInput(value: QuestionInput): QuestionInput {
     allowAnswerChange: value.allowAnswerChange,
     anonymous: value.anonymous,
     allowSkip: value.allowSkip ?? false,
+    ...(value.hideUntilOpen !== undefined
+      ? {hideUntilOpen: value.hideUntilOpen}
+      : {}),
     ...(value.closeWhenAllAnswered !== undefined
       ? {closeWhenAllAnswered: value.closeWhenAllAnswered}
       : {}),
