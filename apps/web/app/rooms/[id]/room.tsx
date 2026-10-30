@@ -14,20 +14,12 @@ import {Questions} from './questions';
 import {QuestionPolicy} from './question-policy';
 import {Respondents} from './respondents';
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {
-  ListChecks,
-  Users,
-  ChartColumn,
-  Settings,
-  Copy,
-  Eye,
-  EyeOff,
-} from 'lucide-react';
+import {Copy, Eye, EyeOff} from 'lucide-react';
 import {PageHeader} from '../../../components/page-header';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
 import {TabPanels} from '../../../components/ui/tab-panels';
 import {TabPanel} from '../../../components/ui/tab-panel';
-import {Tabs} from '../../../components/ui/tabs';
+import {RoomTabs} from '../../../components/workspace-tabs';
 import {Button} from '../../../components/ui/button';
 import {TextField} from '../../../components/ui/text-field';
 import {Panel} from '../../../components/ui/panel';
@@ -305,8 +297,7 @@ export default function AdminRoom({id}: {id: string}) {
               <h1 className="mt-8 mb-6 text-2xl font-semibold tracking-tight break-words sm:text-3xl">
                 {room.name}
               </h1>
-              <Tabs
-                label={t('Разделы комнаты')}
+              <RoomTabs
                 group="room-sections"
                 value={section}
                 onChange={(value) => {
@@ -319,28 +310,6 @@ export default function AdminRoom({id}: {id: string}) {
                   setSection(value);
                   setNotice('');
                 }}
-                items={[
-                  {
-                    id: 'questions',
-                    label: t('Вопросы'),
-                    icon: <ListChecks size={18} />,
-                  },
-                  {
-                    id: 'respondents',
-                    label: t('Респонденты'),
-                    icon: <Users size={18} />,
-                  },
-                  {
-                    id: 'results',
-                    label: t('Результаты'),
-                    icon: <ChartColumn size={18} />,
-                  },
-                  {
-                    id: 'settings',
-                    label: t('Настройки'),
-                    icon: <Settings size={18} />,
-                  },
-                ]}
               />
               <TabPanels group="room-sections" value={section} className="pt-6">
                 <TabPanel group="room-sections" id="questions" value={section}>

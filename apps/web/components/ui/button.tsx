@@ -1,5 +1,9 @@
 import type {ComponentProps, ReactNode} from 'react';
 
+// Share the tab shape across real and scaled viewports
+const tabStyle =
+  'min-w-0 flex-1 flex-col px-1.5 py-3 text-[11px] text-muted hover:bg-page aria-selected:text-ink';
+
 // Shared button styles
 const variants = {
   swatch:
@@ -19,7 +23,8 @@ const variants = {
   selector:
     'relative z-10 min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-muted hover:text-ink aria-pressed:text-ink',
   ghost: 'min-h-10 p-2.5 text-sm text-muted hover:bg-ink/5 hover:text-ink',
-  tab: 'min-w-0 flex-1 flex-col px-1.5 py-3 text-[11px] text-muted hover:bg-page aria-selected:text-ink sm:flex-none sm:flex-row sm:px-5 sm:text-sm',
+  tab: `${tabStyle} sm:flex-none sm:flex-row sm:px-5 sm:text-sm`,
+  containedTab: `${tabStyle} @min-[640px]:flex-none @min-[640px]:flex-row @min-[640px]:px-5 @min-[640px]:text-sm`,
 };
 
 type Props = ComponentProps<'button'> & {

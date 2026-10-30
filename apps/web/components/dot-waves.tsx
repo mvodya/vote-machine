@@ -2,7 +2,7 @@
 import {useEffect, useRef} from 'react';
 
 // Draw a light dot mesh without adding thousands of page elements
-export function DotWaves() {
+export function DotWaves({paused = false}: {paused?: boolean} = {}) {
   // Canvas stays behind the form and never handles clicks
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -120,7 +120,7 @@ export function DotWaves() {
       previous = performance.now();
       pointerX = pointerY = targetX = targetY = 0;
       paint();
-      if (!motion.matches && !document.hidden)
+      if (!paused && !motion.matches && !document.hidden)
         frame = requestAnimationFrame(animate);
     }
 
@@ -155,7 +155,7 @@ export function DotWaves() {
       motion.removeEventListener('change', start);
       document.removeEventListener('visibilitychange', start);
     };
-  }, []);
+  }, [paused]);
   return (
     <div
       className="pointer-events-none absolute inset-0 overflow-hidden"

@@ -6,6 +6,9 @@ test('home offers room creation without an account', async ({page}) => {
   await expect(
     page.getByRole('heading', {name: 'Новая комната', exact: true}),
   ).toBeVisible();
+  await expect(page.locator('main > header img')).toHaveCount(0);
+  await expect(page.locator('[data-hero-brand]')).toHaveCount(1);
+
   await expect(
     page.getByRole('button', {name: 'Создать комнату', exact: true}),
   ).toBeEnabled();
@@ -55,15 +58,34 @@ test('home uses the desktop split and a compact mobile entry', async ({
   await page.goto('/');
   const story = page.getByRole('complementary', {name: 'О votemachine'});
   const access = page.getByRole('region', {name: 'Создание комнаты и вход'});
-  // Desktop keeps the split, phones show only room entry
+  // Desktop keeps the split, phones put public details below the form
   if (info.project.name === 'desktop') {
     await expect(story).toBeVisible();
     const left = await story.boundingBox();
     const right = await access.boundingBox();
     expect(left!.width / right!.width).toBeCloseTo(1.5, 1);
     expect(right!.x).toBeCloseTo(left!.width, 1);
+    const caption = await page.locator('[data-home-caption]').boundingBox();
+    const selector = await page
+      .getByRole('group', {name: 'Действие с комнатой', exact: true})
+      .boundingBox();
+    const brand = await page.locator('[data-hero-brand]').boundingBox();
+    expect(brand!.y).toBeCloseTo(selector!.y, 0);
+    expect(caption!.y).toBeGreaterThanOrEqual(brand!.y + brand!.height);
+    const details = await page
+      .getByRole('link', {name: 'Подробнее о Vote Machine', exact: true})
+      .boundingBox();
+    expect(details!.x).toBeLessThan(right!.x);
+    expect(details!.y).toBeGreaterThanOrEqual(caption!.y + caption!.height);
   } else {
-    await expect(story).toBeHidden();
+    await expect(story).toBeVisible();
+    const brand = await page.locator('[data-hero-brand]').boundingBox();
+    expect(brand!.y + brand!.height).toBeLessThanOrEqual(
+      (await access.boundingBox())!.y,
+    );
+    expect((await story.boundingBox())!.y).toBeGreaterThanOrEqual(
+      (await access.boundingBox())!.y + (await access.boundingBox())!.height,
+    );
     await expect(page.locator('main > header')).toBeVisible();
   }
   await page.getByRole('button', {name: 'Войти', exact: true}).click();
@@ -87,7 +109,15 @@ test('home uses the desktop split and a compact mobile entry', async ({
   await expect(
     page.getByText('Без регистрации и пароля', {exact: false}),
   ).toHaveCount(0);
-  await page.screenshot({path: info.outputPath('home.png'), fullPage: true});
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await expect(page.locator('[data-home-caption]')).toHaveText(
+    'Система организации голосований',
+  );
+  await page.screenshot({
+    path: info.outputPath('home.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
 });
 
 // Decorative motion must never block entry or ignore reduced motion
@@ -143,78 +173,6 @@ test('dot waves animate behind the layout and stop for reduced motion', async ({
   expect(errors).toEqual([]);
 });
 
-// Bands use separate directions and react only while the pointer moves
-test('five icon ribbons accelerate on contact and pause for reduced motion', async ({
-  page,
-}) => {
-  await page.goto('/');
-  const bands = page.locator('[data-ribbon]');
-  await expect(bands).toHaveCount(5);
-  await expect
-    .poll(() =>
-      bands
-        .first()
-        .evaluate(
-          (element) => element.firstElementChild!.getAnimations().length,
-        ),
-    )
-    .toBe(1);
-  const directions = await bands.evaluateAll((elements) =>
-    elements.map(
-      (element) =>
-        (
-          element.firstElementChild!.getAnimations()[0].effect as KeyframeEffect
-        ).getTiming().direction,
-    ),
-  );
-  expect(directions).toEqual([
-    'normal',
-    'reverse',
-    'normal',
-    'reverse',
-    'normal',
-  ]);
-  const contact = await bands.evaluateAll((elements) => {
-    for (let index = 0; index < elements.length; index++) {
-      const box = elements[index].getBoundingClientRect();
-      const x = innerWidth * 0.25;
-      const y =
-        box.top +
-        box.height / 2 +
-        Math.tan(-Math.PI / 6) * (x - box.left - box.width / 2);
-      if (y > 120 && y < innerHeight - 180) return {index, x, y};
-    }
-    return null;
-  });
-  expect(contact).not.toBeNull();
-  await page.mouse.move(contact!.x - 15, contact!.y);
-  await page.mouse.move(contact!.x + 15, contact!.y, {steps: 3});
-  const speed = () =>
-    bands
-      .nth(contact!.index)
-      .evaluate(
-        (element) => element.firstElementChild!.getAnimations()[0].playbackRate,
-      );
-  await expect.poll(speed).toBeGreaterThan(1.1);
-  const boosted = await speed();
-  await expect.poll(speed).toBeLessThan(boosted);
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  await expect
-    .poll(() =>
-      bands.evaluateAll((elements) =>
-        elements.every(
-          (element) =>
-            element.firstElementChild!.getAnimations()[0].playState ===
-            'paused',
-        ),
-      ),
-    )
-    .toBe(true);
-  await expect(
-    page.getByRole('button', {name: 'Создать комнату', exact: true}),
-  ).toBeEnabled();
-});
-
 // The typing slot keeps its size while complete phrases are held and erased
 test('home caption types and changes phrases without moving the form', async ({
   page,
@@ -237,74 +195,6 @@ test('home caption types and changes phrases without moving the form', async ({
   await expect(caption).toHaveText('Система организации голосований');
   await page.clock.runFor(15000);
   await expect(caption).toHaveText('Система организации голосований');
-});
-
-// Crossing either end must keep the visible icons in the same positions
-test('ribbon copies meet at the exact repeat boundary in both directions', async ({
-  page,
-}) => {
-  await page.goto('/');
-  const bands = page.locator('[data-ribbon]');
-  await expect
-    .poll(() =>
-      bands
-        .first()
-        .evaluate(
-          (element) => element.firstElementChild!.getAnimations().length,
-        ),
-    )
-    .toBe(1);
-  const jumps = await bands.evaluateAll((elements) =>
-    elements.map((band) => {
-      const track = band.firstElementChild as HTMLElement;
-      const animation = track.getAnimations()[0];
-      animation.pause();
-      animation.playbackRate = 4;
-      const duration = Number(animation.effect!.getTiming().duration);
-      const area = band.closest('[aria-hidden]')!.getBoundingClientRect();
-      // Compare only icons inside the clipped illustration
-      const points = () =>
-        Array.from(track.querySelectorAll('svg'))
-          .map((icon) => {
-            const box = icon.getBoundingClientRect();
-            return {
-              x: box.left + box.width / 2,
-              y: box.top + box.height / 2,
-              name: icon.getAttribute('class'),
-            };
-          })
-          .filter(
-            (point) =>
-              point.x > area.left + 30 &&
-              point.x < area.right - 30 &&
-              point.y > area.top + 30 &&
-              point.y < area.bottom - 30,
-          );
-      animation.currentTime = duration * 3 - 0.01;
-      const before = points();
-      animation.currentTime = duration * 3 + 0.01;
-      const after = points();
-      return {
-        count: before.length,
-        distance: Math.max(
-          0,
-          ...before.map((point) =>
-            Math.min(
-              ...after
-                .filter((other) => point.name === other.name)
-                .map((other) =>
-                  Math.hypot(point.x - other.x, point.y - other.y),
-                ),
-            ),
-          ),
-        ),
-      };
-    }),
-  );
-  for (const jump of jumps) {
-    expect(jump.count).toBeGreaterThan(0);
-    expect(jump.distance).toBeLessThan(0.1);
-  }
 });
 
 test('every page has a quiet footer and a real short revision', async ({

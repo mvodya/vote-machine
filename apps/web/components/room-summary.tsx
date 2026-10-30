@@ -19,7 +19,10 @@ export function RoomSummary({
   admin,
   runId,
   onDenied,
+  snapshot,
 }: {
+  // Local examples share the complete production summary
+  snapshot?: RoomReport;
   id: string;
   admin: boolean;
   runId?: string | null;
@@ -27,17 +30,20 @@ export function RoomSummary({
 }) {
   const {t} = useI18n();
   const live = useLive(
-    `/api/${admin ? 'rooms' : 'vote'}/${id}/events`,
+    snapshot ? null : `/api/${admin ? 'rooms' : 'vote'}/${id}/events`,
     onDenied,
   );
-  const [report, setReport] = useState<RoomReport | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedReport, setReport] = useState<RoomReport | null>(null);
+  const report = snapshot ?? loadedReport;
+  const [loading, setLoading] = useState(!snapshot);
   const [unavailable, setUnavailable] = useState(false);
   const [failed, setFailed] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [exportError, setExportError] = useState(false);
   const path = `/api/${admin ? 'rooms' : 'vote'}/${id}/results`;
   useEffect(() => {
+    // Local views must not read real room data
+    if (snapshot) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     // Reconcile after a missed event as well as after live changes
@@ -85,7 +91,7 @@ export function RoomSummary({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [path, admin, runId, onDenied, live.version, live.connected]);
+  }, [path, admin, runId, onDenied, live.version, live.connected, snapshot]);
   // Download one complete server snapshot with no private browser cache
   async function download() {
     if (downloading) return;

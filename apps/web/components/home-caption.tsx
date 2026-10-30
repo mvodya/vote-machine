@@ -81,11 +81,7 @@ export function HomeCaption() {
     };
   }, [t]);
   return (
-    <div
-      data-home-caption
-      aria-hidden="true"
-      className="relative h-32 px-7 pt-3 pb-5 sm:px-10 lg:absolute lg:bottom-12 lg:left-12 lg:h-32 lg:w-[calc(60%-6rem)] lg:p-0"
-    >
+    <div data-home-caption aria-hidden="true" className="relative h-32">
       <p className="max-w-[24rem] text-lg leading-relaxed font-medium text-muted lg:text-2xl">
         <span>{text}</span>
         <span className="ml-1 inline-block h-[1em] w-px translate-y-0.5 bg-primary/60 motion-safe:animate-pulse motion-reduce:hidden" />

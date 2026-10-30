@@ -26,7 +26,10 @@ export function AnswerForm({
   extraPayload,
   existingRevision,
   alreadyAnswered = false,
+  onLocalAnswer,
 }: {
+  // Local examples keep the real form without submitting a vote
+  onLocalAnswer?: (choices: string[]) => void;
   // Optional shared manual or reusable vote context
   submitPath?: string;
   extraPayload?: Record<string, unknown>;
@@ -77,6 +80,12 @@ export function AnswerForm({
       return;
     }
     const ids = [...selected].sort();
+    // Only the landing supplies a local save callback
+    if (onLocalAnswer) {
+      onLocalAnswer(ids);
+      onSaved();
+      return;
+    }
     const signature = JSON.stringify([
       question.revision,
       existingRevision ?? answer?.revision ?? '0',

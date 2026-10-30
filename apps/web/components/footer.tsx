@@ -6,6 +6,7 @@ import {
   Globe,
   UserRound,
 } from 'lucide-react';
+import {GithubMark} from './github-mark';
 import {Popover} from './ui/popover';
 // Keep the footer small and show build details only on request
 export function Footer() {
@@ -34,10 +35,7 @@ export function Footer() {
             rel="noopener noreferrer"
             className="rounded-md p-1 text-muted hover:text-ink"
           >
-            <span
-              aria-hidden="true"
-              className="block size-4 bg-current [mask:url(/brand/github.svg)_center/contain_no-repeat]"
-            />
+            <GithubMark />
           </a>
         </div>
         <dl className="space-y-2">

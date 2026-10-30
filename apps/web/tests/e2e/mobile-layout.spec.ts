@@ -134,12 +134,9 @@ test('home decoration crosses the form boundary and phone controls keep one scal
     await expect(canvas).toBeVisible();
     const bounds = await canvas.boundingBox();
     expect(bounds!.width).toBe(1280);
-    const ribbons = page.locator('[data-ribbon]').first().locator('../..');
-    expect((await ribbons.boundingBox())!.width).toBe(1280);
-    const fade = await canvas
-      .locator('../..')
-      .evaluate((element) => getComputedStyle(element).maskImage);
-    expect(fade).toContain('linear-gradient');
+    await expect(page.locator('[data-ribbon]')).toHaveCount(0);
+    const background = page.locator('[data-hero-background]');
+    expect((await background.boundingBox())!.width).toBe(1280);
     await page.screenshot({
       path: info.outputPath(`home-${colorScheme}.png`),
       fullPage: true,

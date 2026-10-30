@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/web/public/brand/votebox-icon.svg" width="100" height="100" alt="Vote Machine">
+  <img src="apps/web/public/brand/votemachine-icon.svg" width="100" height="100" alt="Vote Machine">
 </p>
 
 <h1 align="center">Vote Machine</h1>

@@ -1,0 +1,19 @@
+.icon {
+  filter: drop-shadow(
+    0 20px 40px color-mix(in oklab, var(--app-primary) 20%, transparent)
+  );
+}
+@media (prefers-reduced-motion: no-preference) {
+  .icon {
+    animation: levitate 8s ease-in-out infinite;
+  }
+}
+@keyframes levitate {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(3deg);
+  }
+}

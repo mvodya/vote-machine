@@ -1,9 +1,11 @@
 'use client';
+import type {RoomReport} from '../lib/room-report';
 import {useI18n} from './language-provider';
 import {useEffect, useRef, useState} from 'react';
 import {ChartColumn, Download, Expand, Minimize, Monitor} from 'lucide-react';
 import {useLive} from '../lib/use-live';
 import {Countdown} from './countdown';
+import {ResultOptions} from './result-options';
 import {RoomSummary} from './room-summary';
 import {Loading} from './ui/loading';
 import {Panel} from './ui/panel';
@@ -24,6 +26,12 @@ const sourceNames: Record<string, string> = {
   reusable: 'Многоразовые ссылки',
   admin_manual: 'Ручной ввод',
 };
+export interface ResultsSnapshot {
+  // Local snapshots use the full production result view
+  page: ResultPage;
+  result: VoteResult;
+  report: RoomReport;
+}
 // Use one result view for admins and participants after server filtering
 export function Results({
   id,
@@ -32,7 +40,10 @@ export function Results({
   onDenied,
   projector = false,
   initialQuestion,
+  snapshot,
 }: {
+  // Skip server reads when a local snapshot is supplied
+  snapshot?: ResultsSnapshot;
   projector?: boolean;
   initialQuestion?: string;
   id: string;
@@ -42,16 +53,18 @@ export function Results({
 }) {
   const {t} = useI18n();
   const live = useLive(
-    `/api/${admin ? 'rooms' : 'vote'}/${id}/events`,
+    snapshot ? null : `/api/${admin ? 'rooms' : 'vote'}/${id}/events`,
     onDenied,
   );
   const detailPanel = useRef<HTMLElement>(null);
   const scrollPending = useRef(false);
-  const [page, setPage] = useState<ResultPage | null>(null);
+  const [loadedPage, setPage] = useState<ResultPage | null>(null);
   const [selected, setSelected] = useState<string | null>(
     initialQuestion ?? null,
   );
-  const [result, setResult] = useState<VoteResult | null>(null);
+  const [loadedResult, setResult] = useState<VoteResult | null>(null);
+  const page = snapshot?.page ?? loadedPage;
+  const result = snapshot?.result ?? loadedResult;
   const [cursors, setCursors] = useState(['0']);
   const [peopleCursors, setPeopleCursors] = useState<string[]>(['']);
   const [failed, setFailed] = useState(false);
@@ -59,6 +72,8 @@ export function Results({
   const peopleCursor = peopleCursors[peopleCursors.length - 1];
   const path = `/api/${admin ? 'rooms' : 'vote'}/${id}/results`;
   useEffect(() => {
+    // Local views must not read real room data
+    if (snapshot) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
@@ -131,6 +146,7 @@ export function Results({
     live.version,
     live.connected,
     projector,
+    snapshot,
   ]);
   // Scroll only after a deliberate phone selection, never on a live refresh
   useEffect(() => {
@@ -169,7 +185,13 @@ export function Results({
   return (
     <div className="space-y-5">
       {!projector && (
-        <RoomSummary id={id} admin={admin} runId={runId} onDenied={onDenied} />
+        <RoomSummary
+          id={id}
+          admin={admin}
+          runId={runId}
+          onDenied={onDenied}
+          snapshot={snapshot?.report}
+        />
       )}
       <div
         className={
@@ -328,36 +350,14 @@ export function Results({
                 {t('Ответы: ')}
                 {result.total}
               </p>
-              <ul className="mt-4 space-y-4">
-                {result.options?.map((option) => (
-                  <li key={option.id}>
-                    <Markdown
-                      source={option.content}
-                      viewer={
-                        admin
-                          ? {roomId: result.roomId!}
-                          : {roomId: result.roomId!, linkId: id}
-                      }
-                    />
-                    <div className="mt-2 flex justify-between text-sm tabular-nums">
-                      <span>
-                        {t('Голосов: ')}
-                        {option.count}
-                      </span>
-                      <span>{option.percent}%</span>
-                    </div>
-                    <div
-                      className="mt-1 h-2 overflow-hidden rounded-full bg-accent"
-                      aria-hidden="true"
-                    >
-                      <div
-                        className="h-full rounded-full bg-primary motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out"
-                        style={{width: `${option.percent}%`}}
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <ResultOptions
+                options={result.options ?? []}
+                viewer={
+                  admin
+                    ? {roomId: result.roomId!}
+                    : {roomId: result.roomId!, linkId: id}
+                }
+              />
               {result.choiceMode === 'multiple' && (
                 <p className="mt-4 text-xs text-muted">
                   {t('Проценты от числа ответов, сумма может превышать 100%')}

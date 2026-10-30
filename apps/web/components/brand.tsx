@@ -7,13 +7,13 @@ export function Brand({className = ''}: {className?: string}) {
       {/* The owner supplied this logo as a static SVG asset */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/brand/votebox-icon.svg"
+        src="/brand/votemachine-icon.svg"
         alt=""
         width={40}
         height={40}
         className="size-8 shrink-0 sm:size-10"
       />
-      <span className="max-[379px]:sr-only">votemachine</span>
+      <span className="@max-[340px]:sr-only">votemachine</span>
     </div>
   );
 }

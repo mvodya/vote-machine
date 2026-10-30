@@ -29,7 +29,10 @@ export function Questions({
   onDenied,
   onEditingChange,
   timeZone = localTimeZone(),
+  snapshot,
 }: {
+  // Local snapshots use the same view without server requests
+  snapshot?: QuestionSummary[];
   // Room opened by the admin
   roomId: string;
   // Shared zone used in question dates
@@ -50,7 +53,7 @@ export function Questions({
     return () => timers.forEach(clearTimeout);
   }, []);
   // Metadata for the current page
-  const [items, setItems] = useState<QuestionSummary[]>([]);
+  const [loadedItems, setItems] = useState<QuestionSummary[]>([]);
   // Saved page boundaries
   const [cursors, setCursors] = useState(['0']);
   // Cursor for the next page
@@ -58,7 +61,7 @@ export function Questions({
   // List reload counter
   const [attempt, setAttempt] = useState(0);
   // Loading state for the page
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!snapshot);
   // Failure while reading the list
   const [failed, setFailed] = useState(false);
   // Block duplicate detail and delete requests
@@ -72,10 +75,16 @@ export function Questions({
   const [deleting, setDeleting] = useState<QuestionSummary | null>(null);
   // Result or error shown below the current panel
   const [notice, setNotice] = useState('');
-  const live = useLive(`/api/rooms/${roomId}/events`, onDenied);
+  const items = snapshot ?? loadedItems;
+  const live = useLive(
+    snapshot ? null : `/api/rooms/${roomId}/events`,
+    onDenied,
+  );
   const base = `/api/rooms/${roomId}/questions`;
   const cursor = cursors[cursors.length - 1];
   useEffect(() => {
+    // Local views must not read real room data
+    if (snapshot) return;
     const controller = new AbortController();
     // Load only a small metadata page, without option bodies
     async function load() {
@@ -144,7 +153,7 @@ export function Questions({
     }
     void load();
     return () => controller.abort();
-  }, [base, cursor, attempt, onDenied, live.version]);
+  }, [base, cursor, attempt, onDenied, live.version, snapshot]);
   // Refresh after a change or a failed read
   function reload() {
     setAttempt((value) => value + 1);

@@ -225,8 +225,8 @@ test('tab slide direction follows order and releases clipping after entry', asyn
       .getByRole('tab', {name, exact: true})
       .getAttribute('aria-controls');
     await page.evaluate((expected) => {
-      (window as unknown as {slideFrame: Promise<number>}).slideFrame =
-        new Promise<number>((resolve) => {
+      (window as unknown as {slideFrame: Promise<void>}).slideFrame =
+        new Promise<void>((resolve) => {
           function started(event: AnimationEvent) {
             const node = event.target as HTMLElement;
             if (
@@ -239,18 +239,22 @@ test('tab slide direction follows order and releases clipping after entry', asyn
             const animation = node.getAnimations()[0];
             animation.pause();
             animation.currentTime = 180;
-            resolve(
-              new DOMMatrixReadOnly(getComputedStyle(node).transform).m41,
-            );
+            resolve();
           }
           document.addEventListener('animationstart', started);
         });
     }, panelId);
     await tabs.getByRole('tab', {name, exact: true}).click();
-    const x = await page.evaluate(
-      () => (window as unknown as {slideFrame: Promise<number>}).slideFrame,
+    await page.evaluate(
+      () => (window as unknown as {slideFrame: Promise<void>}).slideFrame,
     );
     const panel = page.getByRole('tabpanel', {name, exact: true});
+    // Read styles after WebKit finishes dispatching the start event
+    const x = await panel
+      .locator(':scope > [data-tab-slide]')
+      .evaluate(
+        (node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m41,
+      );
     await page.screenshot({
       path: info.outputPath(
         x > 0 ? 'slide-from-right.png' : 'slide-from-left.png',

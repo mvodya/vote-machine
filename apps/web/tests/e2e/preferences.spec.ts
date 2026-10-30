@@ -335,21 +335,20 @@ test('home actions have icons and a clear dark selection while preferences scrol
 }, info) => {
   await page.emulateMedia({colorScheme: 'dark', reducedMotion: 'reduce'});
   await page.goto('/');
-  // Controls share the logo row without a separate top band
+  // Public pages keep only personal controls in the top row
   const header = page.locator('main > header');
-  const logo = header.getByText('votemachine');
+  await expect(header.locator('img')).toHaveCount(0);
+  await expect(page.locator('[data-hero-brand]')).toHaveCount(1);
   const controls = page.getByLabel('Вид и звук', {exact: true});
-  const logoBox = await logo.boundingBox();
   const controlsBox = await controls.boundingBox();
-  expect(
-    Math.abs(
-      logoBox!.y +
-        logoBox!.height / 2 -
-        controlsBox!.y -
-        controlsBox!.height / 2,
-    ),
-  ).toBeLessThan(2);
-  expect(controlsBox!.x).toBeGreaterThan(logoBox!.x + logoBox!.width);
+  const headerBox = await header.boundingBox();
+  const padding = await header.evaluate((element) =>
+    parseFloat(getComputedStyle(element).paddingRight),
+  );
+  expect(controlsBox!.x + controlsBox!.width).toBeCloseTo(
+    headerBox!.x + headerBox!.width - padding,
+    0,
+  );
   expect(
     await page
       .locator('main')

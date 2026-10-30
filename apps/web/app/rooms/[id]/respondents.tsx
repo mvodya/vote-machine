@@ -43,11 +43,22 @@ type Confirmation = {
   // Action shown in the dialog
   action: 'revoke' | 'rotate';
 };
+export interface RespondentSnapshot {
+  // Local examples never read or change real links
+  links: VotingLink[];
+  online: Record<
+    string,
+    {online: number; questions: {id: string; preview: string}[]}
+  >;
+}
 // Manage links without loading any voting data
 export function Respondents({
   roomId,
   onDenied,
+  snapshot,
 }: {
+  // Optional local data for the shared view
+  snapshot?: RespondentSnapshot;
   // Current admin room
   roomId: string;
   // Leave the panel when access is lost
@@ -55,7 +66,7 @@ export function Respondents({
 }) {
   const {t, locale} = useI18n();
   // Links on the current page
-  const [online, setOnline] = useState<
+  const [loadedOnline, setOnline] = useState<
     Record<
       string,
       {
@@ -69,7 +80,7 @@ export function Respondents({
   >({});
   const [qr, setQr] = useState<VotingLink | null>(null);
   const [editHistory, setEditHistory] = useState(false);
-  const [links, setLinks] = useState<VotingLink[]>([]);
+  const [loadedLinks, setLinks] = useState<VotingLink[]>([]);
   // Page history for back navigation
   const [cursors, setCursors] = useState(['0']);
   // Cursor for the next older page
@@ -77,7 +88,7 @@ export function Respondents({
   // Reload counter
   const [attempt, setAttempt] = useState(0);
   // Whether a page request is running
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!snapshot);
   // Whether the last page request failed
   const [failed, setFailed] = useState(false);
   // Block repeated actions while a request is running
@@ -107,9 +118,16 @@ export function Respondents({
   // Text shown when clipboard access fails
   const [manualCopy, setManualCopy] = useState('');
   const cursor = cursors[cursors.length - 1];
-  const live = useLive(`/api/rooms/${roomId}/events`, onDenied);
+  const links = snapshot?.links ?? loadedLinks;
+  const online = snapshot?.online ?? loadedOnline;
+  const live = useLive(
+    snapshot ? null : `/api/rooms/${roomId}/events`,
+    onDenied,
+  );
   const base = `/api/rooms/${roomId}/links`;
   useEffect(() => {
+    // Local views must not read real room data
+    if (snapshot) return;
     const controller = new AbortController();
     // Cancel old page requests when the panel or cursor changes
     async function load() {
@@ -149,9 +167,9 @@ export function Respondents({
     }
     void load();
     return () => controller.abort();
-  }, [base, cursor, attempt, onDenied, live.version]);
+  }, [base, cursor, attempt, onDenied, live.version, snapshot]);
   useEffect(() => {
-    if (!links.length) return;
+    if (snapshot || !links.length) return;
     const controller = new AbortController();
     async function load() {
       try {
@@ -183,7 +201,7 @@ export function Respondents({
     }
     void load();
     return () => controller.abort();
-  }, [links, roomId, onDenied, live.version]);
+  }, [links, roomId, onDenied, live.version, snapshot]);
   // Refresh the page after a saved change
   function reload() {
     setAttempt((value) => value + 1);

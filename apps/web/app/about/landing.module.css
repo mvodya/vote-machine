@@ -1,0 +1,313 @@
+.landing {
+  --drift: 0px;
+  --tilt: 0deg;
+}
+.landing section[id] {
+  scroll-margin-top: 2rem;
+}
+.endGlow {
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+  width: 80vw;
+  height: 80vw;
+  top: -30vw;
+  right: -15vw;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    color-mix(in oklab, var(--app-primary) 18%, transparent),
+    transparent 65%
+  );
+  transform: translateY(var(--drift, 0px));
+}
+.deviceHalo {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  top: -15%;
+  bottom: -15%;
+  left: calc(50% - 50vw);
+  width: 100vw;
+  background: radial-gradient(
+    ellipse closest-side at 50% 50%,
+    color-mix(in oklab, var(--app-primary) 12%, transparent),
+    transparent 100%
+  );
+  transform: translateY(var(--drift));
+}
+.projectionScene {
+  background-image: radial-gradient(
+    ellipse at 80% 60%,
+    color-mix(in oklab, var(--app-primary) 8%, transparent),
+    transparent 60%
+  );
+}
+.projector {
+  position: relative;
+  z-index: 2;
+  width: 200px;
+  margin: 60px auto 0;
+  transform: perspective(800px) rotateY(-14deg) rotateX(8deg);
+}
+.projectorTop {
+  height: 30px;
+  border-radius: 20px 20px 0 0;
+  border: 1px solid var(--app-border);
+  background: linear-gradient(145deg, var(--app-panel), var(--app-accent));
+  border-bottom: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-left: 28px;
+}
+.projectorTop span {
+  width: 5px;
+  height: 5px;
+  border-radius: 100%;
+  background: var(--app-muted);
+  opacity: 0.5;
+}
+.projectorTop span:first-child {
+  background: var(--app-primary);
+  box-shadow: 0 0 12px var(--app-primary);
+  opacity: 1;
+}
+.projectorFace {
+  position: relative;
+  height: 82px;
+  border-top: 0;
+  border-radius: 0 0 18px 18px;
+  border: 1px solid var(--app-border);
+  background: linear-gradient(150deg, var(--app-accent), var(--app-panel));
+  box-shadow: 0 30px 55px color-mix(in oklab, var(--app-ink) 13%, transparent);
+}
+.lens {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 58px;
+  height: 58px;
+  border: 6px solid var(--app-ink);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 40%,
+    white 0%,
+    #c3f2ed 12%,
+    #8dbaee 22%,
+    #a2b7ba 36%,
+    #355f5d 55%,
+    #1e3033 70%
+  );
+  box-shadow:
+    0 0 12px #adede877,
+    5px 0 30px #b8defa66,
+    inset 0 0 12px #ffffff77;
+}
+.vents {
+  position: absolute;
+  top: 28px;
+  left: 18px;
+  width: 75px;
+  height: 28px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    0deg,
+    var(--app-border) 0 2px,
+    transparent 2px 5px
+  );
+}
+.projectorFoot {
+  height: 9px;
+  width: 75%;
+  margin: auto;
+  border-radius: 0 0 6px 6px;
+  background: var(--app-border);
+}
+.beam {
+  position: absolute;
+  pointer-events: none;
+  z-index: 20;
+  background: linear-gradient(
+    var(--ray-angle),
+    #e8ffff88 0%,
+    #d7f8ff40 15%,
+    #e2ddff29 40%,
+    #f9d6ec18 65%,
+    transparent 100%
+  );
+  filter: blur(2px);
+  mix-blend-mode: screen;
+}
+.beam::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-conic-gradient(
+    from 2deg at var(--ray-x) var(--ray-y),
+    transparent 0deg 4deg,
+    #ffffff66 4.2deg 4.7deg,
+    #b9dfff55 4.9deg 5.4deg,
+    transparent 6deg 12deg
+  );
+  mask-image: linear-gradient(var(--ray-angle), #000b, transparent 95%);
+  transform-origin: var(--ray-x) var(--ray-y);
+}
+.qrSpark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  color: #fff;
+  filter: drop-shadow(0 0 5px #ffffffb3);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .scrollArrow {
+    animation: nudge 2.4s ease-in-out infinite;
+  }
+  .invitation {
+    animation: breathe 6s ease-in-out infinite;
+  }
+  .audience {
+    animation: audience 4s ease-in-out infinite;
+  }
+  .scanLine {
+    animation: scan 4s ease-in-out infinite;
+  }
+  .beam {
+    animation: light 3.6s ease-in-out infinite;
+  }
+  .beam::after {
+    animation: rays 4.8s ease-in-out infinite;
+  }
+  .qrSpark {
+    animation: spark-flight 3.8s ease-out infinite;
+  }
+  .reveal[data-visible='true'] {
+    animation: reveal 850ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--delay, 0ms);
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0.3;
+    transform: translateY(35px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(5px);
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(7px);
+  }
+}
+@keyframes audience {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-7px);
+    opacity: 1;
+  }
+}
+@keyframes scan {
+  0%,
+  100% {
+    transform: translateY(-45px);
+    opacity: 0;
+  }
+  25%,
+  75% {
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(45px);
+  }
+}
+@keyframes rays {
+  0%,
+  100% {
+    transform: rotate(-0.8deg);
+    opacity: 0.15;
+  }
+  50% {
+    transform: rotate(0.8deg);
+    opacity: 0.7;
+  }
+}
+@keyframes spark-flight {
+  0%,
+  10% {
+    transform: translate(var(--spark-x), var(--spark-y)) scale(0.2) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.8;
+  }
+  85%,
+  100% {
+    transform: translate(var(--spark-end-x), var(--spark-end-y)) scale(0.8)
+      rotate(100deg);
+    opacity: 0;
+  }
+}
+@keyframes light {
+  0%,
+  100% {
+    opacity: 0.45;
+    filter: blur(2px) hue-rotate(-18deg) brightness(0.9);
+  }
+  45% {
+    opacity: 0.9;
+    filter: blur(1px) hue-rotate(20deg) brightness(1.2);
+  }
+  65% {
+    opacity: 0.65;
+    filter: blur(2px) hue-rotate(5deg) brightness(1);
+  }
+}
+@media (max-width: 767px) {
+  .projector {
+    width: 150px;
+    margin: 0 0 0 12%;
+    transform: scale(0.85) rotate(-10deg);
+    transform-origin: left bottom;
+  }
+  .lens {
+    right: 8px;
+  }
+  .vents {
+    width: 48px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing *,
+  .landing *::before,
+  .landing *::after {
+    scroll-behavior: auto !important;
+  }
+  .endGlow,
+  .deviceHalo {
+    transform: none;
+  }
+}

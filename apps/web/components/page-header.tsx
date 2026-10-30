@@ -6,8 +6,11 @@ import {Preferences} from './preferences';
 // Keep branding and personal controls aligned on every page
 export function PageHeader({
   home = false,
+  showBrand = true,
   className = '',
 }: {
+  // Public hero pages already show a large logo
+  showBrand?: boolean;
   // The home page does not need a link to itself
   home?: boolean;
   // Page-specific width and spacing
@@ -15,18 +18,21 @@ export function PageHeader({
 }) {
   const {t} = useI18n();
   return (
-    <header className={`flex items-center justify-between gap-3 ${className}`}>
-      {home ? (
-        <Brand />
-      ) : (
-        <Link
-          href="/"
-          aria-label={t('На главную')}
-          className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
-        >
+    <header
+      className={`@container flex items-center gap-3 ${showBrand ? 'justify-between' : 'justify-end'} ${className}`}
+    >
+      {showBrand &&
+        (home ? (
           <Brand />
-        </Link>
-      )}
+        ) : (
+          <Link
+            href="/"
+            aria-label={`votemachine - ${t('На главную')}`}
+            className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
+          >
+            <Brand />
+          </Link>
+        ))}
       <Preferences />
     </header>
   );

@@ -18,7 +18,10 @@ export function Tabs({
   value,
   onChange,
   label,
+  contained = false,
 }: {
+  // Scaled device frames have their own viewport width
+  contained?: boolean;
   // Prefix shared with each tab panel
   group: string;
   // Tabs to show
@@ -45,7 +48,7 @@ export function Tabs({
     });
   return (
     <div
-      className="relative isolate flex min-w-0 gap-1 rounded-2xl border border-border bg-panel p-1.5 shadow-xs"
+      className={`relative isolate flex min-w-0 gap-1 rounded-2xl border border-border bg-panel p-1.5 shadow-xs ${contained ? '@container' : ''}`}
       data-slide-direction={selection.direction}
       role="tablist"
       aria-label={label}
@@ -59,7 +62,7 @@ export function Tabs({
       {items.map((tab, index) => (
         <Button
           key={tab.id}
-          variant="tab"
+          variant={contained ? 'containedTab' : 'tab'}
           className="relative z-10"
           role="tab"
           id={`${group}-tab-${tab.id}`}

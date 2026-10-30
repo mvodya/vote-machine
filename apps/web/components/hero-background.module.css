@@ -1,0 +1,49 @@
+.glow {
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+  width: 80vw;
+  height: 80vw;
+  top: -40vw;
+  right: -20vw;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    color-mix(in oklab, var(--app-primary) 18%, transparent),
+    transparent 65%
+  );
+  transform: translateY(var(--drift, 0px));
+}
+.orbit,
+.orbitTwo {
+  position: absolute;
+  top: 20%;
+  left: 10%;
+  width: 85%;
+  height: 55%;
+  border: 1px solid color-mix(in oklab, var(--app-primary) 18%, transparent);
+  border-radius: 50%;
+  transform: rotate(calc(-23deg + var(--tilt, 0deg)))
+    translateY(var(--drift, 0px));
+  box-shadow: inset 0 0 65px
+    color-mix(in oklab, var(--app-primary) 3%, transparent);
+}
+.orbit::after,
+.orbitTwo::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  top: 7%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--app-primary);
+  box-shadow: 0 0 24px color-mix(in oklab, var(--app-primary) 60%, transparent);
+}
+.orbitTwo {
+  left: 25%;
+  top: 10%;
+  transform: rotate(calc(28deg - var(--tilt, 0deg)))
+    translateY(var(--drift, 0px));
+  opacity: 0.5;
+}

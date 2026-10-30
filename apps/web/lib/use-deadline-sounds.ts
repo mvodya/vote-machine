@@ -1,11 +1,18 @@
 'use client';
 import {useEffect, useRef} from 'react';
+import {useSoundsMuted} from '../components/sound-scope';
 import {playSound} from './audio';
 // Room alarms and visible timers share the same deduplication keys
 export function useDeadlineSounds(deadlines: readonly string[]) {
   const previous = useRef(new Map<number, number>());
-  const signature = deadlines.join(',');
+  const muted = useSoundsMuted();
+  const signature = muted ? '' : deadlines.join(',');
   useEffect(() => {
+    // Demo timers must never start or queue room sounds
+    if (!signature) {
+      previous.current.clear();
+      return;
+    }
     const times = signature.split(',').map(Date.parse).filter(Number.isFinite);
     for (const key of previous.current.keys())
       if (!times.includes(key)) previous.current.delete(key);

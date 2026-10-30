@@ -2,25 +2,19 @@
 import {useI18n} from '../../../components/language-provider';
 import {Loading} from '../../../components/ui/loading';
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {
-  ListChecks,
-  MessageSquare,
-  ChartColumn,
-  Check,
-  X,
-  Repeat2,
-} from 'lucide-react';
+import {ListChecks, Check, X, Repeat2} from 'lucide-react';
 import {Panel} from '../../../components/ui/panel';
 import {Button} from '../../../components/ui/button';
 import {EmptyState} from '../../../components/ui/empty-state';
 import {TabPanels} from '../../../components/ui/tab-panels';
 import {TabPanel} from '../../../components/ui/tab-panel';
-import {Tabs} from '../../../components/ui/tabs';
+import {ParticipantTabs} from '../../../components/workspace-tabs';
 import {Pagination} from '../../../components/ui/pagination';
 import {isJourney, type Journey} from '../../../lib/journey';
 import {markdownSummary} from '../../../lib/markdown';
 import {SelectField} from '../../../components/ui/select-field';
 import {useLive} from '../../../lib/use-live';
+import {QuestionProgress} from '../../../components/question-progress';
 import {Countdown} from '../../../components/countdown';
 import {useQuestionPresence} from '../../../lib/use-question-presence';
 import {Results} from '../../../components/results';
@@ -211,34 +205,13 @@ export function ParticipantJourney({
   }
   return (
     <div className="mt-6 space-y-5">
-      <Tabs
-        label={t('Вкладки участника')}
+      <ParticipantTabs
         group="participant-tabs"
         value={section}
         onChange={(next) => {
           if (!busy) setSection(next);
         }}
-        items={[
-          {
-            id: 'question',
-            label: t('Вопрос'),
-            icon: <MessageSquare />,
-          },
-          {
-            id: 'list',
-            label: t('Список вопросов'),
-            icon: <ListChecks />,
-          },
-          ...(snapshot?.resultsAvailable
-            ? [
-                {
-                  id: 'results',
-                  label: t('Результаты'),
-                  icon: <ChartColumn />,
-                },
-              ]
-            : []),
-        ]}
+        resultsAvailable={Boolean(snapshot?.resultsAvailable)}
       />
       {notice && (
         <p role="status" className="text-sm text-muted">
@@ -254,24 +227,17 @@ export function ParticipantJourney({
         <TabPanel group="participant-tabs" id="question" value={section}>
           {section === 'question' && (
             <Panel aria-label={t('Текущий вопрос')}>
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-                <p className="text-sm text-muted">
-                  {snapshot
-                    ? t('Осталось вопросов: {value0}', {
-                        value0: snapshot.progress.pending,
-                      })
-                    : t('Загружаем вопросы…')}
-                </p>
-                <Countdown
-                  at={
-                    shown?.state === 'open'
-                      ? shown.closesAt
-                      : (shown?.scheduledAt ??
-                        (!shown ? snapshot?.upcoming?.scheduledAt : null))
-                  }
-                  kind={shown?.state === 'open' ? 'close' : 'start'}
-                  timeZone={snapshot?.timeZone}
-                />
+              <QuestionProgress
+                pending={snapshot?.progress.pending}
+                at={
+                  shown?.state === 'open'
+                    ? shown.closesAt
+                    : (shown?.scheduledAt ??
+                      (!shown ? snapshot?.upcoming?.scheduledAt : null))
+                }
+                kind={shown?.state === 'open' ? 'close' : 'start'}
+                timeZone={snapshot?.timeZone}
+              >
                 {review && (
                   <Button
                     variant="secondary"
@@ -282,7 +248,7 @@ export function ParticipantJourney({
                     {t('Закрыть')}
                   </Button>
                 )}
-              </div>
+              </QuestionProgress>
               {shown ? (
                 <AnswerForm
                   key={`${runId ?? 'personal'}/${shown.id}/${shown.revision}/${snapshot?.answer?.revision ?? 'new'}`}

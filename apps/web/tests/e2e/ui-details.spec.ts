@@ -8,7 +8,7 @@ test('logo, connection details and app information fit a narrow screen', async (
   await page.setViewportSize({width: 320, height: 740});
   await page.goto('/');
   await expect(
-    page.locator('header img[src="/brand/votebox-icon.svg"]'),
+    page.locator('[data-hero-brand] img[src="/brand/votemachine-icon.svg"]'),
   ).toBeVisible();
   expect(
     await page.evaluate(
