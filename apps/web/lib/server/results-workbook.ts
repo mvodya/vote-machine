@@ -17,7 +17,7 @@ export async function resultsWorkbook(
 ) {
   const t = (message: string) => translate(locale, message);
   const book = new ExcelJS.Workbook();
-  book.creator = 'Vote Machine';
+  book.creator = 'vote.machine.';
   book.created = new Date();
   const names = new Set<string>();
   // Excel names must be short, unique and free of special characters

@@ -8,7 +8,7 @@
   "configurePresets": [
     {
       "name": "dev",
-      "displayName": "Vote Machine API (development)",
+      "displayName": "vote.machine. API (development)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/../../build/api",
       "cacheVariables": {
@@ -20,7 +20,7 @@
     {
       "name": "sanitize",
       "inherits": "dev",
-      "displayName": "Vote Machine API (ASan + UBSan)",
+      "displayName": "vote.machine. API (ASan + UBSan)",
       "binaryDir": "${sourceDir}/../../build/api-sanitize",
       "cacheVariables": {
         "VOTE_MACHINE_SANITIZERS": "ON"

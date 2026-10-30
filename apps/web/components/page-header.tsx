@@ -27,7 +27,7 @@ export function PageHeader({
         ) : (
           <Link
             href="/"
-            aria-label={`votemachine - ${t('На главную')}`}
+            aria-label={`vote.machine. - ${t('На главную')}`}
             className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
           >
             <Brand />

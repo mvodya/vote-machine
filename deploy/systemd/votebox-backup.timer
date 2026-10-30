@@ -1,5 +1,5 @@
 [Unit]
-Description=Vote Machine daily backup schedule
+Description=vote.machine. daily backup schedule
 
 [Timer]
 OnCalendar=*-*-* 03:00:00

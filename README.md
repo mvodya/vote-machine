@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="apps/web/public/brand/votemachine-icon.svg" width="100" height="100" alt="Vote Machine">
+  <img src="apps/web/public/brand/votemachine-icon.svg" width="100" height="100" alt="vote.machine.">
 </p>
 
-<h1 align="center">Vote Machine</h1>
+<h1 align="center">vote.machine.</h1>
 
 <p align="center">
   Voting and polls in persistent rooms, without registration<br>

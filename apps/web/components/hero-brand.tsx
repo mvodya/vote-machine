@@ -1,3 +1,4 @@
+import {Wordmark} from './wordmark';
 import styles from './hero-brand.module.css';
 
 // Share the flying logo and wordmark across both public pages
@@ -20,8 +21,8 @@ export function HeroBrand({
           alt=""
           className={`${styles.icon} size-[clamp(3rem,12cqw,10rem)] shrink-0`}
         />
-        <Name className="text-[clamp(2rem,12cqw,10rem)] leading-[0.95] font-semibold tracking-[-0.085em]">
-          vote<span className="font-light text-primary">machine</span>
+        <Name className="text-[clamp(1.5rem,10.5cqw,10rem)] leading-[0.95] font-semibold tracking-[-0.085em]">
+          <Wordmark />
         </Name>
       </div>
     </div>

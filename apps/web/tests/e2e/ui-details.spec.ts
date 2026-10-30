@@ -36,7 +36,7 @@ test('logo, connection details and app information fit a narrow screen', async (
   await page.screenshot({path: info.outputPath('connection.png')});
   await page.keyboard.press('Escape');
   const footer = page.getByRole('button', {name: 'О приложении', exact: true});
-  await expect(footer).toHaveText(/^Vote Machine · [a-f0-9]{7}$/);
+  await expect(footer).toHaveText(/^vote\.machine\. · [a-f0-9]{7}$/);
   await footer.click();
   const about = page.getByRole('dialog', {name: 'О приложении', exact: true});
   await expect(

@@ -1,5 +1,5 @@
 [Unit]
-Description=Vote Machine daily database and object backup
+Description=vote.machine. daily database and object backup
 Requires=docker.service
 After=docker.service
 

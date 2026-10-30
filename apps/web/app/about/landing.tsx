@@ -29,6 +29,7 @@ import {
 import {GithubMark} from '../../components/github-mark';
 import QRCode from 'qrcode';
 import {PageHeader} from '../../components/page-header';
+import {Wordmark} from '../../components/wordmark';
 import {HeroBrand} from '../../components/hero-brand';
 import {SoundScope} from '../../components/sound-scope';
 import {HeroBackground} from '../../components/hero-background';
@@ -540,7 +541,7 @@ export function Landing() {
               )}
             </p>
             <div className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6 text-xs text-muted">
-              <span>Vote Machine</span>
+              <Wordmark muted />
               <a
                 href={repository}
                 target="_blank"
@@ -548,7 +549,7 @@ export function Landing() {
                 className="inline-flex items-center gap-2 hover:text-ink"
               >
                 <GithubMark />
-                mvodya / vote-machine
+                <Wordmark muted />
                 <ArrowUpRight className="size-3" />
               </a>
             </div>

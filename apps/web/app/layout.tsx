@@ -11,7 +11,7 @@ import {translate} from '../lib/i18n/translate';
 // Use the same language for page details and the first visible render
 export async function generateMetadata(): Promise<Metadata> {
   return {
-    title: 'Vote Machine',
+    title: 'vote.machine.',
     description: translate(await requestLocale(), 'Система голосования'),
   };
 }

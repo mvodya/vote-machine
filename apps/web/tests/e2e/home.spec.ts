@@ -56,7 +56,7 @@ test('home uses the desktop split and a compact mobile entry', async ({
   page,
 }, info) => {
   await page.goto('/');
-  const story = page.getByRole('complementary', {name: 'О votemachine'});
+  const story = page.getByRole('complementary', {name: 'О vote.machine.'});
   const access = page.getByRole('region', {name: 'Создание комнаты и вход'});
   // Desktop keeps the split, phones put public details below the form
   if (info.project.name === 'desktop') {
@@ -73,7 +73,7 @@ test('home uses the desktop split and a compact mobile entry', async ({
     expect(brand!.y).toBeCloseTo(selector!.y, 0);
     expect(caption!.y).toBeGreaterThanOrEqual(brand!.y + brand!.height);
     const details = await page
-      .getByRole('link', {name: 'Подробнее о Vote Machine', exact: true})
+      .getByRole('link', {name: 'Подробнее о vote.machine.', exact: true})
       .boundingBox();
     expect(details!.x).toBeLessThan(right!.x);
     expect(details!.y).toBeGreaterThanOrEqual(caption!.y + caption!.height);
@@ -208,7 +208,7 @@ test('every page has a quiet footer and a real short revision', async ({
   ]) {
     await page.goto(path);
     const footer = page.getByRole('contentinfo');
-    await expect(footer).toHaveText(/^Vote Machine · [a-f0-9]{7}$/);
+    await expect(footer).toHaveText(/^vote\.machine\. · [a-f0-9]{7}$/);
     await expect(footer).toHaveCSS('font-size', '10px');
     await expect(footer).toHaveCSS('text-align', 'right');
     await expect(footer).toHaveCSS('position', 'absolute');

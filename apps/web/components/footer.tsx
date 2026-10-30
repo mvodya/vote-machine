@@ -6,6 +6,7 @@ import {
   Globe,
   UserRound,
 } from 'lucide-react';
+import {Wordmark} from './wordmark';
 import {GithubMark} from './github-mark';
 import {Popover} from './ui/popover';
 // Keep the footer small and show build details only on request
@@ -19,7 +20,7 @@ export function Footer() {
         className="py-1"
         trigger={
           <>
-            Vote Machine ·{' '}
+            <Wordmark muted /> ·{' '}
             <span className="ml-1 font-mono">
               {process.env.NEXT_PUBLIC_GIT_COMMIT}
             </span>
@@ -27,7 +28,9 @@ export function Footer() {
         }
       >
         <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-sm font-semibold">Vote Machine</h2>
+          <h2 className="text-sm font-semibold">
+            <Wordmark muted />
+          </h2>
           <a
             href="https://github.com/mvodya/vote-machine"
             aria-label="GitHub"

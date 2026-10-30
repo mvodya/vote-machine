@@ -13,10 +13,10 @@ test('ballots work locally and only the phone is shown on small screens', async 
   });
   await page.goto('/');
   await page
-    .getByRole('link', {name: 'Подробнее о Vote Machine', exact: true})
+    .getByRole('link', {name: 'Подробнее о vote.machine.', exact: true})
     .click();
   await expect(
-    page.getByRole('heading', {name: 'votemachine', exact: true}),
+    page.getByRole('heading', {name: 'vote.machine.', exact: true}),
   ).toBeVisible();
   await expect(page.locator('main header img')).toHaveCount(0);
   await expect(page.locator('[data-hero-brand]')).toHaveCount(1);
@@ -105,7 +105,7 @@ test('ballots work locally and only the phone is shown on small screens', async 
     ).toBe(true);
   }
   await page
-    .getByRole('link', {name: 'mvodya / vote-machine', exact: false})
+    .getByRole('link', {name: 'vote.machine.', exact: true})
     .scrollIntoViewIfNeeded();
   await page.screenshot({
     animations: 'disabled',

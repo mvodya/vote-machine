@@ -1,3 +1,5 @@
+import {Wordmark} from './wordmark';
+
 // Show the supplied logo and app name
 export function Brand({className = ''}: {className?: string}) {
   return (
@@ -13,7 +15,9 @@ export function Brand({className = ''}: {className?: string}) {
         height={40}
         className="size-8 shrink-0 sm:size-10"
       />
-      <span className="@max-[340px]:sr-only">votemachine</span>
+      <span className="@max-[340px]:sr-only">
+        <Wordmark />
+      </span>
     </div>
   );
 }

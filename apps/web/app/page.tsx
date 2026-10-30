@@ -4,6 +4,7 @@ import {ArrowUpRight} from 'lucide-react';
 import {useI18n} from '../components/language-provider';
 import RoomEntry from './room-entry';
 import {PageHeader} from '../components/page-header';
+import {Wordmark} from '../components/wordmark';
 import {HeroBrand} from '../components/hero-brand';
 import {HeroBackground} from '../components/hero-background';
 import {HomeCaption} from '../components/home-caption';
@@ -26,14 +27,16 @@ export default function Home() {
             </div>
             <aside
               className="order-3 px-7 pt-3 pb-7 sm:px-10 lg:order-1 lg:px-12 lg:pt-0 lg:pb-8"
-              aria-label={t('О votemachine')}
+              aria-label={t('О vote.machine.')}
             >
               <HomeCaption />
               <Link
                 href="/about"
                 className="mt-6 inline-flex min-h-12 items-center gap-3 rounded-full border border-border bg-panel/70 px-5 py-3 text-sm font-medium text-ink backdrop-blur-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ink motion-reduce:transition-none"
               >
-                {t('Подробнее о Vote Machine')}
+                <span>
+                  {t('Подробнее о')} <Wordmark />
+                </span>
                 <ArrowUpRight className="size-4 shrink-0" aria-hidden="true" />
               </Link>
             </aside>

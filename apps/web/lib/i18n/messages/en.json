@@ -267,7 +267,7 @@
   "Новые границы выбора нарушают сохраненные ответы": "The new selection limits conflict with saved responses",
   "Новый вопрос": "New question",
   "Новый ручной голос": "New manual response",
-  "О votemachine": "About votemachine",
+  "О vote.machine.": "About vote.machine.",
   "О приложении": "About",
   "Общая статистика для отвечающих, доступ к результатам отдельных вопросов задается в самих вопросах": "Summary statistics for participants, access to individual question results is set per question",
   "Общие результаты": "Overall results",
@@ -606,5 +606,5 @@
   "Обмен опытом": "Sharing experience",
   "Планы команды": "Team plans",
   "OPEN SOURCE": "OPEN SOURCE",
-  "Подробнее о Vote Machine": "More about Vote Machine"
+  "Подробнее о": "More about"
 }
