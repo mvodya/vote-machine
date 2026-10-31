@@ -8,9 +8,9 @@ export function Wordmark({
   return (
     <span
       data-wordmark
-      className={`whitespace-nowrap font-semibold tracking-[-0.085em] ${muted ? 'text-muted/60' : ''}`}
+      className={`whitespace-nowrap font-semibold tracking-[-0.085em] ${muted ? 'text-muted' : ''}`}
     >
-      <span className={muted ? 'text-inherit' : 'text-white'}>vote.</span>
+      <span className={muted ? 'text-inherit' : 'text-ink'}>vote.</span>
       <span className={`font-light ${muted ? 'text-inherit' : 'text-primary'}`}>
         machine.
       </span>
