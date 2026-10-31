@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "results.hpp"
 
 #include <string>
@@ -7,6 +11,7 @@
 
 namespace vote_machine {
 namespace {
+
 // Let PostgreSQL apply the same publication rules to each view
 void ReadResults(const drogon::orm::DbClientPtr& database,
                  const drogon::HttpRequestPtr& request, const Reply& reply,
@@ -16,16 +21,19 @@ void ReadResults(const drogon::orm::DbClientPtr& database,
     Error(reply, drogon::k401Unauthorized, "Access required");
     return;
   }
+
   const auto question = request->getParameter("question");
   if (!question.empty() && !IsRoomId(question)) {
     Error(reply, drogon::k400BadRequest, "Invalid question");
     return;
   }
+
   Json::Value data(Json::objectValue);
   for (const auto* key : {"after", "peopleAfter", "run", "view"}) {
     const auto value = request->getParameter(key);
     if (!value.empty()) data[key] = value;
   }
+
   Json::StreamWriterBuilder writer;
   writer["indentation"] = "";
   database->execSqlAsync(
@@ -38,7 +46,9 @@ void ReadResults(const drogon::orm::DbClientPtr& database,
       [reply](const drogon::orm::DrogonDbException&) { Unavailable(reply); },
       identity, session, admin, question, Json::writeString(writer, data));
 }
+
 }  // namespace
+
 // Check access and share only presentation data
 void Experience(const drogon::orm::DbClientPtr& database,
                 const drogon::HttpRequestPtr& request, const Reply& reply,
@@ -48,6 +58,7 @@ void Experience(const drogon::orm::DbClientPtr& database,
     Error(reply, drogon::k401Unauthorized, "Access required");
     return;
   }
+
   Json::Value data(Json::objectValue);
   if (request->method() == drogon::Patch) {
     const auto body = request->getJsonObject();
@@ -64,6 +75,7 @@ void Experience(const drogon::orm::DbClientPtr& database,
       data["showAllResults"] = (*body)["showAllResults"];
     }
   }
+
   const auto after = request->getParameter("after");
   if (!after.empty()) data["after"] = after;
   Json::StreamWriterBuilder writer;
@@ -78,6 +90,7 @@ void Experience(const drogon::orm::DbClientPtr& database,
       [reply](const drogon::orm::DrogonDbException&) { Unavailable(reply); },
       identity, session, admin, Json::writeString(writer, data));
 }
+
 // Keep role selection in the route rather than a client field
 void RegisterResultHandlers(const drogon::orm::DbClientPtr& database) {
   drogon::app().registerHandler(
@@ -139,4 +152,5 @@ void RegisterResultHandlers(const drogon::orm::DbClientPtr& database) {
       },
       {drogon::Get});
 }
+
 }  // namespace vote_machine

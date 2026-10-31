@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "access.hpp"
 
 #include <openssl/evp.h>

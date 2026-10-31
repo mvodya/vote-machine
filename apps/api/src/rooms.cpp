@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "rooms.hpp"
 
 #include <drogon/drogon.h>
@@ -12,6 +16,7 @@
 
 namespace vote_machine {
 namespace {
+
 // Read a short room name from JSON
 bool Name(const drogon::HttpRequestPtr& request, std::string& name,
           bool optional) {
@@ -24,11 +29,13 @@ bool Name(const drogon::HttpRequestPtr& request, std::string& name,
   if (!(*body)["name"].isString()) return false;
   name = (*body)["name"].asString();
   std::size_t characters = 0;
+
   // Count UTF-8 characters, not bytes
   for (char byte : name) {
     const auto value = static_cast<unsigned char>(byte);
     if ((value & 0xc0) != 0x80) ++characters;
   }
+
   return characters <= 200 && name.find('\0') == std::string::npos;
 }
 

@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <drogon/drogon.h>
@@ -13,6 +17,7 @@
 #endif
 
 namespace vote_machine {
+
 // Share safe clock and process labels without keys or network addresses
 inline Json::Value ConnectionInfo() {
   Json::Value data;
@@ -25,4 +30,5 @@ inline Json::Value ConnectionInfo() {
           .count());
   return data;
 }
+
 }  // namespace vote_machine

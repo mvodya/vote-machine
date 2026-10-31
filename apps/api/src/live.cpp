@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "live.hpp"
 
 #include <drogon/drogon.h>
@@ -16,7 +20,9 @@
 
 namespace vote_machine {
 namespace {
+
 using Clock = std::chrono::steady_clock;
+
 // All mutable stream state stays on the main event loop
 struct LiveClient {
   // Role-scoped identity and hashed session
@@ -33,9 +39,11 @@ struct LiveClient {
   // Bound buffered events and connection age
   std::uint32_t writes = 0;
   Clock::time_point started = Clock::now();
+
   // Close this stream before removing the client
   drogon::ResponseStreamPtr stream;
 };
+
 class LiveHub : public std::enable_shared_from_this<LiveHub> {
  public:
   // Keep background work from owning database threads
@@ -119,6 +127,7 @@ class LiveHub : public std::enable_shared_from_this<LiveHub> {
       client->stream.reset();
     }
   }
+
   // Drop a stream even when a pending callback still refers to it
   void Remove(std::uint64_t key) {
     const auto item = clients_.find(key);
@@ -127,6 +136,7 @@ class LiveHub : public std::enable_shared_from_this<LiveHub> {
       clients_.erase(item);
     }
   }
+
   // Bound each stream to a small lease even if its reader stops consuming
   static bool Send(const std::shared_ptr<LiveClient>& client,
                    const std::string& event, const std::string& version = "") {
@@ -251,7 +261,9 @@ class LiveHub : public std::enable_shared_from_this<LiveHub> {
   std::uint32_t ticks_ = 0;
   bool stopped_ = false;
 };
+
 }  // namespace
+
 // Register role-specific endpoints with one shared PostgreSQL listener
 std::function<void()> RegisterLiveHandlers(
     const drogon::orm::DbClientPtr& database, const std::string& connection) {
@@ -271,4 +283,5 @@ std::function<void()> RegisterLiveHandlers(
                                 {drogon::Get});
   return [hub]() { hub->Stop(); };
 }
+
 }  // namespace vote_machine

@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "links.hpp"
 
 #include <algorithm>
@@ -158,6 +162,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
               room, session, after);
           return;
         }
+
         const auto input = request->getJsonObject();
         // Validate the whole batch before making any keys or database changes
         if (!input || !input->isObject() || !(*input)["mode"].isString() ||
@@ -166,11 +171,13 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Error(reply, drogon::k400BadRequest, "Invalid batch");
           return;
         }
+
         const auto mode = (*input)["mode"].asString();
         if (mode != "personal" && mode != "reusable") {
           Error(reply, drogon::k400BadRequest, "Invalid mode");
           return;
         }
+
         // Only shared links may expose earlier runs
         if (input->isMember("allowRunHistory") &&
             (!(*input)["allowRunHistory"].isBool() ||
@@ -178,6 +185,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Error(reply, drogon::k400BadRequest, "Invalid history setting");
           return;
         }
+
         for (const auto& name : (*input)["names"])
           if (!name.isString() || !ValidName(name.asString())) {
             Error(reply, drogon::k400BadRequest, "Invalid name");
@@ -228,11 +236,13 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Error(reply, drogon::k404NotFound, "Link not found");
           return;
         }
+
         const auto input = request->getJsonObject();
         if (!input || !input->isObject() || !(*input)["action"].isString()) {
           Error(reply, drogon::k400BadRequest, "Invalid action");
           return;
         }
+
         const auto action = (*input)["action"].asString();
         std::string name;
         if (action == "rename") {
@@ -251,10 +261,12 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Error(reply, drogon::k400BadRequest, "Invalid history rule");
           return;
         }
+
         const std::string history =
             input->isMember("allowRunHistory")
                 ? ((*input)["allowRunHistory"].asBool() ? "true" : "false")
                 : "";
+
         const auto key = action == "rotate" ? NewSecret() : "";
         database->execSqlAsync(
             kColumns +

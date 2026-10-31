@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "security.hpp"
 
 #include <openssl/crypto.h>
@@ -9,8 +13,10 @@
 
 #include "access.hpp"
 #include "http.hpp"
+
 namespace vote_machine {
 namespace {
+
 // Reject disabled or unbounded budgets at startup
 int Limit(const char* name, int fallback) {
   const char* source = std::getenv(name);
@@ -24,18 +30,22 @@ int Limit(const char* name, int fallback) {
     throw std::invalid_argument("Invalid request budget");
   return parsed;
 }
+
 }  // namespace
+
 // Browser traffic is admitted before the Next.js handler reads its body
 void RegisterSecurityHandlers(const drogon::orm::DbClientPtr& database,
                               const std::string& gateway_key) {
   if (!IsSecret(gateway_key))
     throw std::invalid_argument("Invalid API gateway key");
+
   Json::Value limits;
   limits["network"] = Limit("RATE_NETWORK_PER_MINUTE", 60000);
   limits["create"] = Limit("RATE_CREATE_PER_HOUR", 1000);
   limits["read"] = Limit("RATE_READ_PER_MINUTE", 1200);
   limits["write"] = Limit("RATE_WRITE_PER_MINUTE", 240);
   limits["room"] = Limit("RATE_ROOM_PER_MINUTE", 30000);
+
   drogon::app().registerHandler(
       "/api/admission",
       [database, gateway_key, limits](const drogon::HttpRequestPtr& request,
@@ -105,4 +115,5 @@ void RegisterSecurityHandlers(const drogon::orm::DbClientPtr& database,
       },
       {drogon::Post});
 }
+
 }  // namespace vote_machine

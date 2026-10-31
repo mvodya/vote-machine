@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "http.hpp"
 
 #include <memory>
@@ -59,6 +63,7 @@ void DatabaseReply(const drogon::orm::Result& result, const Reply& reply) {
     Unavailable(reply);
     return;
   }
+
   Json::Value body;
   Json::CharReaderBuilder reader;
   const auto text = result[0]["response"].as<std::string>();
@@ -68,6 +73,7 @@ void DatabaseReply(const drogon::orm::Result& result, const Reply& reply) {
     Unavailable(reply);
     return;
   }
+
   const auto status = body["status"].asInt();
   if (status != 200 && status != 201 && status != 400 && status != 401 &&
       status != 403 && status != 404 && status != 409 && status != 413 &&
@@ -75,6 +81,7 @@ void DatabaseReply(const drogon::orm::Result& result, const Reply& reply) {
     Unavailable(reply);
     return;
   }
+
   body.removeMember("status");
   Send(reply, body, static_cast<drogon::HttpStatusCode>(status));
 }

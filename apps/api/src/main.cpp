@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
 #include <openssl/crypto.h>

@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "questions.hpp"
 
 #include <string>
@@ -17,15 +21,18 @@ void RequestQuestion(const drogon::orm::DbClientPtr& database,
                      const std::string& room, const std::string& id,
                      const std::string& action) {
   const auto session = Session(request);
+
   // A participant session cannot select an admin room
   if (!IsRoomId(room) || session.empty()) {
     Error(reply, drogon::k401Unauthorized, "Admin access required");
     return;
   }
+
   if (!id.empty() && !IsRoomId(id)) {
     Error(reply, drogon::k404NotFound, "Question not found");
     return;
   }
+
   Json::Value data(Json::objectValue);
   if (request->method() == drogon::Get) {
     const auto after = request->getParameter("after");
@@ -45,6 +52,7 @@ void RequestQuestion(const drogon::orm::DbClientPtr& database,
       return;
     }
   }
+
   Json::StreamWriterBuilder writer;
   writer["indentation"] = "";
   database->execSqlAsync(

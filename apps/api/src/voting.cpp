@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "voting.hpp"
 
 #include <string>
@@ -6,6 +10,7 @@
 #include "http.hpp"
 
 namespace vote_machine {
+
 // Keep vote admission and writes in one database transaction
 void RegisterVotingHandlers(const drogon::orm::DbClientPtr& database) {
   drogon::app().registerHandler(
@@ -227,4 +232,5 @@ void RegisterVotingHandlers(const drogon::orm::DbClientPtr& database) {
       },
       {drogon::Get, drogon::Post});
 }
+
 }  // namespace vote_machine

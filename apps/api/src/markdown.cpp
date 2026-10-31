@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "markdown.hpp"
 
 #include <cmark-gfm.h>
@@ -13,6 +17,7 @@
 
 namespace vote_machine {
 namespace {
+
 // Parse image nodes with the same CommonMark rules as the editor
 bool ReadSource(const std::string& source, int position,
                 std::set<std::pair<int, std::string>>& found) {
@@ -20,9 +25,11 @@ bool ReadSource(const std::string& source, int position,
       cmark_parse_document(source.data(), source.size(), CMARK_OPT_DEFAULT),
       cmark_node_free);
   if (!root) return false;
+
   const std::unique_ptr<cmark_iter, decltype(&cmark_iter_free)> iterator(
       cmark_iter_new(root.get()), cmark_iter_free);
   cmark_event_type event;
+
   while ((event = cmark_iter_next(iterator.get())) != CMARK_EVENT_DONE) {
     if (event != CMARK_EVENT_ENTER) continue;
     auto* node = cmark_iter_get_node(iterator.get());
@@ -40,6 +47,7 @@ bool ReadSource(const std::string& source, int position,
   }
   return true;
 }
+
 }  // namespace
 
 // Do not accept hidden control bytes or protocol-relative links
@@ -64,10 +72,12 @@ bool MarkdownReferences(const Json::Value& input, Json::Value& references) {
   if (!input.isObject() || !input["content"].isString() ||
       !input["choices"].isArray() || input["choices"].size() > 100)
     return false;
+
   std::set<std::pair<int, std::string>> found;
   if (input["content"].asString().size() > 80000 ||
       !ReadSource(input["content"].asString(), -1, found))
     return false;
+
   int position = 0;
   for (const auto& choice : input["choices"]) {
     if (!choice.isObject() || !choice["content"].isString() ||
@@ -76,6 +86,7 @@ bool MarkdownReferences(const Json::Value& input, Json::Value& references) {
       return false;
     ++position;
   }
+
   references = Json::Value(Json::arrayValue);
   for (const auto& [index, id] : found) {
     Json::Value item;
@@ -85,4 +96,5 @@ bool MarkdownReferences(const Json::Value& input, Json::Value& references) {
   }
   return true;
 }
+
 }  // namespace vote_machine

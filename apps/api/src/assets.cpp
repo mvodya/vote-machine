@@ -1,3 +1,7 @@
+// vote.machine.
+// Copyright (c) 2026 Mark Vodyanitskiy
+// SPDX-License-Identifier: MIT
+
 #include "assets.hpp"
 
 #include <openssl/crypto.h>
@@ -10,6 +14,7 @@
 
 namespace vote_machine {
 namespace {
+
 // Only trusted servers may finish validated uploads or remove unused objects
 bool Worker(const drogon::HttpRequestPtr& request, const Reply& reply,
             const std::string& key) {
@@ -21,6 +26,7 @@ bool Worker(const drogon::HttpRequestPtr& request, const Reply& reply,
   }
   return true;
 }
+
 // Keep the room check and media lookup in one database call
 void AdminAsset(const drogon::orm::DbClientPtr& database,
                 const drogon::HttpRequestPtr& request, const Reply& reply,
@@ -29,14 +35,17 @@ void AdminAsset(const drogon::orm::DbClientPtr& database,
                 const std::string& room, const std::string& id,
                 const std::string& action) {
   const auto session = Session(request);
+
   if (!IsRoomId(room) || session.empty()) {
     Error(reply, drogon::k401Unauthorized, "Admin access required");
     return;
   }
+
   if (!id.empty() && !IsRoomId(id)) {
     Error(reply, drogon::k404NotFound, "Media not found");
     return;
   }
+
   Json::Value data(Json::objectValue);
   if (request->method() != drogon::Get) {
     const auto body = request->getJsonObject();
@@ -46,6 +55,7 @@ void AdminAsset(const drogon::orm::DbClientPtr& database,
     }
     data = *body;
   }
+
   Json::StreamWriterBuilder writer;
   writer["indentation"] = "";
   database->execSqlAsync(
@@ -58,6 +68,7 @@ void AdminAsset(const drogon::orm::DbClientPtr& database,
       [reply](const drogon::orm::DrogonDbException&) { Unavailable(reply); },
       room, session, id, action, Json::writeString(writer, data));
 }
+
 }  // namespace
 
 // Media bytes stay in S3, while PostgreSQL controls their access
@@ -161,4 +172,5 @@ void RegisterAssetHandlers(const drogon::orm::DbClientPtr& database,
       },
       {drogon::Post});
 }
+
 }  // namespace vote_machine
