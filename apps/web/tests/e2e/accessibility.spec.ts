@@ -112,6 +112,9 @@ test('question editing, shared timezone, answering and projector remain accessib
   });
   await page.goto(`/rooms/${f.room.id}`);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await expect(page.getByLabel('Текст вопроса', {exact: true})).toBeVisible();
   await scan(page);
   const sections = page.getByRole('tablist', {name: 'Разделы вопроса'});

@@ -16,6 +16,9 @@ test('scheduled content stays hidden and appears live when the question opens', 
   await page.goto(`/rooms/${f.room.id}`);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
   await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
+  await page
     .getByLabel('Текст вопроса', {exact: true})
     .fill('Private scheduled question');
   await page.getByLabel('Вариант 1', {exact: true}).fill('Private option A');

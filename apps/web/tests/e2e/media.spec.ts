@@ -20,6 +20,9 @@ async function setup(page: Page) {
   ).toBeVisible();
   const room = new URL(page.url()).pathname.split('/').at(-1)!;
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   return room;
 }
 // Open the matching preview instead of another option's editor controls

@@ -482,6 +482,10 @@ test('opening a question editor stays still and its later tab switches still sli
       (window as unknown as {editorSlides: string[]}).editorSlides.length = 0;
     });
     await page.getByRole('button', {name: action, exact: true}).click();
+    if (action === 'Создать вопрос')
+      await page
+        .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+        .click();
     const tabs = page.getByRole('tablist', {
       name: 'Разделы вопроса',
       exact: true,
@@ -602,6 +606,9 @@ test('editor selectors appear in place and animate only later selections', async
     });
   });
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   const tabs = page.getByRole('tablist', {
     name: 'Разделы вопроса',
     exact: true,

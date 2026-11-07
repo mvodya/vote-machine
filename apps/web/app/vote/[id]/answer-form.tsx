@@ -1,5 +1,6 @@
 'use client';
 import {useI18n} from '../../../components/language-provider';
+import {AllocationForm} from './allocation-form';
 import {playSound} from '../../../lib/audio';
 import {useId, useRef, useState, type FormEvent} from 'react';
 import {Check, SkipForward} from 'lucide-react';
@@ -12,7 +13,7 @@ import {markdownSummary} from '../../../lib/markdown';
 import {isAnswer, type Answer} from '../../../lib/ballots';
 import type {Question} from '../../../lib/questions';
 // Keep a failed request identity so a retry cannot create a second vote
-export function AnswerForm({
+function ChoiceAnswerForm({
   linkId,
   timeZone = localTimeZone(),
   question,
@@ -253,5 +254,21 @@ export function AnswerForm({
         )}
       </Form>
     </>
+  );
+}
+
+// Each question kind owns its answer flow and shares the same identity context
+export function AnswerForm(
+  props: Parameters<typeof ChoiceAnswerForm>[0] & {
+    // Immediate selections stay open until the participant moves on
+    onSelectionSaved?: () => void;
+    // Keep the current question mounted if a confirmed reply is lost
+    onSelectionStart?: () => void;
+  },
+) {
+  return props.question.questionType === 'allocation' ? (
+    <AllocationForm {...props} />
+  ) : (
+    <ChoiceAnswerForm {...props} />
   );
 }

@@ -126,6 +126,8 @@ export async function questionProxy(
       const error =
         isRecord(data) &&
         [
+          'type_fixed',
+          'capacity',
           'conflict',
           'locked',
           'asset',

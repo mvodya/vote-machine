@@ -5,11 +5,16 @@ import {Check} from 'lucide-react';
 export function SelectionInput({
   type,
   className = '',
+  dimDisabled = true,
   ...props
-}: Omit<ComponentProps<'input'>, 'type'> & {type: 'checkbox' | 'radio'}) {
+}: Omit<ComponentProps<'input'>, 'type'> & {
+  type: 'checkbox' | 'radio';
+  // A pending write can block input without flashing its color
+  dimDisabled?: boolean;
+}) {
   return (
     <span
-      className={`relative inline-flex shrink-0 has-disabled:opacity-50 ${className}`}
+      className={`relative inline-flex shrink-0 ${dimDisabled ? 'has-disabled:opacity-50' : ''} ${className}`}
     >
       <input
         type={type}

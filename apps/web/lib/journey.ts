@@ -8,11 +8,14 @@ import {
   publicSummary,
   questionInput,
   validQuestionCursor,
+  type Choice,
   type Question,
   type QuestionSummary,
 } from './questions';
 
 export interface JourneyItem extends QuestionSummary {
+  // Only this session's readable allocation choices
+  selectedChoices?: Choice[];
   // Whether this link has already answered
   answered: boolean;
   // Whether this question permits a temporary skip
@@ -84,6 +87,17 @@ export function isJourney(value: unknown): value is Journey {
       (item) =>
         isQuestionSummary(item) &&
         isRecord(item) &&
+        (item.selectedChoices === undefined ||
+          (Array.isArray(item.selectedChoices) &&
+            item.selectedChoices.length <= 100 &&
+            item.selectedChoices.every(
+              (choice: unknown) =>
+                isRecord(choice) &&
+                typeof choice.id === 'string' &&
+                roomIdPattern.test(choice.id) &&
+                typeof choice.content === 'string' &&
+                choice.content.length <= 20000,
+            ))) &&
         typeof item.answered === 'boolean' &&
         typeof item.allowSkip === 'boolean' &&
         typeof item.canChoose === 'boolean',
@@ -110,6 +124,13 @@ export function isJourney(value: unknown): value is Journey {
 function participantInput(value: Question) {
   const input = questionInput(value);
   delete input.expectedLinkIds;
+  // Availability is read-only and must survive the participant boundary
+  input.choices = input.choices.map((choice, index) => ({
+    ...choice,
+    ...(value.questionType === 'allocation'
+      ? {remaining: value.choices[index].remaining}
+      : {}),
+  }));
   return input;
 }
 // Keep storage data and other respondents out of browser snapshots
@@ -144,6 +165,14 @@ export function publicJourney(value: Journey): Journey {
       : {}),
     questions: value.questions.map((item) => ({
       ...publicSummary(item),
+      ...(item.selectedChoices
+        ? {
+            selectedChoices: item.selectedChoices.map(({id, content}) => ({
+              id,
+              content,
+            })),
+          }
+        : {}),
       answered: item.answered,
       allowSkip: item.allowSkip,
       canChoose: item.canChoose,

@@ -94,6 +94,9 @@ test('room-zone date and time use common pickers and current-value buttons', asy
   const f = await votingFixture(page);
   await page.goto(`/rooms/${f.room.id}`);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await page.getByRole('tab', {name: 'Управление', exact: true}).click();
   await expect(
     page.getByRole('checkbox', {name: 'Отложенный старт', exact: true}),

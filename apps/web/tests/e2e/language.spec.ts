@@ -77,6 +77,9 @@ test('room editing keeps unsaved content when labels and dialogs change language
   const f = await votingFixture(page, {content: 'Настройки'});
   await page.goto(`/rooms/${f.room.id}`);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await page.getByLabel('Текст вопроса', {exact: true}).fill('Результаты');
   await chooseLanguage(page, 'English');
   await expect(page.getByLabel('Question text', {exact: true})).toHaveValue(

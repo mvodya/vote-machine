@@ -1,4 +1,6 @@
 'use client';
+import {useLive} from '../../../lib/use-live';
+import type {Answer} from '../../../lib/ballots';
 import {useI18n} from '../../../components/language-provider';
 import {useEffect, useState} from 'react';
 import {ArrowRight} from 'lucide-react';
@@ -20,6 +22,8 @@ function ManualVotingForm({
   timeZone: string;
 }) {
   const {t} = useI18n();
+  const live = useLive(`/api/rooms/${roomId}/events`, onDenied);
+  const [manualId, setManualId] = useState(() => crypto.randomUUID());
   const [linkId, setLinkId] = useState('');
   const [links, setLinks] = useState<VotingLink[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -27,6 +31,7 @@ function ManualVotingForm({
     question: Question;
     answered: boolean;
     answerRevision: string;
+    answer?: Answer | null;
   } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [saved, setSaved] = useState(false);
@@ -36,6 +41,7 @@ function ManualVotingForm({
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
+      if (busy) return;
       try {
         const response = await fetch(
           `${path}${linkId ? `?linkId=${linkId}` : ''}`,
@@ -55,7 +61,7 @@ function ManualVotingForm({
     }
     void load();
     return () => controller.abort();
-  }, [path, linkId, attempt, onDenied]);
+  }, [path, linkId, attempt, onDenied, live.version, busy]);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
@@ -112,6 +118,7 @@ function ManualVotingForm({
             startIcon={<ArrowRight />}
             onClick={() => {
               setSaved(false);
+              setManualId(crypto.randomUUID());
               setLinkId('');
               setAttempt((value) => value + 1);
             }}
@@ -148,15 +155,15 @@ function ManualVotingForm({
           )}
           {context && (
             <AnswerForm
-              key={`${linkId}/${context.question.revision}/${context.answerRevision}/${attempt}`}
+              key={`${linkId}/${context.question.revision}/${context.question.questionType === 'allocation' ? 'allocation' : context.answerRevision}/${attempt}`}
               linkId={linkId || roomId}
               timeZone={timeZone}
               question={context.question}
-              answer={null}
+              answer={context.answer ?? null}
               alreadyAnswered={context.answered}
               existingRevision={context.answerRevision}
               submitPath={path}
-              extraPayload={linkId ? {linkId} : undefined}
+              extraPayload={linkId ? {linkId} : {ballotId: manualId}}
               onBusy={setBusy}
               onSaved={() => setSaved(true)}
               onDenied={onDenied}

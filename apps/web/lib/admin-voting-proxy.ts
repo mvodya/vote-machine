@@ -63,12 +63,19 @@ export async function adminVotingProxy(
         (typeof input.enabled !== 'boolean' || !validCursor(input.revision))
       )
         throw new Error();
+      if (
+        input.ballotId !== undefined &&
+        (typeof input.ballotId !== 'string' ||
+          !roomIdPattern.test(input.ballotId))
+      )
+        throw new Error();
       body = question
         ? {
             requestId: input.requestId,
             questionRevision: input.questionRevision,
             ballotRevision: input.ballotRevision,
             choices: input.choices,
+            ...(input.ballotId ? {ballotId: input.ballotId} : {}),
             ...(input.linkId ? {linkId: input.linkId} : {}),
           }
         : {enabled: input.enabled, revision: input.revision};
@@ -107,6 +114,7 @@ export async function adminVotingProxy(
           error:
             isRecord(data) &&
             [
+              'full',
               'used',
               'closed',
               'changed',
@@ -156,9 +164,20 @@ export async function adminVotingProxy(
           question: {
             ...publicSummary(data.question),
             ...questionInput(data.question),
+            choices: data.question.choices.map((choice) => ({
+              id: choice.id,
+              content: choice.content,
+              ...(choice.capacity !== undefined
+                ? {capacity: choice.capacity, remaining: choice.remaining}
+                : {}),
+            })),
           },
           answered: data.answered,
           answerRevision: data.answerRevision,
+          ...(data.question.questionType === 'allocation' &&
+          (data.answer === null || isAnswer(data.answer))
+            ? {answer: data.answer === null ? null : publicAnswer(data.answer)}
+            : {}),
         },
         {headers},
       );

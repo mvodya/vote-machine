@@ -251,12 +251,17 @@ export function ParticipantJourney({
               </QuestionProgress>
               {shown ? (
                 <AnswerForm
-                  key={`${runId ?? 'personal'}/${shown.id}/${shown.revision}/${snapshot?.answer?.revision ?? 'new'}`}
+                  key={`${runId ?? 'personal'}/${shown.id}/${shown.revision}/${shown.questionType === 'allocation' ? 'allocation' : (snapshot?.answer?.revision ?? 'new')}`}
                   timeZone={snapshot?.timeZone}
                   extraPayload={runId ? {runId} : undefined}
                   linkId={linkId}
                   question={shown}
                   answer={snapshot?.answer ?? null}
+                  onSelectionStart={() => setSelected(shown.id)}
+                  onSelectionSaved={() => {
+                    setSelected(shown.id);
+                    refresh('');
+                  }}
                   onDenied={onDenied}
                   onBusy={setBusy}
                   onRefresh={refresh}

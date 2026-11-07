@@ -8,6 +8,7 @@ export function ChoiceField({
   multiple,
   checked,
   disabled,
+  dimDisabled,
   onChange,
   children,
 }: {
@@ -19,6 +20,8 @@ export function ChoiceField({
   // Current selection and write state
   checked: boolean;
   disabled: boolean;
+  // Keep temporary save locks visually still
+  dimDisabled?: boolean;
   // Change the selected option
   onChange: () => void;
   // Safe Markdown content
@@ -35,6 +38,7 @@ export function ChoiceField({
         type={multiple ? 'checkbox' : 'radio'}
         checked={checked}
         disabled={disabled}
+        dimDisabled={dimDisabled}
         onChange={onChange}
         className="mt-[calc(0.75rem+0.25rem)] size-5"
       />

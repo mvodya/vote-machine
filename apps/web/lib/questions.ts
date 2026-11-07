@@ -1,13 +1,28 @@
 import {roomIdPattern} from './rooms';
 import {isRecord, validCursor} from './voting-links';
 
+// Add future answer types here without changing participant identity
+export const questionTypes = {
+  choice: 'Выбор варианта',
+  allocation: 'Бронирование вариантов',
+} as const;
+export type QuestionType = keyof typeof questionTypes;
+
 export interface Choice {
   // Stable option ID, missing for a new option
   id?: string;
   // Plain source text, rendered as Markdown in a later stage
   content: string;
+  // Places available for this option in allocation questions
+  capacity?: number;
+  // Live free places, never accepted as an editor setting
+  remaining?: number;
 }
 export interface QuestionInput {
+  // Full allocation options are hidden unless the admin turns this off
+  hideUnavailable?: boolean;
+  // Missing kinds are ordinary choice questions from older clients
+  questionType?: QuestionType;
   // Question source text
   content: string;
   // One answer or several answers
@@ -37,6 +52,8 @@ export interface QuestionInput {
   choices: Choice[];
 }
 export interface QuestionSummary {
+  // The answer widget used by this question
+  questionType?: QuestionType;
   // Stable question ID
   id: string;
   // Room that owns the question
@@ -95,9 +112,29 @@ export function isQuestionInput(value: unknown): value is QuestionInput {
     value.choices.length > 100
   )
     return false;
+  if (
+    value.questionType !== undefined &&
+    (typeof value.questionType !== 'string' ||
+      !Object.hasOwn(questionTypes, value.questionType))
+  )
+    return false;
   const ids = new Set<string>();
   for (const choice of value.choices) {
     if (!isRecord(choice) || !validText(choice.content, 5000)) return false;
+    if (
+      value.questionType === 'allocation' &&
+      (!Number.isInteger(choice.capacity) ||
+        Number(choice.capacity) < 1 ||
+        Number(choice.capacity) > 1000000)
+    )
+      return false;
+    if (
+      choice.remaining !== undefined &&
+      (!Number.isSafeInteger(choice.remaining) ||
+        Number(choice.remaining) < 0 ||
+        Number(choice.remaining) > Number(choice.capacity))
+    )
+      return false;
     if (choice.id !== undefined) {
       if (
         typeof choice.id !== 'string' ||
@@ -143,6 +180,8 @@ export function isQuestionInput(value: unknown): value is QuestionInput {
           value.expectedLinkIds.length)) &&
     (value.hideUntilOpen === undefined ||
       typeof value.hideUntilOpen === 'boolean') &&
+    (value.hideUnavailable === undefined ||
+      typeof value.hideUnavailable === 'boolean') &&
     (value.allowSkip === undefined || typeof value.allowSkip === 'boolean') &&
     (value.publication === 'after_answer' ||
       value.publication === 'after_close')
@@ -164,6 +203,9 @@ export function validQuestionCursor(value: unknown): value is string {
 export function isQuestionSummary(value: unknown): value is QuestionSummary {
   return (
     isRecord(value) &&
+    (value.questionType === undefined ||
+      (typeof value.questionType === 'string' &&
+        Object.hasOwn(questionTypes, value.questionType))) &&
     typeof value.id === 'string' &&
     roomIdPattern.test(value.id) &&
     typeof value.roomId === 'string' &&
@@ -233,6 +275,12 @@ export function emptyQuestion(): QuestionInput {
 // Strip extra fields before a draft crosses the browser boundary
 export function questionInput(value: QuestionInput): QuestionInput {
   return {
+    ...(value.questionType !== undefined
+      ? {questionType: value.questionType}
+      : {}),
+    ...(value.questionType === 'allocation'
+      ? {hideUnavailable: value.hideUnavailable ?? true}
+      : {}),
     content: value.content,
     choiceMode: value.choiceMode,
     minChoices: value.minChoices,
@@ -255,12 +303,18 @@ export function questionInput(value: QuestionInput): QuestionInput {
     choices: value.choices.map((choice) => ({
       ...(choice.id ? {id: choice.id} : {}),
       content: choice.content,
+      ...(value.questionType === 'allocation'
+        ? {capacity: choice.capacity}
+        : {}),
     })),
   };
 }
 // Keep storage-only data out of editor replies
 export function publicSummary(value: QuestionSummary): QuestionSummary {
   return {
+    ...(value.questionType !== undefined
+      ? {questionType: value.questionType}
+      : {}),
     ...(value.startMode !== undefined
       ? {
           startMode: value.startMode,

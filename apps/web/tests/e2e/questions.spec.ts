@@ -45,6 +45,9 @@ test('empty draft, editor settings, stable option order, reload and confirmed de
 }, info) => {
   await setup(page);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await page.getByLabel('Текст вопроса', {exact: true}).fill('Temporary');
   await page
     .getByRole('button', {name: 'Сохранить изменения', exact: true})
@@ -354,12 +357,18 @@ test('clean editors return directly while dirty editors confirm room navigation'
   await setup(page);
   const tabs = page.getByRole('tablist', {name: 'Разделы комнаты'});
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await expect(
     page.getByRole('button', {name: 'Сохранить изменения', exact: true}),
   ).toHaveCount(0);
   await tabs.getByRole('tab', {name: 'Вопросы', exact: true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await page.getByLabel('Текст вопроса', {exact: true}).fill('Saved');
   await page
     .getByRole('button', {name: 'Сохранить изменения', exact: true})
@@ -406,6 +415,9 @@ test('question tabs save one document and quick controls use its relative deadli
 }, info) => {
   const room = await setup(page);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await page.getByLabel('Текст вопроса', {exact: true}).fill('Lifecycle');
   await page.getByLabel('Вариант 1', {exact: true}).fill('Yes');
   await page.getByLabel('Вариант 2', {exact: true}).fill('No');

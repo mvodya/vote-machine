@@ -116,6 +116,9 @@ test('Markdown help is hidden until requested and closes with Escape', async ({
     .getByRole('button', {name: 'Создать комнату', exact: true})
     .click();
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
+  await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
   await expect(page.getByText('До 20 000 символов', {exact: true})).toHaveCount(
     0,
   );

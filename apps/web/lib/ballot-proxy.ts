@@ -95,6 +95,7 @@ export async function ballotProxy(
         [400, 401, 404, 409].includes(response.status) ? response.status : 503,
         isRecord(data) &&
           [
+            'full',
             'closed',
             'changed',
             'used',

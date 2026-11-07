@@ -25,6 +25,14 @@ const fixtureStamp = Math.max(
     .map((file) => Number(file.split('-')[0])),
 );
 
+// Keep a migration's rollback checks stable when later migrations are added
+async function rollbackFrom(databaseUrl, first) {
+  const count = (await readdir(source)).filter(
+    (name) => name.endsWith('.mjs') && name >= first,
+  ).length;
+  return runMigrations({databaseUrl, direction: 'down', count});
+}
+
 // Give each check its own real database
 async function withDatabase(check) {
   const name = `vote_machine_test_${randomUUID().replaceAll('-', '')}`;
@@ -414,7 +422,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT column_default='true' AS name FROM information_schema.columns WHERE table_name='questions' AND column_name='hide_until_open'",
+          "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='questions' AND column_name='hide_unavailable') AS name",
         )
       ).rows[0].name,
       false,
@@ -5956,7 +5964,15 @@ test('first scheduled opening hides text, choices and media while keeping the ti
 test('hidden content default preserves saved choices through upgrade and rollback', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({
+      databaseUrl,
+      direction: 'down',
+      count: (await readdir(source)).filter(
+        (name) =>
+          name.endsWith('.mjs') &&
+          name >= '1795046400000-hidden-content-default.mjs',
+      ).length,
+    });
     const admin = await adminRoom(client);
     const old = await readyQuestion(client, admin, {hideUntilOpen: undefined});
     assert.equal(old.hideUntilOpen, false);
@@ -5972,7 +5988,15 @@ test('hidden content default preserves saved choices through upgrade and rollbac
     assert.equal(fresh.hideUntilOpen, true);
     const explicit = await readyQuestion(client, admin, {hideUntilOpen: false});
     assert.equal(explicit.hideUntilOpen, false);
-    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({
+      databaseUrl,
+      direction: 'down',
+      count: (await readdir(source)).filter(
+        (name) =>
+          name.endsWith('.mjs') &&
+          name >= '1795046400000-hidden-content-default.mjs',
+      ).length,
+    });
     assert.equal(
       (await questionCall(client, admin, 'get', {}, fresh.id)).question
         .hideUntilOpen,
@@ -5988,6 +6012,586 @@ test('hidden content default preserves saved choices through upgrade and rollbac
       (await readyQuestion(client, admin, {hideUntilOpen: undefined}))
         .hideUntilOpen,
       true,
+    );
+  });
+});
+
+// Competing claims must be serialized by PostgreSQL, not by the browser
+test('allocation capacity races keep exactly one owner and retries stay stable', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(
+      client,
+      {
+        questionType: 'allocation',
+        allowAnswerChange: true,
+        choices: [
+          {content: 'Slot A', capacity: 1},
+          {content: 'Slot B', capacity: 2},
+        ],
+      },
+      true,
+    );
+    assert.equal(f.question.questionType, 'allocation');
+    const key = linkItem();
+    const [link] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const other = {...f, link, session};
+    const rival = new pg.Client({connectionString: databaseUrl});
+    await rival.connect();
+    try {
+      const body = ballotInput(f.question);
+      const attempts = await Promise.all([
+        cast(client, f, body),
+        cast(rival, other, ballotInput(f.question)),
+      ]);
+      assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 409]);
+      assert.equal(attempts.find((r) => r.status === 409).error, 'full');
+      const winner = attempts[0].status === 200 ? f : other;
+      const winnerBody = attempts[0].status === 200 ? body : null;
+      const saved = attempts.find((r) => r.status === 200).answer;
+      if (winnerBody)
+        assert.deepEqual(await cast(client, winner, winnerBody), attempts[0]);
+      assert.equal(
+        Number(
+          (
+            await client.query(
+              'SELECT count(*) FROM ballot_choices WHERE option_id=$1',
+              [f.question.choices[0].id],
+            )
+          ).rows[0].count,
+        ),
+        1,
+      );
+      const released = await cast(
+        client,
+        winner,
+        ballotInput(f.question, {choices: [], ballotRevision: saved.revision}),
+      );
+      assert.equal(released.status, 200);
+      const loser = winner === f ? other : f;
+      assert.equal(
+        (await cast(client, loser, ballotInput(f.question))).status,
+        200,
+      );
+      const page = await journey(client, loser);
+      assert.equal(page.questions[0].selectedChoices[0].content, 'Slot A');
+      assert.equal(page.progress.answered, 1);
+    } finally {
+      await rival.end();
+    }
+  });
+});
+
+// A partial selection holds real places while its required minimum stays pending
+test('allocation minimum blocks navigation and fixed answers can only add places', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      questionType: 'allocation',
+      choiceMode: 'multiple',
+      minChoices: 2,
+      maxChoices: 3,
+      choices: [
+        {content: 'A', capacity: 1},
+        {content: 'B', capacity: 1},
+        {content: 'C', capacity: 1},
+      ],
+    });
+    const next = await laterQuestion(client, f);
+    const first = await cast(client, f, ballotInput(f.question));
+    assert.equal(first.status, 200);
+    let page = await journey(client, f);
+    assert.equal(page.progress.answered, 0);
+    assert.equal(page.current.id, f.question.id);
+    assert.equal(page.questions.find((q) => q.id === next.id).canChoose, false);
+    assert.equal((await journey(client, f, {skip: f.question.id})).status, 409);
+    const denied = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: [],
+        ballotRevision: first.answer.revision,
+      }),
+    );
+    assert.equal(denied.status, 409);
+    assert.equal(denied.error, 'used');
+    const second = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: f.question.choices.slice(0, 2).map((c) => c.id),
+        ballotRevision: first.answer.revision,
+      }),
+    );
+    assert.equal(second.status, 200);
+    page = await journey(client, f);
+    assert.equal(page.progress.answered, 1);
+    assert.equal(page.questions.find((q) => q.id === next.id).canChoose, true);
+    const third = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: f.question.choices.map((c) => c.id),
+        ballotRevision: second.answer.revision,
+      }),
+    );
+    assert.equal(third.status, 200);
+    const result = await client.query(
+      'SELECT vm_admin_question_metrics($1) AS reply',
+      [f.question.id],
+    );
+    assert.equal(result.rows[0].reply.answerCount, 1);
+  });
+});
+
+// A failed replacement must not free the participant's previous place
+test('allocation failed transfers preserve claims and reject unsafe editor changes', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(
+      client,
+      {
+        questionType: 'allocation',
+        allowAnswerChange: true,
+        choices: [
+          {content: 'A', capacity: 1},
+          {content: 'B', capacity: 1},
+        ],
+      },
+      true,
+    );
+    const a = await cast(client, f, ballotInput(f.question));
+    const key = linkItem();
+    const [link] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...f, link, session},
+          ballotInput(f.question, {choices: [f.question.choices[1].id]}),
+        )
+      ).status,
+      200,
+    );
+    const transfer = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: [f.question.choices[1].id],
+        ballotRevision: a.answer.revision,
+      }),
+    );
+    assert.equal(transfer.error, 'full');
+    const page = await journey(client, f, {selected: f.question.id});
+    assert.deepEqual(page.answer.choices, [f.question.choices[0].id]);
+    assert.equal(page.current.choices[0].remaining, 0);
+    const current = (
+      await questionCall(client, f.admin, 'get', {}, f.question.id)
+    ).question;
+    const wrongType = await questionCall(
+      client,
+      f.admin,
+      'save',
+      {...current, questionType: 'choice'},
+      current.id,
+    );
+    assert.equal(wrongType.error, 'type_fixed');
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...f, session: randomBytes(32).toString('hex')},
+          ballotInput(f.question),
+        )
+      ).status,
+      401,
+    );
+  });
+});
+
+// Additive migrations preserve ordinary data and rollback cannot erase new semantics
+test('question types apply rollback reapply and refuse a destructive rollback', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    await rollbackFrom(databaseUrl, '1795132800000-question-types.mjs');
+    assert.equal(
+      (
+        await client.query(
+          "SELECT count(*) FROM information_schema.columns WHERE table_name='questions' AND column_name='question_type'",
+        )
+      ).rows[0].count,
+      '0',
+    );
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      questionType: 'allocation',
+      choices: [
+        {content: 'A', capacity: 1},
+        {content: 'B', capacity: 1},
+      ],
+    });
+    await assert.rejects(
+      rollbackFrom(databaseUrl, '1795132800000-question-types.mjs'),
+      /recover allocation/,
+    );
+    assert.equal(
+      (
+        await client.query('SELECT question_type FROM questions WHERE id=$1', [
+          f.question.id,
+        ])
+      ).rows[0].question_type,
+      'allocation',
+    );
+    assert.equal((await cast(client, f, ballotInput(f.question))).status, 200);
+  });
+});
+
+// Partial choices must not leak through published results or complete a run
+test('allocation partial answers stay out of results and anonymity protects list selections', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      questionType: 'allocation',
+      choiceMode: 'multiple',
+      minChoices: 2,
+      maxChoices: 2,
+      anonymous: true,
+      shareResults: true,
+      publication: 'after_answer',
+      allowAnswerChange: true,
+      choices: [
+        {content: 'A', capacity: 2},
+        {content: 'B', capacity: 2},
+      ],
+    });
+    const first = await cast(client, f, ballotInput(f.question));
+    assert.equal(first.status, 200);
+    assert.equal((await results(client, f)).result.available, false);
+    const partial = (await results(client, f, true)).result;
+    assert.equal(partial.total, 0);
+    assert.deepEqual(
+      partial.options.map((o) => o.count),
+      [0, 0],
+    );
+    const next = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: f.question.choices.map((c) => c.id),
+        ballotRevision: first.answer.revision,
+      }),
+    );
+    assert.equal(next.status, 200);
+    assert.equal((await results(client, f)).result.total, 1);
+    const secondSession = randomBytes(32).toString('hex');
+    await client.query(
+      'INSERT INTO voting_sessions(link_id,secret_hash,generation) SELECT id,$2,generation FROM voting_links WHERE id=$1',
+      [f.link.id, hash(secondSession)],
+    );
+    const snapshot = await journey(
+      client,
+      {...f, session: secondSession},
+      {selected: f.question.id},
+    );
+    assert.equal(snapshot.answer.hidden, true);
+    assert.deepEqual(snapshot.questions[0].selectedChoices, []);
+    const released = await cast(
+      client,
+      f,
+      ballotInput(f.question, {
+        choices: [],
+        ballotRevision: next.answer.revision,
+      }),
+    );
+    assert.equal(released.status, 200);
+    assert.equal((await journey(client, f)).questions[0].answered, false);
+    assert.equal((await results(client, f, true)).result.total, 0);
+  });
+});
+
+// All answer sources share capacity and anonymous manual entry has one stable identity
+test('allocation reusable runs and manual entry share capacity and live versions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client, {
+      questionType: 'allocation',
+      allowAnswerChange: true,
+      choices: [
+        {content: 'A', capacity: 1},
+        {content: 'B', capacity: 1},
+      ],
+    });
+    const version = async () =>
+      (
+        await client.query('SELECT vm_event_state($1,$2,false) AS reply', [
+          f.link.id,
+          hash(f.session),
+        ])
+      ).rows[0].reply.version;
+    const before = await version();
+    const manualId = randomUUID();
+    const manual = await generalCast(
+      client,
+      f,
+      ballotInput(f.question, {ballotId: manualId}),
+      true,
+    );
+    assert.equal(manual.status, 200);
+    assert.equal(manual.answer.id, manualId);
+    assert.notEqual(await version(), before);
+    const full = await generalCast(
+      client,
+      f,
+      ballotInput(f.question, {runId: f.run.id}),
+    );
+    assert.equal(full.error, 'full');
+    const changed = await generalCast(
+      client,
+      f,
+      ballotInput(f.question, {
+        ballotId: manualId,
+        choices: [f.question.choices[1].id],
+        ballotRevision: manual.answer.revision,
+      }),
+      true,
+    );
+    assert.equal(changed.status, 200);
+    assert.equal(
+      (await generalCast(client, f, ballotInput(f.question, {runId: f.run.id})))
+        .status,
+      200,
+    );
+    assert.equal(
+      (
+        await generalCast(
+          client,
+          {...f, run: {id: randomUUID()}},
+          ballotInput(f.question, {runId: randomUUID()}),
+        )
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM ballots WHERE question_id=$1',
+          [f.question.id],
+        )
+      ).rows[0].count,
+      '2',
+    );
+  });
+});
+
+// Constraints protect direct writes too, including capacity edits below occupancy
+test('allocation guards reject direct overbooking and lower capacity', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(
+      client,
+      {
+        questionType: 'allocation',
+        allowAnswerChange: true,
+        choices: [
+          {content: 'A', capacity: 1},
+          {content: 'B', capacity: 2},
+        ],
+      },
+      true,
+    );
+    await cast(client, f, ballotInput(f.question));
+    const key = linkItem();
+    const [link] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, link, key.key);
+    const own = await cast(
+      client,
+      {...f, link, session},
+      ballotInput(f.question, {choices: [f.question.choices[1].id]}),
+    );
+    await assert.rejects(
+      client.query(
+        'INSERT INTO ballot_choices(ballot_id,question_id,room_id,option_id) VALUES($1,$2,$3,$4)',
+        [
+          own.answer.id,
+          f.question.id,
+          f.admin.room.id,
+          f.question.choices[0].id,
+        ],
+      ),
+      {code: 'P0002'},
+    );
+    // Two claims cannot be made invalid by changing a live capacity
+    const key2 = linkItem();
+    const [link2] = await addLinks(client, f.admin, [key2]);
+    const session2 = (await openLink(client, link2, key2.key)).session;
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...f, link: link2, session: session2},
+          ballotInput(f.question, {choices: [f.question.choices[1].id]}),
+        )
+      ).status,
+      200,
+    );
+    await assert.rejects(
+      client.query('UPDATE question_options SET capacity=1 WHERE id=$1', [
+        f.question.choices[1].id,
+      ]),
+      {code: '23514'},
+    );
+    const current = (
+      await questionCall(client, f.admin, 'get', {}, f.question.id)
+    ).question;
+    const response = await questionCall(
+      client,
+      f.admin,
+      'save',
+      {...current, choices: current.choices.map((c) => ({...c, capacity: 1}))},
+      current.id,
+    );
+    assert.equal(response.error, 'capacity');
+  });
+});
+
+// A release upgrade and its rollback must preserve ordinary ballots byte for byte
+test('question types preserve existing ordinary ballots through upgrade and rollback', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await withMigrations(async (dir) => {
+      for (const name of await readdir(dir))
+        if (name >= '1795132800000-question-types.mjs')
+          await rm(join(dir, name));
+      await runMigrations({databaseUrl, dir});
+      const f = await personalFixture(client);
+      const vote = await cast(client, f, ballotInput(f.question));
+      assert.equal(vote.status, 200);
+      const before = (await journey(client, f, {selected: f.question.id}))
+        .answer;
+      await runMigrations({databaseUrl});
+      const after = await journey(client, f, {selected: f.question.id});
+      assert.deepEqual(after.answer, before);
+      assert.equal(after.current.questionType, 'choice');
+      await rollbackFrom(databaseUrl, '1795132800000-question-types.mjs');
+      assert.deepEqual(
+        (await journey(client, f, {selected: f.question.id})).answer,
+        before,
+      );
+      await runMigrations({databaseUrl});
+      assert.deepEqual(
+        (await journey(client, f, {selected: f.question.id})).answer,
+        before,
+      );
+    });
+  });
+});
+
+// The type is fixed at creation while allocation visibility stays editable
+test('allocation display policy defaults to hidden and keeps the creation type fixed', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      questionType: 'allocation',
+      choices: [
+        {content: 'A', capacity: 1},
+        {content: 'B', capacity: 1},
+      ],
+    });
+    assert.equal(f.question.hideUnavailable, true);
+    let current = (
+      await questionCall(client, f.admin, 'get', {}, f.question.id)
+    ).question;
+    const saved = await questionCall(
+      client,
+      f.admin,
+      'save',
+      {...current, hideUnavailable: false},
+      current.id,
+    );
+    assert.equal(saved.status, 200);
+    assert.equal(saved.question.hideUnavailable, false);
+    assert.equal((await journey(client, f)).current.hideUnavailable, false);
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...f, question: saved.question},
+          ballotInput(saved.question),
+        )
+      ).status,
+      200,
+    );
+    const draft = await readyQuestion(client, f.admin);
+    assert.equal(
+      (
+        await questionCall(
+          client,
+          f.admin,
+          'save',
+          {
+            ...draft,
+            questionType: 'allocation',
+            choices: draft.choices.map((c) => ({...c, capacity: 1})),
+          },
+          draft.id,
+        )
+      ).error,
+      'type_fixed',
+    );
+    await assert.rejects(
+      client.query(
+        "UPDATE questions SET question_type='allocation' WHERE id=$1",
+        [draft.id],
+      ),
+      {code: '23514'},
+    );
+  });
+});
+
+// A rollback must not discard a saved choice to show full options
+test('allocation display policy rollback reapply and failed rollback preserve selections', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await personalFixture(client, {
+      questionType: 'allocation',
+      allowAnswerChange: true,
+      choices: [
+        {content: 'A', capacity: 1},
+        {content: 'B', capacity: 1},
+      ],
+    });
+    const answer = (await cast(client, f, ballotInput(f.question))).answer;
+    await runMigrations({databaseUrl, direction: 'down'});
+    await runMigrations({databaseUrl});
+    let q = (await questionCall(client, f.admin, 'get', {}, f.question.id))
+      .question;
+    assert.equal(q.hideUnavailable, true);
+    assert.deepEqual(
+      (await journey(client, f, {selected: q.id})).answer,
+      answer,
+    );
+    q = (
+      await questionCall(
+        client,
+        f.admin,
+        'save',
+        {...q, hideUnavailable: false},
+        q.id,
+      )
+    ).question;
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down'}),
+      /Enable hidden unavailable/,
+    );
+    assert.equal(
+      (await questionCall(client, f.admin, 'get', {}, q.id)).question
+        .hideUnavailable,
+      false,
+    );
+    assert.deepEqual(
+      (await journey(client, f, {selected: q.id})).answer,
+      answer,
     );
   });
 });

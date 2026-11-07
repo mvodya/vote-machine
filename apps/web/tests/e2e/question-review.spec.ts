@@ -16,6 +16,9 @@ test('opening saves all tabs and an armed question starts with its own close tim
   await page.goto(`/rooms/${f.room.id}`);
   await page.getByRole('button', {name: 'Создать вопрос', exact: true}).click();
   await page
+    .getByRole('menuitem', {name: 'Выбор варианта', exact: true})
+    .click();
+  await page
     .getByLabel('Текст вопроса', {exact: true})
     .fill('Scheduled browser question');
   await page.getByLabel('Вариант 1', {exact: true}).fill('A');

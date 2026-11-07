@@ -1,5 +1,7 @@
 'use client';
 import {useI18n} from '../../../components/language-provider';
+import {QuestionTypeLabel} from '../../../components/question-type-label';
+import {MenuButton} from '../../../components/ui/menu-button';
 import {AnswerCount} from '../../../components/answer-count';
 import {Loading} from '../../../components/ui/loading';
 import {useLive} from '../../../lib/use-live';
@@ -13,13 +15,15 @@ import {Pagination} from '../../../components/ui/pagination';
 import {ConfirmDialog} from '../../../components/ui/confirm-dialog';
 import {
   isQuestion,
+  questionTypes,
+  type QuestionType,
   isQuestionSummary,
   validQuestionCursor,
   type Question,
   type QuestionSummary,
 } from '../../../lib/questions';
 import {markdownSummary} from '../../../lib/markdown';
-import {formatTime, localTimeZone} from '../../../lib/time';
+import {localTimeZone} from '../../../lib/time';
 import {Countdown} from '../../../components/countdown';
 import {QuestionAction} from '../../../components/question-action';
 import {QuestionEditor} from './question-editor';
@@ -42,7 +46,7 @@ export function Questions({
   // Tell room tabs when the editor is open
   onEditingChange?: (value: boolean) => void;
 }) {
-  const {t, localeTag} = useI18n();
+  const {t} = useI18n();
   // Compare real snapshots so old closed questions do not flash on arrival
   const prior = useRef(new Map<string, string>());
   const closeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -70,6 +74,7 @@ export function Questions({
   const [editing, setEditing] = useState<Question | 'new' | null>(null);
   // A stable editor session keeps its selected tab after saving
   const [editorSession, setEditorSession] = useState(0);
+  const [newType, setNewType] = useState<QuestionType>('choice');
   // Draft selected for deletion
   const [reopening, setReopening] = useState<QuestionSummary | null>(null);
   const [deleting, setDeleting] = useState<QuestionSummary | null>(null);
@@ -264,6 +269,7 @@ export function Questions({
         <QuestionEditor
           key={editorSession}
           roomId={roomId}
+          initialType={newType}
           timeZone={timeZone}
           onDirtyChange={onEditingChange}
           question={editing === 'new' ? null : editing}
@@ -286,17 +292,21 @@ export function Questions({
       ) : (
         <Panel>
           <SectionHeader title={t('Вопросы')}>
-            <Button
-              startIcon={<Plus />}
+            <MenuButton
+              label={t('Создать вопрос')}
+              icon={<Plus />}
               disabled={busy}
-              onClick={() => {
+              items={Object.keys(questionTypes).map((kind) => ({
+                value: kind,
+                label: <QuestionTypeLabel kind={kind as QuestionType} />,
+              }))}
+              onSelect={(kind) => {
+                setNewType(kind as QuestionType);
                 setEditorSession((value) => value + 1);
                 setEditing('new');
                 setNotice('');
               }}
-            >
-              {t('Создать вопрос')}
-            </Button>
+            />
           </SectionHeader>
           {loading ? (
             <Loading label={t('Загружаем вопросы…')} />
@@ -338,6 +348,7 @@ export function Questions({
                               ? t('Открыт')
                               : t('Закрыт')}
                       </span>
+                      <QuestionTypeLabel kind={item.questionType} />
                       <span>
                         {item.choiceMode === 'single'
                           ? t('Один вариант')
@@ -347,9 +358,6 @@ export function Questions({
                         {t('Вариантов: ')}
                         {item.choiceCount}
                       </span>
-                      <time dateTime={item.createdAt}>
-                        {formatTime(item.createdAt, timeZone, localeTag)}
-                      </time>
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">

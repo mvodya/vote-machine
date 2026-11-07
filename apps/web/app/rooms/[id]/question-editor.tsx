@@ -1,6 +1,7 @@
 'use client';
 import {useI18n} from '../../../components/language-provider';
 import {useLive} from '../../../lib/use-live';
+import {QuestionTypeLabel} from '../../../components/question-type-label';
 import {QuestionAction} from '../../../components/question-action';
 import {ExpectedLinks} from '../../../components/expected-links';
 import {ManualVoting} from './manual-voting';
@@ -33,6 +34,7 @@ import {
   isQuestion,
   isQuestionInput,
   questionInput,
+  type QuestionType,
   type Choice,
   type Question,
   type QuestionInput,
@@ -45,7 +47,12 @@ import {
   QuestionDeadline,
   type DeadlineValue,
 } from '../../../components/question-deadline';
-import {localTimeZone, wallTime, wallTimeToInstant} from '../../../lib/time';
+import {
+  formatTime,
+  localTimeZone,
+  wallTime,
+  wallTimeToInstant,
+} from '../../../lib/time';
 interface EditorChoice extends Choice {
   // Keep focus stable when unsaved options move
   localKey: string;
@@ -98,6 +105,7 @@ function deadlineKey(value: DeadlineValue) {
 export function QuestionEditor({
   roomId,
   question,
+  initialType = 'choice',
   onSaved,
   onClose,
   onDenied,
@@ -108,6 +116,8 @@ export function QuestionEditor({
   // Room and saved question, or null for a new one
   roomId: string;
   question: Question | null;
+  // A new draft keeps the type chosen in the creation menu
+  initialType?: QuestionType;
   // Shared room zone used by all date controls
   timeZone?: string;
   // Show the confirmed document in the room
@@ -121,11 +131,21 @@ export function QuestionEditor({
   // Tell room navigation about unsaved work
   onDirtyChange?: (value: boolean) => void;
 }) {
-  const {t} = useI18n();
+  const {t, localeTag} = useI18n();
   const [saved, setSaved] = useState(question);
-  const [value, setValue] = useState(() =>
-    editorValue(question ?? emptyQuestion()),
-  );
+  const fresh = () => {
+    const draft = emptyQuestion();
+    return {
+      ...draft,
+      questionType: initialType,
+      ...(initialType === 'allocation' ? {hideUnavailable: true} : {}),
+      choices: draft.choices.map((choice) => ({
+        ...choice,
+        ...(initialType === 'allocation' ? {capacity: 1} : {}),
+      })),
+    };
+  };
+  const [value, setValue] = useState(() => editorValue(question ?? fresh()));
   const [state, setState] = useState(question?.state ?? 'draft');
   const [deadline, setDeadline] = useState(() =>
     deadlineValue(question, timeZone),
@@ -156,7 +176,7 @@ export function QuestionEditor({
       deadlineKey(start),
     ]) !==
       JSON.stringify([
-        questionInput(saved ?? emptyQuestion()),
+        questionInput(saved ?? fresh()),
         saved?.state ?? 'draft',
         deadlineKey(deadlineValue(saved, timeZone)),
         deadlineKey(startValue(saved, timeZone)),
@@ -247,6 +267,7 @@ export function QuestionEditor({
         return;
       }
       const body = await response.json();
+
       if (!response.ok || !isQuestion(body.question)) throw new Error();
       setReopen(false);
       setSaved(body.question);
@@ -283,7 +304,7 @@ export function QuestionEditor({
   }
   // Restore all three tabs to the same saved version
   function reset() {
-    setValue(editorValue(saved ?? emptyQuestion()));
+    setValue(editorValue(saved ?? fresh()));
     setState(saved?.state ?? 'draft');
     setDeadline(deadlineValue(saved, timeZone));
     setStart(startValue(saved, timeZone));
@@ -373,6 +394,10 @@ export function QuestionEditor({
         return;
       }
       const body = await response.json();
+      if (!response.ok && body.error === 'type_fixed')
+        throw new Error('Тип вопроса нельзя менять после выбора вариантов');
+      if (!response.ok && body.error === 'capacity')
+        throw new Error('Количество мест не может быть меньше числа занятых');
       if (!response.ok) {
         setConflict(body.error === 'conflict');
         throw new Error(
@@ -497,6 +522,14 @@ export function QuestionEditor({
           )}
         </div>
       </SectionHeader>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
+        <QuestionTypeLabel kind={value.questionType} />
+        {saved && (
+          <time className="ml-auto" dateTime={saved.createdAt}>
+            {formatTime(saved.createdAt, timeZone, localeTag)}
+          </time>
+        )}
+      </div>
       <div className="mt-5">
         <Tabs
           label={t('Разделы вопроса')}
@@ -547,6 +580,10 @@ export function QuestionEditor({
                 {value.choices.map((choice, index) => (
                   <div
                     key={choice.localKey}
+                    role="group"
+                    aria-label={t('Настройки варианта {value0}', {
+                      value0: index + 1,
+                    })}
                     className="rounded-xl border border-border bg-page/50 p-4"
                   >
                     <MarkdownField
@@ -569,6 +606,31 @@ export function QuestionEditor({
                         }))
                       }
                     />
+                    {value.questionType === 'allocation' && (
+                      <div className="mt-5">
+                        <TextField
+                          id={`${prefix}-capacity-${choice.localKey}`}
+                          label={t('Количество доступных мест')}
+                          type="number"
+                          min={1}
+                          max={1000000}
+                          value={choice.capacity ?? 1}
+                          onChange={(event) =>
+                            setValue((old) => ({
+                              ...old,
+                              choices: old.choices.map((item, position) =>
+                                position === index
+                                  ? {
+                                      ...item,
+                                      capacity: Number(event.target.value),
+                                    }
+                                  : item,
+                              ),
+                            }))
+                          }
+                        />
+                      </div>
+                    )}
                     <div className="mt-2 flex justify-end gap-1">
                       <Button
                         variant="ghost"
@@ -614,7 +676,7 @@ export function QuestionEditor({
                   onClick={() =>
                     choices([
                       ...value.choices,
-                      {content: '', localKey: crypto.randomUUID()},
+                      {content: '', capacity: 1, localKey: crypto.randomUUID()},
                     ])
                   }
                 >
@@ -737,6 +799,16 @@ export function QuestionEditor({
                   checked={value.allowSkip ?? false}
                   onChange={(event) => field('allowSkip', event.target.checked)}
                 />
+                {value.questionType === 'allocation' && (
+                  <CheckboxField
+                    id={`${prefix}-hide-unavailable`}
+                    label={t('Скрывать недоступные варианты')}
+                    checked={value.hideUnavailable ?? true}
+                    onChange={(event) =>
+                      field('hideUnavailable', event.target.checked)
+                    }
+                  />
+                )}
                 <CheckboxField
                   id={`${prefix}-change`}
                   label={t('Разрешить изменение ответа')}
