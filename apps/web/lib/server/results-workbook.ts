@@ -112,16 +112,19 @@ export async function resultsWorkbook(
   });
   if (admin) {
     const questions = report.sheets.filter((q) => !q.anonymous);
+    const grouped = report.people.some((person) => person.groupName);
     sheet(t('По участникам'), [
       [
         t('Участник / прохождение'),
         t('Имя ссылки'),
+        ...(grouped ? [t('Группа')] : []),
         t('Режим'),
         ...questions.map((q) => markdownSummary(q.content)),
       ],
       ...report.people.map((person) => [
         person.id,
         person.name ?? '',
+        ...(grouped ? [person.groupName ?? ''] : []),
         t(kinds[person.kind]),
         ...questions.map((q) => {
           const answer = person.answers.find(

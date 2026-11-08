@@ -52,9 +52,15 @@ export function unlockSound() {
 }
 
 // Start a fresh source from a ready sample with no network wait
-function startSound(kind: Sound) {
+function startSound(kind: Sound, force = false) {
   const buffer = buffers.get(kind);
-  if (!enabled || !context || context.state !== 'running' || !buffer) return;
+  if (
+    (!enabled && !force) ||
+    !context ||
+    context.state !== 'running' ||
+    !buffer
+  )
+    return;
   const source = context.createBufferSource();
   const volume = context.createGain();
   source.buffer = buffer;
@@ -66,7 +72,7 @@ function startSound(kind: Sound) {
     source.disconnect();
     volume.disconnect();
   };
-  active.add(source);
+  if (!force) active.add(source);
   source.start();
 }
 
@@ -95,4 +101,18 @@ export function playSound(kind: Sound, key: string) {
   played.add(key);
   if (played.size > 2000) played.delete(played.values().next().value!);
   startSound(kind);
+}
+
+// A registration gesture unlocks the separate attendance alarm
+export function armAttentionSound() {
+  void prepareSounds();
+  if (context && context.state !== 'running')
+    void context.resume().catch(() => {});
+}
+// Attendance calls are explicit admin actions and bypass the general mute setting
+export function playAttentionSound(key: string) {
+  if (played.has(key)) return;
+  played.add(key);
+  if (played.size > 2000) played.delete(played.values().next().value!);
+  startSound('call', true);
 }

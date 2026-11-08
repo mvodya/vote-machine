@@ -1,7 +1,7 @@
 import {translate, type Locale} from './i18n/translate';
 import {roomIdPattern, secretPattern, validName} from './rooms';
 
-export type LinkMode = 'personal' | 'reusable';
+export type LinkMode = 'personal' | 'reusable' | 'registration';
 export interface VotingLink {
   // Stable respondent ID, also used after a key change
   id: string;
@@ -17,6 +17,8 @@ export interface VotingLink {
   sessionCount?: string;
   // Old runs stay private unless the admin allows their history
   allowRunHistory?: boolean;
+  // Group registrations may need explicit approval
+  requireModeration?: boolean;
   // Whether new access is blocked
   revoked: boolean;
 }
@@ -62,7 +64,9 @@ export function isVotingLink(value: unknown): value is VotingLink {
     typeof value.id === 'string' &&
     roomIdPattern.test(value.id) &&
     validName(value.name) &&
-    (value.mode === 'personal' || value.mode === 'reusable') &&
+    ['personal', 'reusable', 'registration'].includes(String(value.mode)) &&
+    (value.requireModeration === undefined ||
+      typeof value.requireModeration === 'boolean') &&
     validCursor(value.ordinal) &&
     value.ordinal !== '0' &&
     validCursor(value.revision) &&
@@ -81,6 +85,9 @@ export function publicLink(value: VotingLink): VotingLink {
     ordinal: value.ordinal,
     revision: value.revision,
     revoked: value.revoked,
+    ...(value.requireModeration !== undefined
+      ? {requireModeration: value.requireModeration}
+      : {}),
     ...(value.allowRunHistory !== undefined
       ? {allowRunHistory: value.allowRunHistory}
       : {}),
@@ -99,7 +106,7 @@ export function isParticipant(value: unknown): value is Participant {
     roomIdPattern.test(value.linkId) &&
     validName(value.name) &&
     validName(value.roomName) &&
-    (value.mode === 'personal' || value.mode === 'reusable')
+    ['personal', 'reusable', 'registration'].includes(String(value.mode))
   );
 }
 // Build a link that does not put its key in server logs
@@ -128,7 +135,11 @@ export function linksCsv(
       link.name,
       translate(
         locale,
-        link.mode === 'personal' ? 'Персональная' : 'Многоразовая',
+        link.mode === 'personal'
+          ? 'Персональная'
+          : link.mode === 'registration'
+            ? 'С регистрацией'
+            : 'Многоразовая',
       ),
       translate(locale, link.revoked ? 'Отозвана' : 'Действует'),
       !link.revoked && link.token && secretPattern.test(link.token)

@@ -18,7 +18,7 @@ namespace {
 
 const std::string kColumns =
     "SELECT authorized, id::text, name, mode, ordinal::text, revision::text, "
-    "allow_run_history, "
+    "allow_run_history, require_moderation, "
     "(SELECT count(*)::text FROM voting_sessions visits WHERE "
     "visits.link_id=links.id) AS session_count, "
     "(revoked_at "
@@ -67,6 +67,7 @@ Json::Value Link(const drogon::orm::Row& row) {
     link[field] = row[field].as<std::string>();
   link["revoked"] = row["revoked"].as<bool>();
   link["allowRunHistory"] = row["allow_run_history"].as<bool>();
+  link["requireModeration"] = row["require_moderation"].as<bool>();
   link["sessionCount"] = row["session_count"].as<std::string>();
   return link;
 }
@@ -173,7 +174,8 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
         }
 
         const auto mode = (*input)["mode"].asString();
-        if (mode != "personal" && mode != "reusable") {
+        if (mode != "personal" && mode != "reusable" &&
+            mode != "registration") {
           Error(reply, drogon::k400BadRequest, "Invalid mode");
           return;
         }
@@ -181,11 +183,18 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
         // Only shared links may expose earlier runs
         if (input->isMember("allowRunHistory") &&
             (!(*input)["allowRunHistory"].isBool() ||
-             (mode == "personal" && (*input)["allowRunHistory"].asBool()))) {
+             (mode != "reusable" && (*input)["allowRunHistory"].asBool()))) {
           Error(reply, drogon::k400BadRequest, "Invalid history setting");
           return;
         }
 
+        if (input->isMember("requireModeration") &&
+            (!(*input)["requireModeration"].isBool() ||
+             (mode != "registration" &&
+              (*input)["requireModeration"].asBool()))) {
+          Error(reply, drogon::k400BadRequest, "Invalid moderation setting");
+          return;
+        }
         for (const auto& name : (*input)["names"])
           if (!name.isString() || !ValidName(name.asString())) {
             Error(reply, drogon::k400BadRequest, "Invalid name");
@@ -197,6 +206,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           Json::Value item;
           item["name"] = name;
           item["mode"] = mode;
+          item["requireModeration"] = (*input)["requireModeration"].asBool();
           item["allowRunHistory"] = (*input)["allowRunHistory"].asBool();
           item["hash"] = HashSecret(key);
           item["cipher"] = EncryptSecret(key, encryption_key);
@@ -262,6 +272,15 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           return;
         }
 
+        if (input->isMember("requireModeration") &&
+            (action != "rename" || !(*input)["requireModeration"].isBool())) {
+          Error(reply, drogon::k400BadRequest, "Invalid moderation setting");
+          return;
+        }
+        const std::string moderation =
+            input->isMember("requireModeration")
+                ? ((*input)["requireModeration"].asBool() ? "true" : "false")
+                : "";
         const std::string history =
             input->isMember("allowRunHistory")
                 ? ((*input)["allowRunHistory"].asBool() ? "true" : "false")
@@ -272,7 +291,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
             kColumns +
                 " FROM vm_edit_voting_link($1::uuid, decode($2,'hex'), "
                 "$3::uuid, $4, $5, decode($6,'hex'), decode($7,'hex'), "
-                "NULLIF($8,'')::boolean) AS "
+                "NULLIF($8,'')::boolean,NULLIF($9,'')::boolean) AS "
                 "links" +
                 kAccess,
             [reply](const drogon::orm::Result& result) {
@@ -289,7 +308,8 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
               Unavailable(reply);
             },
             room, session, id, action, name, key.empty() ? "" : HashSecret(key),
-            key.empty() ? "" : EncryptSecret(key, encryption_key), history);
+            key.empty() ? "" : EncryptSecret(key, encryption_key), history,
+            moderation);
       },
       {drogon::Patch});
 
@@ -334,13 +354,43 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
 
   drogon::app().registerHandler(
       "/api/vote/{1}/session",
-      [database](const drogon::HttpRequestPtr& request, Reply&& reply,
-                 const std::string& id) {
+      [database, encryption_key](const drogon::HttpRequestPtr& request,
+                                 Reply&& reply, const std::string& id) {
         const auto input = request->getJsonObject();
         if (!IsRoomId(id) || !input || !input->isObject() ||
             !(*input)["token"].isString() ||
             !IsSecret((*input)["token"].asString())) {
           Error(reply, drogon::k401Unauthorized, "Link access required");
+          return;
+        }
+        if (input->isMember("memberId")) {
+          if (!(*input)["memberId"].isString() ||
+              !IsRoomId((*input)["memberId"].asString())) {
+            Error(reply, drogon::k400BadRequest, "Invalid member");
+            return;
+          }
+          const auto root = NewSecret();
+          const auto child = NewSecret();
+          database->execSqlAsync(
+              "SELECT * FROM "
+              "vm_recover_registration($1::uuid,$2::uuid,decode($3,'hex'),"
+              "decode($4,'hex'),decode($5,'hex'),decode($6,'hex'))",
+              [reply, root](const drogon::orm::Result& result) {
+                if (result.empty()) {
+                  Error(reply, drogon::k401Unauthorized, "Access required");
+                  return;
+                }
+                Json::Value body;
+                body["participant"] = Participant(result[0]);
+                body["sessionToken"] = root;
+                Send(reply, body);
+              },
+              [reply](const drogon::orm::DrogonDbException&) {
+                Unavailable(reply);
+              },
+              id, (*input)["memberId"].asString(),
+              HashSecret((*input)["token"].asString()), HashSecret(root),
+              HashSecret(child), EncryptSecret(child, encryption_key));
           return;
         }
         const auto token = NewSecret();
@@ -382,7 +432,7 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
           return;
         }
         database->execSqlAsync(
-            "SELECT * FROM vm_voting_access($1::uuid, decode($2,'hex'))",
+            "SELECT * FROM vm_voting_entry($1::uuid, decode($2,'hex'))",
             [reply](const drogon::orm::Result& result) {
               if (result.empty()) {
                 Error(reply, drogon::k401Unauthorized, "Link access required");

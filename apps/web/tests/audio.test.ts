@@ -1,3 +1,4 @@
+import {soundKinds} from '../lib/sounds';
 import {beforeEach, expect, it, vi} from 'vitest';
 
 // Use decoded sample stubs without a speaker or browser gesture
@@ -54,11 +55,11 @@ it('downloads and decodes all sounds while muted and shares pending loads', asyn
   const {prepareSounds} = await import('../lib/audio');
   await Promise.all([prepareSounds(), prepareSounds()]);
   await prepareSounds();
-  expect(fetcher).toHaveBeenCalledTimes(6);
+  expect(fetcher).toHaveBeenCalledTimes(soundKinds.length);
   expect(fetcher.mock.calls.map((call) => call[0])).toEqual(
     expect.arrayContaining(['/sounds/open.mp3', '/sounds/submit.mp3']),
   );
-  expect(engine.decodeAudioData).toHaveBeenCalledTimes(6);
+  expect(engine.decodeAudioData).toHaveBeenCalledTimes(soundKinds.length);
   expect(engine.resume).not.toHaveBeenCalled();
   expect(sources).toHaveLength(0);
 });
@@ -81,8 +82,8 @@ it('starts ready samples without fetch or decode and never replays muted events'
   expect(sources.every((source) => source.start.mock.calls.length === 1)).toBe(
     true,
   );
-  expect(fetcher).toHaveBeenCalledTimes(6);
-  expect(engine.decodeAudioData).toHaveBeenCalledTimes(6);
+  expect(fetcher).toHaveBeenCalledTimes(soundKinds.length);
+  expect(engine.decodeAudioData).toHaveBeenCalledTimes(soundKinds.length);
   setSoundEnabled(false);
   expect(sources.every((source) => source.stop.mock.calls.length === 1)).toBe(
     true,
@@ -99,7 +100,7 @@ it('retries a failed file without replaying an event from before it was ready', 
   await prepareSounds();
   playSound('open', 'missed');
   await prepareSounds();
-  expect(fetcher).toHaveBeenCalledTimes(7);
+  expect(fetcher).toHaveBeenCalledTimes(soundKinds.length + 1);
   setSoundEnabled(true);
   await Promise.resolve();
   playSound('open', 'missed');
@@ -118,4 +119,25 @@ it('keeps the page usable when browser audio is unavailable', async () => {
     playSound('open', 'event');
     setSoundEnabled(false);
   }).not.toThrow();
+});
+
+it('plays a deduplicated attendance call while muted without changing ordinary sound settings', async () => {
+  const {sources} = audioEngine();
+  const {
+    prepareSounds,
+    armAttentionSound,
+    playAttentionSound,
+    playSound,
+    setSoundEnabled,
+  } = await import('../lib/audio');
+  await prepareSounds();
+  armAttentionSound();
+  await Promise.resolve();
+  playAttentionSound('member:1');
+  playAttentionSound('member:1');
+  expect(sources).toHaveLength(1);
+  setSoundEnabled(false);
+  expect(sources[0].stop).not.toHaveBeenCalled();
+  playSound('open', 'still-muted');
+  expect(sources).toHaveLength(1);
 });

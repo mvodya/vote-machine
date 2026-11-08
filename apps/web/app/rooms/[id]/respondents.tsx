@@ -1,4 +1,5 @@
 'use client';
+import {RegistrationMembers} from './registration-members';
 import {useI18n} from '../../../components/language-provider';
 import {LinkQrDialog} from '../../../components/link-qr-dialog';
 import {CheckboxField} from '../../../components/ui/checkbox-field';
@@ -15,6 +16,7 @@ import {
   RefreshCw,
   Ban,
   Users,
+  Clock,
 } from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Pagination} from '../../../components/ui/pagination';
@@ -48,7 +50,12 @@ export interface RespondentSnapshot {
   links: VotingLink[];
   online: Record<
     string,
-    {online: number; questions: {id: string; preview: string}[]}
+    {
+      online: number;
+      pendingCount?: number;
+      registeredCount?: number;
+      questions: {id: string; preview: string}[];
+    }
   >;
 }
 // Manage links without loading any voting data
@@ -71,6 +78,8 @@ export function Respondents({
       string,
       {
         online: number;
+        pendingCount?: number;
+        registeredCount?: number;
         questions: {
           id: string;
           preview: string;
@@ -79,6 +88,9 @@ export function Respondents({
     >
   >({});
   const [qr, setQr] = useState<VotingLink | null>(null);
+  const [membersGroup, setMembersGroup] = useState<VotingLink | null>(null);
+  const [requireModeration, setRequireModeration] = useState(false);
+  const [editModeration, setEditModeration] = useState(false);
   const [editHistory, setEditHistory] = useState(false);
   const [loadedLinks, setLinks] = useState<VotingLink[]>([]);
   // Page history for back navigation
@@ -242,9 +254,11 @@ export function Respondents({
       ? entered.length
         ? entered
         : Array.from({length: amount}, (_, index) =>
-            t('Респондент {value0}', {value0: index + 1}),
+            t(mode === 'personal' ? 'Респондент {value0}' : 'Группа {value0}', {
+              value0: index + 1,
+            }),
           )
-      : [name.trim() || t('Респондент')];
+      : [name.trim() || t(mode === 'personal' ? 'Респондент' : 'Группа')];
     if (
       values.length > 100 ||
       values.some((value) => [...value].length > 200 || value.includes('\0'))
@@ -259,6 +273,7 @@ export function Respondents({
         mode,
         names: values,
         ...(mode === 'reusable' ? {allowRunHistory} : {}),
+        ...(mode === 'registration' ? {requireModeration} : {}),
       });
       setAdding(false);
       setName('');
@@ -285,8 +300,13 @@ export function Respondents({
     try {
       await write(`${base}/${link.id}`, 'PATCH', {
         action: 'rename',
-        name: editName.trim() || t('Респондент'),
+        name:
+          editName.trim() ||
+          t(link.mode === 'personal' ? 'Респондент' : 'Группа'),
         ...(link.mode === 'reusable' ? {allowRunHistory: editHistory} : {}),
+        ...(link.mode === 'registration'
+          ? {requireModeration: editModeration}
+          : {}),
       });
       setEditing(null);
       reload();
@@ -419,6 +439,15 @@ export function Respondents({
       setBusy(false);
     }
   }
+  if (membersGroup)
+    return (
+      <RegistrationMembers
+        roomId={roomId}
+        group={membersGroup}
+        onDenied={onDenied}
+        onClose={() => setMembersGroup(null)}
+      />
+    );
   return (
     <Panel>
       <SectionHeader title={t('Респонденты')}>
@@ -459,11 +488,23 @@ export function Respondents({
               id="link-mode"
               label={t('Режим ссылки')}
               value={mode}
-              onChange={(event) => setMode(event.target.value as LinkMode)}
+              onChange={(event) => {
+                setMode(event.target.value as LinkMode);
+                setRequireModeration(false);
+              }}
             >
               <option value="personal">{t('Персональная')}</option>
               <option value="reusable">{t('Многоразовая')}</option>
+              <option value="registration">{t('С регистрацией')}</option>
             </SelectField>
+            {mode === 'registration' && (
+              <CheckboxField
+                id="new-link-moderation"
+                label={t('Включить модерацию при регистрации')}
+                checked={requireModeration}
+                onChange={(event) => setRequireModeration(event.target.checked)}
+              />
+            )}
             {mode === 'reusable' && (
               <CheckboxField
                 id="new-link-history"
@@ -497,7 +538,9 @@ export function Respondents({
             ) : (
               <TextField
                 id="link-name"
-                label={t('Имя респондента')}
+                label={t(
+                  mode === 'personal' ? 'Имя респондента' : 'Имя группы',
+                )}
                 hint={t('Можно оставить пустым')}
                 maxLength={200}
                 value={name}
@@ -564,11 +607,26 @@ export function Respondents({
                 <Form onSubmit={(event) => void rename(event, link)}>
                   <TextField
                     id={`name-${link.id}`}
-                    label={t('Имя респондента')}
+                    label={t(
+                      link.mode === 'personal'
+                        ? 'Имя респондента'
+                        : 'Имя группы',
+                    )}
                     maxLength={200}
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
                   />
+                  {link.mode === 'registration' && (
+                    <CheckboxField
+                      id={`moderation-${link.id}`}
+                      label={t('Включить модерацию при регистрации')}
+                      checked={editModeration}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setEditModeration(event.target.checked)
+                      }
+                    />
+                  )}
                   {link.mode === 'reusable' && (
                     <CheckboxField
                       id={`history-${link.id}`}
@@ -599,7 +657,11 @@ export function Respondents({
                       <span>
                         {link.mode === 'personal'
                           ? t('Персональная')
-                          : t('Многоразовая')}
+                          : t(
+                              link.mode === 'registration'
+                                ? 'С регистрацией'
+                                : 'Многоразовая',
+                            )}
                       </span>
                       <span
                         className={
@@ -609,11 +671,20 @@ export function Respondents({
                         {link.revoked ? t('Отозвана') : t('Действует')}
                       </span>
                     </div>
+                    {link.mode === 'registration' &&
+                      (online[link.id]?.pendingCount ?? 0) > 0 && (
+                        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-warning-ink">
+                          <Clock aria-hidden="true" className="size-3.5" />
+                          {t('Ожидают подтверждения: {count}', {
+                            count: online[link.id].pendingCount!,
+                          })}
+                        </p>
+                      )}
                     {online[link.id] && (
                       <div className="mt-2 text-xs text-muted">
                         <p className="flex flex-wrap gap-x-3 gap-y-1">
                           <span>
-                            {link.mode === 'reusable'
+                            {link.mode !== 'personal'
                               ? t('Сейчас онлайн: {value0}', {
                                   value0: online[link.id].online,
                                 })
@@ -638,15 +709,29 @@ export function Respondents({
                     )}
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-1">
+                    {link.mode === 'registration' && (
+                      <Button
+                        variant="ghost"
+                        startIcon={<Users />}
+                        title={t('Зарегистрированные')}
+                        aria-label={t('Зарегистрированные')}
+                        className={
+                          (online[link.id]?.pendingCount ?? 0) > 0
+                            ? 'text-warning-ink'
+                            : ''
+                        }
+                        onClick={() => setMembersGroup(link)}
+                      />
+                    )}
                     {!link.revoked && (
                       <Button
                         variant="ghost"
                         disabled={busy}
                         startIcon={<Copy />}
+                        title={t('Скопировать ссылку')}
+                        aria-label={t('Скопировать ссылку')}
                         onClick={() => void copyLink(link)}
-                      >
-                        {t('Скопировать ссылку')}
-                      </Button>
+                      />
                     )}
                     <Button
                       variant="ghost"
@@ -660,6 +745,7 @@ export function Respondents({
                         setEditing(link.id);
                         setEditName(link.name);
                         setEditHistory(link.allowRunHistory === true);
+                        setEditModeration(link.requireModeration === true);
                       }}
                     />
                     {!link.revoked && (

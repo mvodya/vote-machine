@@ -12,7 +12,7 @@ export function EmptyState({
   // Heading shown to the user
   title: string;
   // Short text below the heading
-  description: string;
+  description?: string;
   // Extra content for this section
   children?: ReactNode;
 }) {
@@ -25,9 +25,11 @@ export function EmptyState({
         {icon}
       </div>
       <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      <p className="mt-2 max-w-sm text-sm leading-6 text-muted">
-        {description}
-      </p>
+      {description && (
+        <p className="mt-2 max-w-sm text-sm leading-6 text-muted">
+          {description}
+        </p>
+      )}
       {children}
     </div>
   );

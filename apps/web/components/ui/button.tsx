@@ -22,6 +22,9 @@ const variants = {
     'min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-muted hover:text-ink aria-pressed:border-primary/35 aria-pressed:bg-selected aria-pressed:text-ink aria-pressed:shadow-xs',
   selector:
     'relative z-10 min-h-10 flex-1 border border-transparent px-3 py-2.5 text-sm text-muted hover:text-ink aria-pressed:text-ink',
+  approve:
+    'min-h-10 p-2.5 text-sm text-muted hover:bg-emerald-600 hover:text-white',
+  reject: 'min-h-10 p-2.5 text-sm text-muted hover:bg-red-600 hover:text-white',
   ghost: 'min-h-10 p-2.5 text-sm text-muted hover:bg-ink/5 hover:text-ink',
   tab: `${tabStyle} sm:flex-none sm:flex-row sm:px-5 sm:text-sm`,
   containedTab: `${tabStyle} @min-[640px]:flex-none @min-[640px]:flex-row @min-[640px]:px-5 @min-[640px]:text-sm`,

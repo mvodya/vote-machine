@@ -72,19 +72,28 @@ export async function adminLinkProxy(
       if (!isRecord(data)) return failure(400);
       if (request.method === 'POST') {
         if (
-          (data.mode !== 'personal' && data.mode !== 'reusable') ||
+          !['personal', 'reusable', 'registration'].includes(
+            String(data.mode),
+          ) ||
           !Array.isArray(data.names) ||
           data.names.length < 1 ||
           data.names.length > 100 ||
           !data.names.every(validName) ||
           (data.allowRunHistory !== undefined &&
             typeof data.allowRunHistory !== 'boolean') ||
-          (data.mode === 'personal' && data.allowRunHistory === true)
+          (data.mode !== 'reusable' && data.allowRunHistory === true) ||
+          (data.requireModeration !== undefined &&
+            (typeof data.requireModeration !== 'boolean' ||
+              (data.mode !== 'registration' &&
+                data.requireModeration === true)))
         )
           return failure(400);
         body = {
           mode: data.mode,
           names: data.names,
+          ...(data.requireModeration !== undefined
+            ? {requireModeration: data.requireModeration}
+            : {}),
           ...(data.allowRunHistory !== undefined
             ? {allowRunHistory: data.allowRunHistory}
             : {}),
@@ -102,8 +111,17 @@ export async function adminLinkProxy(
               typeof data.allowRunHistory !== 'boolean'))
         )
           return failure(400);
+        if (
+          data.requireModeration !== undefined &&
+          (data.action !== 'rename' ||
+            typeof data.requireModeration !== 'boolean')
+        )
+          return failure(400);
         body = {
           action: data.action,
+          ...(data.requireModeration !== undefined
+            ? {requireModeration: data.requireModeration}
+            : {}),
           ...(data.action === 'rename'
             ? {
                 name: data.name,
@@ -212,7 +230,16 @@ export async function participantProxy(
         !secretPattern.test(data.token)
       )
         return failure(401);
-      body = {token: data.token};
+      if (
+        data.memberId !== undefined &&
+        (typeof data.memberId !== 'string' ||
+          !roomIdPattern.test(data.memberId))
+      )
+        return failure(400);
+      body = {
+        token: data.token,
+        ...(data.memberId ? {memberId: data.memberId} : {}),
+      };
       const prior = request.headers
         .get('cookie')
         ?.split(';')

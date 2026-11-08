@@ -1,0 +1,17 @@
+@media (prefers-reduced-motion: no-preference) {
+  .alert {
+    animation: attendance-call 600ms ease-in-out infinite alternate;
+  }
+}
+@keyframes attendance-call {
+  from {
+    box-shadow:
+      0 0 0 2px color-mix(in oklab, var(--app-primary) 20%, transparent),
+      0 0 30px color-mix(in oklab, var(--app-primary) 10%, transparent);
+  }
+  to {
+    box-shadow:
+      0 0 0 7px color-mix(in oklab, var(--app-primary) 55%, transparent),
+      0 0 70px color-mix(in oklab, var(--app-primary) 40%, transparent);
+  }
+}

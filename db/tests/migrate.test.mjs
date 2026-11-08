@@ -422,7 +422,7 @@ test('latest rollback keeps rooms and full rollback removes the schema', async (
     assert.equal(
       (
         await client.query(
-          "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='questions' AND column_name='hide_unavailable') AS name",
+          "SELECT to_regprocedure('vm_voting_entry(uuid,bytea)') IS NULL AS name",
         )
       ).rows[0].name,
       false,
@@ -6562,7 +6562,10 @@ test('allocation display policy rollback reapply and failed rollback preserve se
       ],
     });
     const answer = (await cast(client, f, ballotInput(f.question))).answer;
-    await runMigrations({databaseUrl, direction: 'down'});
+    await rollbackFrom(
+      databaseUrl,
+      '1795219200000-allocation-display-policy.mjs',
+    );
     await runMigrations({databaseUrl});
     let q = (await questionCall(client, f.admin, 'get', {}, f.question.id))
       .question;
@@ -6581,7 +6584,7 @@ test('allocation display policy rollback reapply and failed rollback preserve se
       )
     ).question;
     await assert.rejects(
-      runMigrations({databaseUrl, direction: 'down'}),
+      rollbackFrom(databaseUrl, '1795219200000-allocation-display-policy.mjs'),
       /Enable hidden unavailable/,
     );
     assert.equal(
@@ -6593,5 +6596,506 @@ test('allocation display policy rollback reapply and failed rollback preserve se
       (await journey(client, f, {selected: q.id})).answer,
       answer,
     );
+  });
+});
+
+// Registration keeps one stable person behind a shared group link
+async function registrationFixture(client, moderation = true) {
+  const admin = await adminRoom(client);
+  const question = (
+    await lifecycle(client, admin, await readyQuestion(client, admin), 'open')
+  ).question;
+  const key = {
+    ...linkItem('Students', 'registration'),
+    requireModeration: moderation,
+  };
+  const [group] = await addLinks(client, admin, [key]);
+  const {session} = await openLink(client, group, key.key);
+  return {admin, question, group, key, session};
+}
+function registrationPacket(name = 'Alice') {
+  const person = linkItem(name);
+  const session = randomBytes(32).toString('hex');
+  return {
+    person,
+    session,
+    data: {
+      name,
+      hash: person.hash,
+      cipher: person.cipher,
+      sessionHash: hash(session).toString('hex'),
+      sessionCipher: randomBytes(92).toString('hex'),
+    },
+  };
+}
+async function registerPerson(client, f, packet) {
+  return (
+    await client.query('SELECT vm_registration_request($1,$2,$3) AS reply', [
+      f.group.id,
+      hash(f.session),
+      JSON.stringify(packet?.data ?? {}),
+    ])
+  ).rows[0].reply;
+}
+async function moderate(client, f, member, action) {
+  return (
+    await client.query(
+      'SELECT vm_registration_admin($1,$2,$3,$4,$5,$6) AS reply',
+      [
+        f.admin.room.id,
+        hash(f.admin.session),
+        f.group.id,
+        member.id,
+        action,
+        JSON.stringify({revision: member.revision}),
+      ],
+    )
+  ).rows[0].reply;
+}
+
+test('registration approval block and unblock protect all private voting paths', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client);
+    const p = registrationPacket();
+    const waiting = await registerPerson(client, f, p);
+    assert.equal(waiting.member.state, 'pending');
+    assert.equal(waiting.votingId, undefined);
+    assert.equal(waiting.sessionCipher, undefined);
+    assert.equal(
+      (await journey(client, {link: f.group, session: f.session})).status,
+      401,
+    );
+    const child = (
+      await client.query(
+        'SELECT link_id FROM registration_members WHERE id=$1',
+        [waiting.member.id],
+      )
+    ).rows[0].link_id;
+    const voter = {...f, link: {id: child}, session: p.session};
+    assert.equal(
+      (await cast(client, voter, ballotInput(f.question))).status,
+      401,
+    );
+    assert.equal(
+      (await moderate(client, f, waiting.member, 'approve')).status,
+      200,
+    );
+    let status = await registerPerson(client, f);
+    assert.equal(status.votingId, child);
+    const answer = (await cast(client, voter, ballotInput(f.question))).answer;
+    assert(answer.id);
+    assert.equal(
+      (await moderate(client, f, status.member, 'block')).status,
+      200,
+    );
+    status = await registerPerson(client, f);
+    assert.equal(status.member.blocked, true);
+    assert.equal(status.votingId, undefined);
+    assert.equal((await journey(client, voter)).status, 401);
+    assert.equal((await results(client, voter)).status, 401);
+    assert.equal(
+      (await moderate(client, f, status.member, 'unblock')).status,
+      200,
+    );
+    assert.deepEqual(
+      (await journey(client, voter, {selected: f.question.id})).answer,
+      answer,
+    );
+    const list = (
+      await client.query(
+        "SELECT vm_registration_admin($1,$2,$3,NULL,'list','{}') AS reply",
+        [f.admin.room.id, hash(f.admin.session), f.group.id],
+      )
+    ).rows[0].reply;
+    assert.equal(list.members[0].name, 'Alice');
+  });
+});
+
+test('registration rejects names for moderation and resubmits without making a second person', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client);
+    const p = registrationPacket();
+    const first = await registerPerson(client, f, p);
+    assert.equal(
+      (await moderate(client, f, first.member, 'reject')).status,
+      200,
+    );
+    assert.equal((await registerPerson(client, f, p)).error, 'same_name');
+    const second = await registerPerson(
+      client,
+      f,
+      registrationPacket('Alice Smith'),
+    );
+    assert.equal(second.member.id, first.member.id);
+    assert.equal(second.member.state, 'pending');
+    assert.equal(
+      (await client.query('SELECT count(*) FROM registration_members')).rows[0]
+        .count,
+      '1',
+    );
+    assert.equal(
+      (await moderate(client, f, first.member, 'approve')).status,
+      409,
+    );
+    const other = await adminRoom(client);
+    assert.equal(
+      (
+        await client.query(
+          "SELECT vm_registration_admin($1,$2,$3,$4,'approve',$5) AS reply",
+          [
+            other.room.id,
+            hash(other.session),
+            f.group.id,
+            second.member.id,
+            JSON.stringify({revision: second.member.revision}),
+          ],
+        )
+      ).rows[0].reply.status,
+      404,
+    );
+  });
+});
+
+test('registration races share one browser identity and groups hide their private child links', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const replies = await Promise.all([
+        registerPerson(client, f, registrationPacket('A')),
+        registerPerson(other, f, registrationPacket('B')),
+      ]);
+      assert.equal(replies[0].member.id, replies[1].member.id);
+      assert.equal(replies[0].member.state, 'approved');
+      const links = (
+        await client.query('SELECT * FROM vm_list_voting_links($1,$2,0,51)', [
+          f.admin.room.id,
+          hash(f.admin.session),
+        ])
+      ).rows;
+      assert.deepEqual(
+        links.map((l) => l.id),
+        [f.group.id],
+      );
+      assert.equal(
+        (await client.query('SELECT count(*) FROM registration_devices'))
+          .rows[0].count,
+        '1',
+      );
+    } finally {
+      await other.end();
+    }
+  });
+});
+
+test('registration group revocation stops new entry but keeps approved people and recovery working', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const p = registrationPacket();
+    const first = await registerPerson(client, f, p);
+    await editLink(client, f.admin, f.group, 'revoke');
+    assert.equal((await openLink(client, f.group, f.key.key)).count, 0);
+    const current = await registerPerson(client, f);
+    assert.equal(current.member.id, first.member.id);
+    assert.equal(current.closed, true);
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...f, link: {id: current.votingId}, session: p.session},
+          ballotInput(f.question),
+        )
+      ).status,
+      200,
+    );
+    const root2 = randomBytes(32).toString('hex'),
+      child2 = randomBytes(32).toString('hex');
+    const recovered = await client.query(
+      'SELECT * FROM vm_recover_registration($1,$2,$3,$4,$5,$6)',
+      [
+        f.group.id,
+        first.member.id,
+        Buffer.from(p.person.hash, 'hex'),
+        hash(root2),
+        hash(child2),
+        randomBytes(92),
+      ],
+    );
+    assert.equal(recovered.rowCount, 1);
+    const restored = await registerPerson(client, {...f, session: root2});
+    assert.equal(restored.member.id, first.member.id);
+    for (const session of [f.session, root2])
+      await client.query('SELECT vm_question_presence($1,$2,$3)', [
+        f.group.id,
+        hash(session),
+        JSON.stringify({
+          tabId: randomUUID(),
+          sequence: 1,
+          questionId: null,
+          active: true,
+        }),
+      ]);
+    assert.equal(
+      (
+        await client.query('SELECT vm_registration_online($1) AS n', [
+          first.member.id,
+        ])
+      ).rows[0].n,
+      '2',
+    );
+    assert.equal(
+      (
+        await client.query(
+          'SELECT * FROM vm_recover_registration($1,$2,$3,$4,$5,$6)',
+          [
+            f.group.id,
+            first.member.id,
+            randomBytes(32),
+            randomBytes(32),
+            randomBytes(32),
+            randomBytes(92),
+          ],
+        )
+      ).rowCount,
+      0,
+    );
+  });
+});
+
+test('registration calls change only the targeted browser signal and preserve anonymous result privacy', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const p = registrationPacket();
+    const first = await registerPerson(client, f, p);
+    const version = async () =>
+      (
+        await client.query('SELECT vm_event_state($1,$2,false) AS reply', [
+          f.group.id,
+          hash(f.session),
+        ])
+      ).rows[0].reply.version;
+    const before = await version();
+    assert.equal((await moderate(client, f, first.member, 'call')).status, 200);
+    const called = await registerPerson(client, f);
+    assert.equal(called.member.callSequence, '1');
+    assert.notEqual(await version(), before);
+    assert.equal(called.member.state, 'approved');
+    const person = {...f, link: {id: called.votingId}, session: p.session};
+    assert.equal(
+      (await cast(client, person, ballotInput(f.question))).status,
+      200,
+    );
+    const named = (await results(client, person, true)).result;
+    assert.equal(named.people[0].name, p.person.name);
+    assert.equal(named.people[0].groupName, 'Students');
+    assert.equal((await results(client, person)).status, 404);
+    const anonymous = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {anonymous: true}),
+        'open',
+      )
+    ).question;
+    assert.equal(
+      (
+        await cast(
+          client,
+          {...person, question: anonymous},
+          ballotInput(anonymous),
+        )
+      ).status,
+      200,
+    );
+    const hidden = (await results(client, person, true, anonymous.id)).result;
+    assert.equal(hidden.total, 1);
+    assert.equal('people' in hidden, false);
+    assert.equal(JSON.stringify(hidden).includes('Students'), false);
+    const q = (await lifecycle(client, f.admin, f.question, 'close')).question;
+    // Existing anonymity rules still decide whether identities reach results
+    assert.equal(
+      (
+        await results(
+          client,
+          {...f, link: {id: called.votingId}, session: p.session},
+          true,
+          q.id,
+        )
+      ).status,
+      200,
+    );
+  });
+});
+
+test('registration lobbies share authenticated session and room request budgets', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client);
+    const access = {...f, link: f.group};
+    for (let i = 0; i < 5; i++)
+      assert.equal((await admit(client, access)).allowed, true);
+    assert.equal((await admit(client, access)).allowed, false);
+    await client.query('DELETE FROM request_limits');
+    const policy = {...ratePolicy, write: 100, room: 1};
+    assert.equal(
+      (await admit(client, access, 'write', hash('a'), policy)).allowed,
+      true,
+    );
+    const second = await openLink(client, f.group, f.key.key);
+    assert.equal(
+      (
+        await admit(
+          client,
+          {...access, session: second.session},
+          'write',
+          hash('b'),
+          policy,
+        )
+      ).allowed,
+      false,
+    );
+  });
+});
+
+test('registration migrations rollback reapply and refuse loss of registered access', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    await rollbackFrom(databaseUrl, '1795305600000');
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const p = registrationPacket();
+    const first = await registerPerson(client, f, p);
+    await assert.rejects(
+      rollbackFrom(databaseUrl, '1795305600000'),
+      /Recover registration groups/,
+    );
+    assert.equal((await registerPerson(client, f)).member.id, first.member.id);
+    const room = (
+      await client.query('SELECT revision FROM rooms WHERE id=$1', [
+        f.admin.room.id,
+      ])
+    ).rows[0];
+    const removed = (
+      await client.query('SELECT vm_delete_room($1,$2,$3) AS reply', [
+        f.admin.room.id,
+        hash(f.admin.session),
+        JSON.stringify({
+          confirmation: f.admin.room.id,
+          revision: String(room.revision),
+        }),
+      ])
+    ).rows[0].reply;
+    assert.equal(removed.status, 200);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM registration_members')).rows[0]
+        .count,
+      '0',
+    );
+  });
+});
+
+test('registration roster filters rejected names and renames both identities with revision checks', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client);
+    const first = await registerPerson(client, f, registrationPacket());
+    const list = async (filter = 'registered') =>
+      (
+        await client.query(
+          'SELECT vm_registration_admin($1,$2,$3,NULL,$4,$5) AS reply',
+          [
+            f.admin.room.id,
+            hash(f.admin.session),
+            f.group.id,
+            'list',
+            JSON.stringify({filter}),
+          ],
+        )
+      ).rows[0].reply;
+    assert.equal((await list()).pendingCount, 1);
+    assert.equal((await list()).registeredCount, 0);
+    await moderate(client, f, first.member, 'reject');
+    assert.deepEqual((await list()).members, []);
+    assert.equal((await list()).pendingCount, 0);
+    const retry = await registerPerson(client, f, registrationPacket('Bob'));
+    await moderate(client, f, retry.member, 'approve');
+    const approved = (await registerPerson(client, f)).member;
+    await moderate(client, f, approved, 'block');
+    assert.equal((await list()).members.length, 1);
+    const current = (await registerPerson(client, f)).member;
+    const rename = async (revision, name) =>
+      (
+        await client.query(
+          'SELECT vm_registration_admin($1,$2,$3,$4,$5,$6) AS reply',
+          [
+            f.admin.room.id,
+            hash(f.admin.session),
+            f.group.id,
+            current.id,
+            'rename',
+            JSON.stringify({revision, name}),
+          ],
+        )
+      ).rows[0].reply;
+    assert.equal((await rename(approved.revision, 'Charlie')).status, 409);
+    assert.equal((await rename(current.revision, '  ')).status, 400);
+    assert.equal((await rename(current.revision, 'Charlie')).status, 200);
+    assert.equal((await registerPerson(client, f)).member.name, 'Charlie');
+    assert.equal(
+      (
+        await client.query(
+          'SELECT l.name FROM voting_links l JOIN registration_members m ON m.link_id=l.id WHERE m.id=$1',
+          [current.id],
+        )
+      ).rows[0].name,
+      'Charlie',
+    );
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal((await registerPerson(client, f)).member.name, 'Charlie');
+    await runMigrations({databaseUrl});
+    assert.equal((await list()).registeredCount, 1);
+  });
+});
+
+test('registration presence uses active tabs and ignores late heartbeats after leaving', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const person = await registerPerson(client, f, registrationPacket());
+    const online = async () =>
+      (
+        await client.query('SELECT vm_registration_online($1) AS n', [
+          person.member.id,
+        ])
+      ).rows[0].n;
+    const tab = randomUUID();
+    const report = async (sequence, active, questionId = null) =>
+      (
+        await client.query('SELECT vm_question_presence($1,$2,$3) AS reply', [
+          f.group.id,
+          hash(f.session),
+          JSON.stringify({tabId: tab, sequence, questionId, active}),
+        ])
+      ).rows[0].reply;
+    assert.equal(await online(), '0');
+    assert.equal((await report(1, true)).status, 200);
+    assert.equal(await online(), '1');
+    assert.equal((await report(2, true, f.question.id)).status, 404);
+    await report(3, false);
+    await registerPerson(client, f);
+    await report(2, true);
+    assert.equal(await online(), '0');
+    await report(4, true);
+    await client.query(
+      "UPDATE question_views SET seen_at=clock_timestamp()-interval '36 seconds' WHERE session_id IN (SELECT id FROM voting_sessions WHERE secret_hash=$1)",
+      [hash(f.session)],
+    );
+    assert.equal(await online(), '0');
   });
 });

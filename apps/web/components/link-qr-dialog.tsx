@@ -11,17 +11,20 @@ export function LinkQrDialog({
   linkId,
   name,
   onClose,
+  sourcePath,
 }: {
   roomId: string;
   linkId: string;
   name: string;
   onClose: () => void;
+  // Recovery QR images use the same protected viewer
+  sourcePath?: string;
 }) {
   const {t} = useI18n();
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const path = `/api/rooms/${roomId}/links/${linkId}/qr`;
+  const path = sourcePath ?? `/api/rooms/${roomId}/links/${linkId}/qr`;
   return (
     <Dialog title="QR Code" onClose={onClose}>
       <p className="mb-4 break-words text-sm text-muted">{name}</p>

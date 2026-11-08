@@ -1,6 +1,6 @@
 import {translate, type Locale} from './i18n/translate';
 import {isRecord, validCursor} from './voting-links';
-import {roomIdPattern} from './rooms';
+import {roomIdPattern, validName} from './rooms';
 export interface ResultOption {
   // Counts use ballots as the percentage base
   id: string;
@@ -14,6 +14,8 @@ export interface PersonResult {
   linkId: string | null;
   name: string | null;
   source: string;
+  // Registration group labels are admin-only and never appear in anonymous results
+  groupName?: string;
   choices: string[];
 }
 export interface VoteResult {
@@ -198,6 +200,7 @@ export function publicResult(
             (typeof person.linkId !== 'string' ||
               !roomIdPattern.test(person.linkId))) ||
           (person.name !== null && typeof person.name !== 'string') ||
+          (person.groupName !== undefined && !validName(person.groupName)) ||
           !sources.includes(String(person.source)) ||
           !Array.isArray(choices) ||
           !choices.every(
@@ -212,6 +215,9 @@ export function publicResult(
           linkId: person.linkId as string | null,
           name: person.name as string | null,
           source: String(person.source),
+          ...(typeof person.groupName === 'string'
+            ? {groupName: person.groupName}
+            : {}),
           choices,
         });
       }

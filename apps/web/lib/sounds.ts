@@ -6,5 +6,6 @@ export const soundKinds = [
   'tick',
   'answer',
   'submit',
+  'call',
 ] as const;
 export type Sound = (typeof soundKinds)[number];

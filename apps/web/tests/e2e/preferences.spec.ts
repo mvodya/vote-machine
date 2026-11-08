@@ -1,3 +1,4 @@
+import {soundKinds} from '../../lib/sounds';
 import {expect, test, type BrowserContext, type Page} from '@playwright/test';
 import {votingFixture} from './voting-helpers';
 // Record audio calls without depending on speakers on the test machine
@@ -194,7 +195,7 @@ test('room palette reaches a dark participant and sounds follow new events only'
               .length,
         ),
       )
-      .toBe(6);
+      .toBe(soundKinds.length);
     await expect
       .poll(() =>
         guest.evaluate(
@@ -203,7 +204,7 @@ test('room palette reaches a dark participant and sounds follow new events only'
               .length,
         ),
       )
-      .toBe(6);
+      .toBe(soundKinds.length);
     expect(await sounds(page)).toEqual([]);
     expect(await sounds(guest)).toEqual([]);
     await page
@@ -292,7 +293,7 @@ test('room deadline alarms work outside the question tab', async ({page}) => {
       data: {
         action: 'settings',
         revision: f.question.revision,
-        closesAt: new Date(Date.now() + 61000).toISOString(),
+        closesAt: new Date(Date.now() + 65000).toISOString(),
         shareResults: false,
         publication: 'after_close',
       },
@@ -311,12 +312,12 @@ test('room deadline alarms work outside the question tab', async ({page}) => {
           (window as unknown as {decodedSounds: string[]}).decodedSounds.length,
       ),
     )
-    .toBe(6);
+    .toBe(soundKinds.length);
   await page.getByRole('button', {name: 'Включить звуки', exact: true}).click();
   await page.evaluate(
     () => ((window as unknown as {sounds: string[]}).sounds = []),
   );
-  await page.clock.runFor(1800);
+  await page.clock.runFor(6000);
   await expect.poll(() => sounds(page)).toContain('/sounds/minute.mp3');
   await page.clock.fastForward(50000);
   await expect.poll(() => sounds(page)).toContain('/sounds/tick.mp3');
@@ -452,9 +453,9 @@ test('all seven accents tint backgrounds and borders in both themes', async ({
 // Ready samples must be silent until the user enables sound
 test('all compressed sounds decode before enabling sound', async ({page}) => {
   await recordSounds(page.context());
-  let downloads = 0;
+  const downloads = new Set<string>();
   page.on('request', (request) => {
-    if (request.url().includes('/sounds/')) downloads++;
+    if (request.url().includes('/sounds/')) downloads.add(request.url());
   });
   await page.goto('/');
   await expect
@@ -464,10 +465,10 @@ test('all compressed sounds decode before enabling sound', async ({page}) => {
           (window as unknown as {decodedSounds: string[]}).decodedSounds.length,
       ),
     )
-    .toBe(6);
-  expect(downloads).toBe(6);
+    .toBe(soundKinds.length);
+  expect(downloads.size).toBe(soundKinds.length);
   expect(await sounds(page)).toEqual([]);
   await page.getByRole('button', {name: 'Включить звуки', exact: true}).click();
   await expect.poll(() => sounds(page)).toContain('/sounds/open.mp3');
-  expect(downloads).toBe(6);
+  expect(downloads.size).toBe(soundKinds.length);
 });

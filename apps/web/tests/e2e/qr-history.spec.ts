@@ -169,9 +169,7 @@ test('new reusable links expose an unchecked history option and save it for one 
   await page.getByLabel('Режим ссылки', {exact: true}).selectOption('reusable');
   await expect(history).not.toBeChecked();
   await history.check();
-  await page
-    .getByLabel('Имя респондента', {exact: true})
-    .fill('Shared history');
+  await page.getByLabel('Имя группы', {exact: true}).fill('Shared history');
   await page.getByRole('button', {name: 'Создать ссылки', exact: true}).click();
   await expect(
     page.getByRole('heading', {name: 'Shared history', exact: true}),

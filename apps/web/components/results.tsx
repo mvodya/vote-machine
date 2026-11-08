@@ -403,6 +403,11 @@ export function Results({
                       <li key={person.id} className="py-3 text-sm">
                         <p className="font-medium">
                           {person.name || t(sourceNames[person.source])}
+                          {person.groupName && (
+                            <span className="ml-2 text-xs font-normal text-muted">
+                              {person.groupName}
+                            </span>
+                          )}
                         </p>
                         <p className="mt-1 text-muted">
                           {person.choices

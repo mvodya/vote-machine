@@ -29,6 +29,7 @@ export interface RoomReport {
     id: string;
     name: string | null;
     kind: string;
+    groupName?: string;
     answers: {questionId: string; choices: string[]}[];
   }[];
 }
@@ -146,6 +147,9 @@ export function publicRoomReport(
         typeof person.id !== 'string' ||
         !/^[prm]:[a-f0-9-]{36}$/.test(person.id) ||
         (person.name !== null && typeof person.name !== 'string') ||
+        (person.groupName !== undefined &&
+          (typeof person.groupName !== 'string' ||
+            [...person.groupName].length > 200)) ||
         !kinds.includes(String(person.kind)) ||
         !Array.isArray(person.answers)
       )
@@ -171,6 +175,9 @@ export function publicRoomReport(
         id: person.id,
         name: person.name as string | null,
         kind: String(person.kind),
+        ...(typeof person.groupName === 'string'
+          ? {groupName: person.groupName}
+          : {}),
         answers,
       });
     }

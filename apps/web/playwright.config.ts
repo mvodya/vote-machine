@@ -32,6 +32,7 @@ export default defineConfig({
         '**/landing.spec.ts',
         '**/hidden-content.spec.ts',
         '**/allocation.spec.ts',
+        '**/registration.spec.ts',
         '**/allocation-display.spec.ts',
       ],
       use: {browserName: 'webkit', viewport: {width: 1280, height: 800}},
@@ -49,6 +50,7 @@ export default defineConfig({
         '**/landing.spec.ts',
         '**/hidden-content.spec.ts',
         '**/allocation.spec.ts',
+        '**/registration.spec.ts',
         '**/allocation-display.spec.ts',
       ],
       use: {

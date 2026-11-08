@@ -8,6 +8,8 @@ type Tab = {
   id: string;
   // Tab name shown to the user
   label: string;
+  // Draw attention to tabs with pending work
+  attention?: boolean;
   // Optional Lucide icon
   icon?: ReactNode;
 };
@@ -63,7 +65,7 @@ export function Tabs({
         <Button
           key={tab.id}
           variant={contained ? 'containedTab' : 'tab'}
-          className="relative z-10"
+          className={`relative z-10 ${tab.attention ? 'bg-warning-bg/60 text-warning-ink aria-selected:text-warning-ink' : ''}`}
           role="tab"
           id={`${group}-tab-${tab.id}`}
           aria-controls={`${group}-panel-${tab.id}`}

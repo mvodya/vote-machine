@@ -20,6 +20,7 @@
 #include "links.hpp"
 #include "live.hpp"
 #include "questions.hpp"
+#include "registration.hpp"
 #include "results.hpp"
 #include "rooms.hpp"
 #include "security.hpp"
@@ -169,6 +170,8 @@ int main() {
 
     vote_machine::RegisterLinkHandlers(database,
                                        std::string(ReadEnv("ADMIN_LINK_KEY")));
+    vote_machine::RegisterRegistrationHandlers(
+        database, std::string(ReadEnv("ADMIN_LINK_KEY")));
     vote_machine::RegisterQuestionHandlers(database);
     vote_machine::RegisterVotingHandlers(database);
     vote_machine::RegisterResultHandlers(database);

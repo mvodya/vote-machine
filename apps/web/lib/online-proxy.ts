@@ -62,7 +62,15 @@ export async function onlineProxy(request: Request, room: string) {
           throw new Error();
         questions.push({id: q.id, preview: q.preview});
       }
-      links.push({id: value.id, online: value.online, questions});
+      const counts: {pendingCount?: number; registeredCount?: number} = {};
+      for (const key of ['pendingCount', 'registeredCount'] as const) {
+        if (value[key] !== undefined) {
+          if (!Number.isSafeInteger(value[key]) || Number(value[key]) < 0)
+            throw new Error();
+          counts[key] = Number(value[key]);
+        }
+      }
+      links.push({id: value.id, online: value.online, questions, ...counts});
     }
     return Response.json({links}, {headers});
   } catch {

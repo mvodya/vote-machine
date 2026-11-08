@@ -45,6 +45,8 @@ export default function AdminRoom({id}: {id: string}) {
       ? question
       : null;
   });
+  // Reopening the respondents tab returns from a group to the link list
+  const [respondentsKey, setRespondentsKey] = useState(0);
   const [state, setState] = useState<State>('loading');
   // Room data returned by the API
   const [room, setRoom] = useState<Room | null>(null);
@@ -307,6 +309,8 @@ export default function AdminRoom({id}: {id: string}) {
                   }
                   if (value === 'questions' && section === 'questions')
                     setEditorKey((key) => key + 1);
+                  if (value === 'respondents' && section === 'respondents')
+                    setRespondentsKey((key) => key + 1);
                   setSection(value);
                   setNotice('');
                 }}
@@ -329,7 +333,11 @@ export default function AdminRoom({id}: {id: string}) {
                   value={section}
                 >
                   {section === 'respondents' && (
-                    <Respondents roomId={id} onDenied={denyAccess} />
+                    <Respondents
+                      key={respondentsKey}
+                      roomId={id}
+                      onDenied={denyAccess}
+                    />
                   )}
                 </TabPanel>
                 <TabPanel group="room-sections" id="results" value={section}>

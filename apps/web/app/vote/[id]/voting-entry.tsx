@@ -1,6 +1,7 @@
 'use client';
 import {useI18n} from '../../../components/language-provider';
 import {Loading} from '../../../components/ui/loading';
+import {RegistrationEntry} from './registration-entry';
 import {RoomExperience} from '../../../components/room-experience';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {PageHeader} from '../../../components/page-header';
@@ -24,6 +25,7 @@ export default function VotingEntry({id}: {id: string}) {
   const [attempt, setAttempt] = useState(0);
   // Key kept only until session exchange succeeds
   const key = useRef<string | null>(null);
+  const member = useRef<string | null>(null);
   // Read each URL key only once
   const captured = useRef(false);
   useEffect(() => {
@@ -53,6 +55,12 @@ export default function VotingEntry({id}: {id: string}) {
           setState('denied');
           return;
         }
+        const memberId = new URLSearchParams(fragment).get('member');
+        if (memberId !== null && !roomIdPattern.test(memberId)) {
+          setState('denied');
+          return;
+        }
+        member.current = memberId;
         key.current = token;
       }
       if (!roomIdPattern.test(id)) {
@@ -68,7 +76,12 @@ export default function VotingEntry({id}: {id: string}) {
             method: token ? 'POST' : 'GET',
             cache: 'no-store',
             headers: token ? {'Content-Type': 'application/json'} : undefined,
-            body: token ? JSON.stringify({token}) : undefined,
+            body: token
+              ? JSON.stringify({
+                  token,
+                  ...(member.current ? {memberId: member.current} : {}),
+                })
+              : undefined,
             signal: AbortSignal.any([
               controller.signal,
               AbortSignal.timeout(12000),
@@ -101,7 +114,7 @@ export default function VotingEntry({id}: {id: string}) {
     <RoomExperience
       id={id}
       admin={false}
-      active={state === 'ready'}
+      active={state === 'ready' && participant?.mode !== 'registration'}
       onDenied={denyAccess}
     >
       <main className="min-h-svh bg-page px-4 pt-6 pb-14 text-ink">
@@ -133,20 +146,29 @@ export default function VotingEntry({id}: {id: string}) {
               </Button>
             </Panel>
           )}
-          {state === 'ready' && participant && (
-            <>
-              <h1 className="mt-8 text-2xl font-semibold">
-                {participant.roomName}
-              </h1>
-              <p className="mt-3 text-sm text-muted">
-                {participant.name} ·{' '}
-                {participant.mode === 'personal'
-                  ? t('Персональная ссылка')
-                  : t('Многоразовая ссылка')}
-              </p>
-              <ParticipantJourney linkId={id} onDenied={denyAccess} />
-            </>
+          {state === 'ready' && participant?.mode === 'registration' && (
+            <RegistrationEntry
+              id={id}
+              roomName={participant.roomName}
+              onDenied={denyAccess}
+            />
           )}
+          {state === 'ready' &&
+            participant &&
+            participant.mode !== 'registration' && (
+              <>
+                <h1 className="mt-8 text-2xl font-semibold">
+                  {participant.roomName}
+                </h1>
+                <p className="mt-3 text-sm text-muted">
+                  {participant.name} ·{' '}
+                  {participant.mode === 'personal'
+                    ? t('Персональная ссылка')
+                    : t('Многоразовая ссылка')}
+                </p>
+                <ParticipantJourney linkId={id} onDenied={denyAccess} />
+              </>
+            )}
         </div>
       </main>
     </RoomExperience>
