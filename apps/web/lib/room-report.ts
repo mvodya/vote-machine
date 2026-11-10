@@ -96,7 +96,7 @@ export function publicRoomReport(
         typeof link.id !== 'string' ||
         !roomIdPattern.test(link.id) ||
         typeof link.name !== 'string' ||
-        !['personal', 'reusable'].includes(String(link.mode)) ||
+        !['personal', 'reusable', 'registration'].includes(String(link.mode)) ||
         !count(link.answers) ||
         !count(link.participants)
       )

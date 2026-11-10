@@ -90,7 +90,11 @@ export async function resultsWorkbook(
           [t('Ссылка'), t('Режим'), t('Участники'), t('Ответы')],
           ...report.links.map((link) => [
             link.name,
-            link.mode === 'personal' ? t('Персональная') : t('Многоразовая'),
+            link.mode === 'registration'
+              ? t('С регистрацией')
+              : link.mode === 'personal'
+                ? t('Персональная')
+                : t('Многоразовая'),
             link.participants,
             link.answers,
           ]),

@@ -161,6 +161,26 @@ describe('link browser boundary', () => {
     );
     expect(fetch).not.toHaveBeenCalled();
   });
+  it('checks the deletion revision and matches the API receipt to the link', async () => {
+    const upstream = vi.fn();
+    vi.stubGlobal('fetch', upstream);
+    const remove = {action: 'delete', revision: '2'};
+    expect(
+      (await adminLinkProxy(request('PATCH', {action: 'delete'}), room, id))
+        .status,
+    ).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+    upstream.mockResolvedValueOnce(Response.json({deletedId: room}));
+    expect(
+      (await adminLinkProxy(request('PATCH', remove), room, id)).status,
+    ).toBe(502);
+    upstream.mockResolvedValueOnce(
+      Response.json({deletedId: id, ignored: 'secret'}),
+    );
+    const response = await adminLinkProxy(request('PATCH', remove), room, id);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({deletedId: id});
+  });
   it('hides backend errors and rejects malformed metadata', async () => {
     vi.stubGlobal(
       'fetch',

@@ -477,7 +477,7 @@ test('opening a question editor stays still and its later tab switches still sli
     });
   });
   // Check both an existing question and a newly created editor
-  for (const action of ['Просмотреть', 'Создать вопрос']) {
+  for (const action of ['Редактировать', 'Создать вопрос']) {
     await page.evaluate(() => {
       (window as unknown as {editorSlides: string[]}).editorSlides.length = 0;
     });
@@ -555,7 +555,10 @@ test('question settings opens on the first click after Markdown preview', async 
   });
   expect(created.status()).toBe(201);
   await page.goto(`/rooms/${f.room.id}`);
-  await page.getByRole('button', {name: 'Редактировать', exact: true}).click();
+  await page
+    .getByRole('listitem', {name: /Paragraph 0/})
+    .getByRole('button', {name: 'Редактировать', exact: true})
+    .click();
   const tabs = page.getByRole('tablist', {
     name: 'Разделы вопроса',
     exact: true,
@@ -750,7 +753,10 @@ test('pending photos and scroll never block editor or participant tabs', async (
     await route.continue();
   });
   await page.goto(`/rooms/${f.room.id}`);
-  await page.getByRole('button', {name: 'Редактировать', exact: true}).click();
+  await page
+    .getByRole('listitem', {name: /Paragraph 0/})
+    .getByRole('button', {name: 'Редактировать', exact: true})
+    .click();
   await page
     .getByRole('group', {name: 'Режим редактора: Текст вопроса', exact: true})
     .getByRole('button', {name: 'Предпросмотр', exact: true})

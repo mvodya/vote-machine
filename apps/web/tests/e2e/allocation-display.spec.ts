@@ -158,7 +158,7 @@ test('allocation visibility is saved in settings and full options stay disabled'
   await expect(
     row.getByText('Бронирование вариантов', {exact: true}).locator('svg'),
   ).toHaveCount(1);
-  await page.getByRole('button', {name: 'Просмотреть', exact: true}).click();
+  await page.getByRole('button', {name: 'Редактировать', exact: true}).click();
   const kind = page.getByText('Бронирование вариантов', {exact: true});
   const at = page.locator('time');
   await expect(kind.locator('svg')).toHaveCount(1);
@@ -230,4 +230,43 @@ test('question type menu supports the keyboard and creation fixes the type', asy
   await expect(
     page.getByLabel('Скрывать недоступные варианты', {exact: true}),
   ).toBeChecked();
+});
+
+test('a locked booking question closes from the list and from management', async ({
+  page,
+}) => {
+  const f = await votingFixture(
+    page,
+    {
+      questionType: 'allocation',
+      choices: [
+        {content: 'Slot A', capacity: 2},
+        {content: 'Slot B', capacity: 1},
+      ],
+    },
+    true,
+  );
+  const path = `/api/rooms/${f.room.id}/questions/${f.question.id}`;
+  const load = async () =>
+    (await (await page.request.get(path)).json()).question;
+  expect(f.question.editLocked).toBe(true);
+  await page.goto(`/rooms/${f.room.id}`);
+  await page
+    .getByRole('button', {name: 'Закрыть вопрос: Choose a result', exact: true})
+    .click();
+  await expect.poll(async () => (await load()).state).toBe('closed');
+  const closed = await load();
+  expect(
+    (
+      await page.request.post(`${path}/lifecycle`, {
+        headers: {Origin: f.origin},
+        data: {action: 'open', revision: closed.revision},
+      })
+    ).status(),
+  ).toBe(200);
+  await page.getByRole('button', {name: 'Просмотреть', exact: true}).click();
+  await page.getByRole('tab', {name: 'Управление', exact: true}).click();
+  await page.getByRole('button', {name: 'Закрыть вопрос', exact: true}).click();
+  await expect.poll(async () => (await load()).state).toBe('closed');
+  expect((await load()).editLocked).toBe(true);
 });

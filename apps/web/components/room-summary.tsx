@@ -193,17 +193,6 @@ export function RoomSummary({
             {admin && (
               <>
                 <Bars
-                  title={t('Ответы по ссылкам')}
-                  items={report.links.slice(0, 10).map((link) => ({
-                    id: link.id,
-                    label: t('{value0} (участников: {value1})', {
-                      value0: link.name,
-                      value1: link.participants,
-                    }),
-                    count: link.answers,
-                  }))}
-                />
-                <Bars
                   title={t('Многоразовые ссылки')}
                   items={report.links
                     .filter((link) => link.mode === 'reusable')
@@ -214,6 +203,17 @@ export function RoomSummary({
                         value0: link.name,
                         value1: link.participants,
                       }),
+                      count: link.answers,
+                    }))}
+                />
+                <Bars
+                  title={t('С регистрацией')}
+                  items={report.links
+                    .filter((link) => link.mode === 'registration')
+                    .slice(0, 10)
+                    .map((link) => ({
+                      id: link.id,
+                      label: link.name,
                       count: link.answers,
                     }))}
                 />

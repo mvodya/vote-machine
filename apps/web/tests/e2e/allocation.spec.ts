@@ -151,7 +151,7 @@ test('allocation manual entry preserves one identity and shares the same place p
     ],
   });
   await page.goto(`/rooms/${f.room.id}`);
-  await page.getByRole('button', {name: 'Просмотреть', exact: true}).click();
+  await page.getByRole('button', {name: 'Редактировать', exact: true}).click();
   await page
     .getByRole('tablist', {name: 'Разделы вопроса'})
     .getByRole('tab', {name: 'Управление', exact: true})

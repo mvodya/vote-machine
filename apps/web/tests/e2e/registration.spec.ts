@@ -522,3 +522,69 @@ test('moderation buttons have green and red hover backgrounds', async ({
     await context.close();
   }
 });
+
+test('registration group results have a separate section and deletion follows revocation', async ({
+  page,
+  browser,
+}) => {
+  const f = await setup(page);
+  const context = await browser.newContext({locale: 'ru-RU'});
+  try {
+    const student = await context.newPage();
+    await enroll(student, f.url, 'Group voter');
+    await student.getByRole('radio', {name: 'Yes', exact: true}).check();
+    await student
+      .getByRole('button', {name: 'Отправить ответ', exact: true})
+      .click();
+    await page.goto(`/rooms/${f.room.id}`);
+    await page.getByRole('tab', {name: 'Результаты', exact: true}).click();
+    const summary = page.getByRole('region', {
+      name: 'Общие результаты',
+      exact: true,
+    });
+    // A group appears once, outside the other source charts
+    const chart = (name: string) =>
+      summary.locator('section').filter({
+        has: page.getByRole('heading', {name, exact: true}),
+      });
+    const registered = chart('С регистрацией');
+    await expect(registered.getByText('Students', {exact: true})).toBeVisible();
+    await expect(registered.getByRole('listitem')).toHaveText('Students1');
+    await expect(summary.getByText('Students', {exact: true})).toHaveCount(1);
+    await expect(summary.getByText('Group voter', {exact: true})).toHaveCount(
+      0,
+    );
+    await expect(
+      chart('Многоразовые ссылки').getByText('Нет ответов'),
+    ).toBeVisible();
+    await expect(
+      chart('Источники ответов').getByText('Нет ответов'),
+    ).toBeVisible();
+    await page.getByRole('tab', {name: 'Респонденты', exact: true}).click();
+    const group = page.getByRole('listitem', {name: 'Students', exact: true});
+    const remove = group.getByRole('button', {
+      name: 'Удалить ссылку: Students',
+      exact: true,
+    });
+    await expect(remove).toHaveCount(0);
+    await group
+      .getByRole('button', {name: 'Отозвать ссылку: Students', exact: true})
+      .click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText(
+      'зарегистрированные участники сохранят доступ',
+    );
+    await dialog.getByRole('button', {name: 'Отозвать', exact: true}).click();
+    await remove.click();
+    await expect(dialog).toContainText(
+      'анонимные ответы останутся в результатах',
+    );
+    await dialog.getByRole('button', {name: 'Удалить', exact: true}).click();
+    await expect(group).toHaveCount(0);
+    await expect(
+      student.getByText('Ссылка недействительна', {exact: true}),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});

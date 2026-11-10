@@ -1308,6 +1308,7 @@ test('room edit policy is captured on first opening and cannot be withdrawn', as
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
     const admin = await adminRoom(client);
+    await lockQuestionEdits(client, admin);
     let policy = (await questionCall(client, admin, 'policy')).policy;
     assert.equal(policy.lockAfterOpen, true);
     let q = (
@@ -1868,6 +1869,7 @@ test('participant media access follows published content and current link sessio
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
     const admin = await adminRoom(client);
+    await lockQuestionEdits(client, admin);
     const other = await adminRoom(client);
     const asset = await readyAsset(client, admin, 'video/mp4');
     const unused = await readyAsset(client, admin);
@@ -2126,7 +2128,7 @@ test('lifecycle rejects empty drafts, foreign rooms and stale versions', async (
     assert.equal((await lifecycle(client, other, q, 'open')).status, 404);
     const opened = await lifecycle(client, admin, q, 'open');
     assert.equal(opened.status, 200);
-    assert.equal(opened.question.editLocked, true);
+    assert.equal(opened.question.editLocked, false);
     assert.equal((await lifecycle(client, admin, q, 'close')).status, 409);
     assert.equal(
       (await lifecycle(client, admin, opened.question, 'close')).question
@@ -2270,14 +2272,24 @@ test('lifecycle rollback fails atomically and reapplies with existing questions'
   });
 });
 
+// Opt into the locked policy for checks that need a fixed question
+async function lockQuestionEdits(client, admin) {
+  const policy = (await questionCall(client, admin, 'policy')).policy;
+  assert.equal(
+    (
+      await questionCall(client, admin, 'setPolicy', {
+        ...policy,
+        lockAfterOpen: true,
+      })
+    ).status,
+    200,
+  );
+}
+
 // Give each vote check real personal access and an open question
-async function personalFixture(client, extra = {}, editable = false) {
+async function personalFixture(client, extra = {}, editable) {
   const admin = await adminRoom(client);
-  if (editable)
-    await client.query(
-      'UPDATE rooms SET lock_questions_after_open=false WHERE id=$1',
-      [admin.room.id],
-    );
+  if (editable === false) await lockQuestionEdits(client, admin);
   const question = (
     await lifecycle(
       client,
@@ -2983,6 +2995,7 @@ test('workspace saves content, settings and opening atomically and rejects parti
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
     const admin = await adminRoom(client);
+    await lockQuestionEdits(client, admin);
     const invalid = await workspaceSave(client, admin, null, {
       content: 'Partial',
       choices: [{content: 'A'}, {content: ''}],
@@ -3061,7 +3074,7 @@ test('relative deadlines start at each opening and remain inactive in a draft', 
 test('returning to draft hides answers with erased answers and preserved opening promises', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
-    const f = await personalFixture(client);
+    const f = await personalFixture(client, {}, false);
     await cast(client, f, ballotInput(f.question));
     f.question = (
       await client.query('SELECT vm_reset_question($1,$2,$3,$4) AS reply', [
@@ -3476,7 +3489,7 @@ test('all new sources reject closed questions, foreign runs and participant acce
 test('explicit reset erases answers and idempotent receipts while keeping first-opening promises', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
-    const f = await personalFixture(client);
+    const f = await personalFixture(client, {}, false);
     await cast(client, f, ballotInput(f.question));
     const result = (
       await client.query('SELECT vm_reset_question($1,$2,$3,$4) AS reply', [
@@ -3962,6 +3975,7 @@ test('scheduled starts need an explicit open and capture promises only when due'
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
     const admin = await adminRoom(client);
+    await lockQuestionEdits(client, admin);
     const question = await readyQuestion(client, admin);
     const f = {admin, question};
     let reply = await reviewSave(client, f, {
@@ -4056,7 +4070,7 @@ test('scheduled start validation is atomic and absolute closing must follow open
 test('scheduled cancel, reopen and reset keep the agreed rights and clear armed work', async () => {
   await withDatabase(async ({client, databaseUrl}) => {
     await runMigrations({databaseUrl});
-    const f = await personalFixture(client);
+    const f = await personalFixture(client, {}, false);
     await cast(client, f, ballotInput(f.question));
     f.question = (
       await lifecycle(client, f.admin, f.question, 'close')
@@ -7097,5 +7111,235 @@ test('registration presence uses active tabs and ignores late heartbeats after l
       [hash(f.session)],
     );
     assert.equal(await online(), '0');
+  });
+});
+
+// Use the revoked revision the admin confirmed on the link row
+async function deleteLink(client, admin, link, revision = link.revision) {
+  return (
+    await client.query('SELECT vm_delete_voting_link($1,$2,$3,$4) AS reply', [
+      admin.room.id,
+      hash(admin.session),
+      link.id,
+      revision,
+    ])
+  ).rows[0].reply;
+}
+
+test('new rooms allow editing and locked allocation questions close without rewriting content', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    await rollbackFrom(databaseUrl, '1795564800000');
+    const old = await adminRoom(client);
+    await runMigrations({databaseUrl});
+    assert.equal(
+      (await questionCall(client, old, 'policy')).policy.lockAfterOpen,
+      true,
+    );
+    const fresh = await personalFixture(client);
+    assert.equal(fresh.question.editLocked, false);
+    const q = (
+      await workspaceSave(client, old, null, {
+        questionType: 'allocation',
+        content: 'Reserve a seat',
+        choices: [
+          {content: 'First', capacity: 2},
+          {content: 'Second', capacity: 2},
+        ],
+        state: 'open',
+      })
+    ).question;
+    assert.equal(q.editLocked, true);
+    assert.equal(
+      (
+        await workspaceSave(client, old, q, {
+          content: 'Changed',
+          state: 'closed',
+        })
+      ).status,
+      409,
+    );
+    const closed = await lifecycle(client, old, q, 'close');
+    assert.equal(closed.status, 200);
+    assert.equal(closed.question.state, 'closed');
+    assert.equal(closed.question.editLocked, true);
+    assert.deepEqual(closed.question.choices, q.choices);
+  });
+});
+
+test('deleting a registration group removes its members and named answers while retaining anonymous totals', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const second = await openLink(client, f.group, f.key.key);
+    const voters = [];
+    for (const [i, session] of [f.session, second.session].entries()) {
+      const packet = registrationPacket('Member ' + i);
+      const entry = await registerPerson(client, {...f, session}, packet);
+      voters.push({...f, link: {id: entry.votingId}, session: packet.session});
+    }
+    const anonymous = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {anonymous: true}),
+        'open',
+      )
+    ).question;
+    for (const voter of voters) {
+      assert.equal(
+        (await cast(client, voter, ballotInput(f.question))).status,
+        200,
+      );
+      assert.equal(
+        (
+          await cast(
+            client,
+            {...voter, question: anonymous},
+            ballotInput(anonymous),
+          )
+        ).status,
+        200,
+      );
+    }
+    const report = async () =>
+      (await results(client, f, true, f.question.id, {view: 'export'})).report;
+    const before = await report();
+    assert.equal(before.answers, 4);
+    assert.deepEqual(before.sources, []);
+    assert.equal(before.participants, 2);
+    assert.deepEqual(before.links, [
+      {
+        id: f.group.id,
+        name: 'Students',
+        mode: 'registration',
+        participants: 2,
+        answers: 2,
+      },
+    ]);
+    assert.equal(before.people.length, 2);
+    assert.equal((await deleteLink(client, f.admin, f.group, '0')).status, 409);
+    const revoked = (await editLink(client, f.admin, f.group, 'revoke'))[0];
+    assert.equal((await registerPerson(client, f)).status, 200);
+    assert.equal(
+      (
+        await deleteLink(
+          client,
+          await adminRoom(client),
+          f.group,
+          revoked.revision,
+        )
+      ).status,
+      404,
+    );
+    assert.equal((await deleteLink(client, f.admin, f.group, '0')).status, 409);
+    assert.equal(
+      (await deleteLink(client, f.admin, f.group, revoked.revision)).status,
+      200,
+    );
+    const after = await report();
+    assert.equal(after.answers, 2);
+    assert.deepEqual(after.sources, []);
+    assert.equal(after.participants, 2);
+    assert.deepEqual(after.links, []);
+    assert.deepEqual(after.people, []);
+    assert.deepEqual(
+      after.sheets.find((q) => q.id === anonymous.id),
+      before.sheets.find((q) => q.id === anonymous.id),
+    );
+    assert.equal((await registerPerson(client, f)).status, 401);
+    assert.equal((await journey(client, voters[0])).status, 401);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM registration_members')).rows[0]
+        .count,
+      '0',
+    );
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*) FROM voting_links WHERE room_id=$1',
+          [f.admin.room.id],
+        )
+      ).rows[0].count,
+      '0',
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down'}),
+      /Recover detached registration sources/,
+    );
+    assert.deepEqual(await report(), after);
+  });
+});
+
+test('removing an expected personal link cannot end the opening early', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await completionFixture(client);
+    const link = f.links[0];
+    const revoked = (await editLink(client, f.admin, link, 'revoke'))[0];
+    assert.equal(
+      (await deleteLink(client, f.admin, link, revoked.revision)).status,
+      200,
+    );
+    assert.equal(
+      (
+        await client.query('SELECT vm_all_expected_answered($1) AS done', [
+          f.question.id,
+        ])
+      ).rows[0].done,
+      false,
+    );
+    assert.equal(
+      (await lifecycle(client, f.admin, f.question, 'close')).status,
+      200,
+    );
+  });
+});
+
+test('concurrent deletion of a reusable link keeps anonymous runs distinct and removes sessions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await reusableFixture(client, {anonymous: true});
+    const second = await openLink(client, f.link, f.key.key);
+    const otherVoter = {...f, session: second.session};
+    const {run} = await journey(client, otherVoter);
+    for (const [voter, runId] of [
+      [f, f.run.id],
+      [otherVoter, run.id],
+    ]) {
+      assert.equal(
+        (await generalCast(client, voter, ballotInput(f.question, {runId})))
+          .status,
+        200,
+      );
+    }
+    const [revoked] = await editLink(client, f.admin, f.link, 'revoke');
+    const other = new pg.Client({connectionString: databaseUrl});
+    await other.connect();
+    try {
+      const replies = await Promise.all([
+        deleteLink(client, f.admin, revoked),
+        deleteLink(other, f.admin, revoked),
+      ]);
+      assert.deepEqual(replies.map((reply) => reply.status).sort(), [200, 404]);
+    } finally {
+      await other.end();
+    }
+    const {report} = await results(client, f, true, f.question.id, {
+      view: 'export',
+    });
+    assert.equal(report.answers, 2);
+    assert.equal(report.participants, 2);
+    assert.deepEqual(report.people, []);
+    assert.deepEqual(report.links, []);
+    assert.equal(
+      (await client.query('SELECT count(*) FROM voting_runs')).rows[0].count,
+      '0',
+    );
+    assert.equal(
+      (await client.query('SELECT count(*) FROM voting_sessions')).rows[0]
+        .count,
+      '0',
+    );
   });
 });

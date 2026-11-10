@@ -4,6 +4,7 @@ import {expect, type Page} from '@playwright/test';
 export async function votingFixture(
   page: Page,
   extra: Record<string, unknown> = {},
+  lockAfterOpen = false,
 ) {
   await page.goto('/');
   const origin = new URL(page.url()).origin;
@@ -21,6 +22,19 @@ export async function votingFixture(
       })
     ).status(),
   ).toBe(200);
+  // Locked questions need an explicit room policy
+  if (lockAfterOpen) {
+    const path = `/api/rooms/${room.id}/question-policy`;
+    const {policy} = await (await page.request.get(path)).json();
+    expect(
+      (
+        await page.request.patch(path, {
+          headers: {Origin: origin},
+          data: {...policy, lockAfterOpen},
+        })
+      ).status(),
+    ).toBe(200);
+  }
   const response = await page.request.post(`/api/rooms/${room.id}/questions`, {
     headers: {Origin: origin},
     data: {

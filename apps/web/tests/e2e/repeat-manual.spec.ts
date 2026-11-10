@@ -90,7 +90,7 @@ test('manual entry consumes a personal right and reset removes answers immediate
   await page.goto(`/rooms/${f.room.id}`);
   await page
     .getByRole('listitem', {name: 'Choose a result', exact: true})
-    .getByRole('button', {name: 'Просмотреть', exact: true})
+    .getByRole('button', {name: 'Редактировать', exact: true})
     .click();
   await page
     .getByRole('tablist', {name: 'Разделы вопроса'})

@@ -254,6 +254,25 @@ void RegisterLinkHandlers(const drogon::orm::DbClientPtr& database,
         }
 
         const auto action = (*input)["action"].asString();
+        // Keep confirmation tied to the revoked version shown to the admin
+        if (action == "delete") {
+          if (!(*input)["revision"].isString() ||
+              !ValidCursor((*input)["revision"].asString())) {
+            Error(reply, drogon::k400BadRequest, "Invalid revision");
+            return;
+          }
+          database->execSqlAsync(
+              "SELECT vm_delete_voting_link($1::uuid,decode($2,'hex'),"
+              "$3::uuid,$4)::text AS response",
+              [reply](const drogon::orm::Result& result) {
+                DatabaseReply(result, reply);
+              },
+              [reply](const drogon::orm::DrogonDbException&) {
+                Unavailable(reply);
+              },
+              room, session, id, (*input)["revision"].asString());
+          return;
+        }
         std::string name;
         if (action == "rename") {
           if (!(*input)["name"].isString() ||

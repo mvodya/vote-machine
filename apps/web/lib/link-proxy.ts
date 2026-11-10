@@ -101,7 +101,9 @@ export async function adminLinkProxy(
       } else {
         if (
           !id ||
-          !['rename', 'revoke', 'rotate'].includes(String(data.action))
+          !['rename', 'revoke', 'rotate', 'delete'].includes(
+            String(data.action),
+          )
         )
           return failure(400);
         if (
@@ -117,8 +119,11 @@ export async function adminLinkProxy(
             typeof data.requireModeration !== 'boolean')
         )
           return failure(400);
+        if (data.action === 'delete' && !validCursor(data.revision))
+          return failure(400);
         body = {
           action: data.action,
+          ...(data.action === 'delete' ? {revision: data.revision} : {}),
           ...(data.requireModeration !== undefined
             ? {requireModeration: data.requireModeration}
             : {}),
@@ -160,6 +165,10 @@ export async function adminLinkProxy(
       if (typeof data.token !== 'string' || !secretPattern.test(data.token))
         return failure(502);
       return NextResponse.json({token: data.token}, {headers});
+    }
+    if (id && body?.action === 'delete') {
+      if (data.deletedId !== id) return failure(502);
+      return NextResponse.json({deletedId: id}, {headers});
     }
     if (id) {
       if (!isVotingLink(data.link) || data.link.id !== id) return failure(502);

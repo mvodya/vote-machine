@@ -202,7 +202,7 @@ test('question loading has placeholders and a new close fades once for five seco
       await route.continue();
     },
   );
-  await item.getByRole('button', {name: 'Просмотреть', exact: true}).click();
+  await item.getByRole('button', {name: 'Редактировать', exact: true}).click();
   await expect(
     page.getByRole('status', {name: 'Открываем вопрос…', exact: true}),
   ).toBeVisible();

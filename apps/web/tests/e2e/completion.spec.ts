@@ -16,7 +16,7 @@ test('a configured personal electorate closes the question on its last answer', 
   await page.goto(`/rooms/${f.room.id}`);
   await page
     .getByRole('listitem', {name: 'Choose a result', exact: true})
-    .getByRole('button', {name: 'Просмотреть', exact: true})
+    .getByRole('button', {name: 'Редактировать', exact: true})
     .click();
   const tabs = page.getByRole('tablist', {name: 'Разделы вопроса'});
   await tabs.getByRole('tab', {name: 'Настройки', exact: true}).click();

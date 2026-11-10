@@ -17,6 +17,7 @@ import {
   Ban,
   Users,
   Clock,
+  Trash2,
 } from 'lucide-react';
 import {Button} from '../../../components/ui/button';
 import {Pagination} from '../../../components/ui/pagination';
@@ -43,7 +44,7 @@ type Confirmation = {
   // Link chosen by the admin
   link: VotingLink;
   // Action shown in the dialog
-  action: 'revoke' | 'rotate';
+  action: 'revoke' | 'rotate' | 'delete';
 };
 export interface RespondentSnapshot {
   // Local examples never read or change real links
@@ -324,11 +325,16 @@ export function Respondents({
     try {
       await write(`${base}/${confirmation.link.id}`, 'PATCH', {
         action: confirmation.action,
+        ...(confirmation.action === 'delete'
+          ? {revision: confirmation.link.revision}
+          : {}),
       });
       setNotice(
-        confirmation.action === 'revoke'
-          ? 'Ссылка отозвана'
-          : 'Ссылка перевыпущена',
+        confirmation.action === 'delete'
+          ? 'Ссылка удалена'
+          : confirmation.action === 'revoke'
+            ? 'Ссылка отозвана'
+            : 'Ссылка перевыпущена',
       );
       setConfirmation(null);
       setManualCopy('');
@@ -789,6 +795,21 @@ export function Respondents({
                         }}
                       />
                     )}
+                    {link.revoked && (
+                      <Button
+                        variant="ghost"
+                        title={t('Удалить ссылку')}
+                        aria-label={t('Удалить ссылку: {value0}', {
+                          value0: link.name,
+                        })}
+                        disabled={busy}
+                        startIcon={<Trash2 />}
+                        onClick={() => {
+                          setNotice('');
+                          setConfirmation({link, action: 'delete'});
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               )}
@@ -837,23 +858,34 @@ export function Respondents({
       )}
       {confirmation && (
         <ConfirmDialog
-          title={
-            confirmation.action === 'revoke'
-              ? t('Отозвать ссылку?')
-              : t('Перевыпустить ссылку?')
-          }
-          description={
-            confirmation.action === 'revoke'
-              ? t('Ссылка и открытые по ней сессии перестанут работать')
-              : t(
-                  'Старая ссылка и ее сессии перестанут работать, имя и использованное право голоса сохранятся',
-                )
-          }
-          confirmLabel={
-            confirmation.action === 'revoke'
-              ? t('Отозвать')
-              : t('Перевыпустить')
-          }
+          title={t(
+            {
+              revoke: 'Отозвать ссылку?',
+              rotate: 'Перевыпустить ссылку?',
+              delete: 'Удалить ссылку?',
+            }[confirmation.action],
+          )}
+          description={t(
+            {
+              revoke:
+                confirmation.link.mode === 'registration'
+                  ? 'Новые регистрации будут закрыты, зарегистрированные участники сохранят доступ'
+                  : 'Ссылка и открытые по ней сессии перестанут работать',
+              rotate:
+                confirmation.link.mode === 'registration'
+                  ? 'Новые регистрации будут доступны по новой ссылке, зарегистрированные участники сохранят доступ'
+                  : 'Старая ссылка и ее сессии перестанут работать, имя и использованное право голоса сохранятся',
+              delete:
+                'Респонденты и их поименные ответы будут удалены, анонимные ответы останутся в результатах',
+            }[confirmation.action],
+          )}
+          confirmLabel={t(
+            {
+              revoke: 'Отозвать',
+              rotate: 'Перевыпустить',
+              delete: 'Удалить',
+            }[confirmation.action],
+          )}
           busy={busy}
           error={t(notice)}
           onConfirm={() => void confirm()}

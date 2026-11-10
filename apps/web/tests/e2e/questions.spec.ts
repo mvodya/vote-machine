@@ -233,11 +233,11 @@ test('room edit rule persists and stale rule changes are rejected', async ({
     exact: true,
   });
   await expect(rule).toBeEnabled();
-  await expect(rule).toBeChecked();
+  await expect(rule).not.toBeChecked();
   const old = (
     await (await page.request.get(`/api/rooms/${room}/question-policy`)).json()
   ).policy;
-  await rule.uncheck();
+  await rule.check();
   await expect(
     page.getByText('Правило сохранено', {exact: true}),
   ).toBeVisible();
@@ -245,14 +245,14 @@ test('room edit rule persists and stale rule changes are rejected', async ({
     `/api/rooms/${room}/question-policy`,
     {
       headers: {Origin: new URL(page.url()).origin},
-      data: {...old, lockAfterOpen: true},
+      data: {...old, lockAfterOpen: false},
     },
   );
   expect(conflict.status()).toBe(409);
   await page.reload();
   await page.getByRole('tab', {name: 'Настройки', exact: true}).click();
   await expect(rule).toBeEnabled();
-  await expect(rule).not.toBeChecked();
+  await expect(rule).toBeChecked();
   await expect(panel).toBeVisible();
 });
 
@@ -333,12 +333,12 @@ test('room settings save on blur and toggle without separate action buttons', as
   ).toBeVisible();
   await expect(check).toHaveCount(0);
   // The name save changed the room version used by the rule
-  await rule.uncheck();
+  await rule.check();
   await expect(
     page.getByText('Правило сохранено', {exact: true}),
   ).toBeVisible();
   const saved = await page.request.get(`/api/rooms/${room}/question-policy`);
-  expect((await saved.json()).policy.lockAfterOpen).toBe(false);
+  expect((await saved.json()).policy.lockAfterOpen).toBe(true);
   await input.fill('Inline save');
   await check.click();
   await expect(

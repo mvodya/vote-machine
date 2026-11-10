@@ -42,8 +42,8 @@ test('room summary sharing is live, independent of question sharing and XLSX sta
       summary.getByText('Проголосовало', {exact: true}),
     ).toBeVisible();
     await expect(
-      summary.getByRole('heading', {name: 'Ответы по ссылкам', exact: true}),
-    ).toBeVisible();
+      summary.getByText('Alice (участников: 1)', {exact: true}),
+    ).toHaveCount(0);
     const adminFile = await page.request.get(
       `/api/rooms/${f.room.id}/results?format=xlsx`,
     );
