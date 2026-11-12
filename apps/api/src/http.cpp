@@ -77,7 +77,7 @@ void DatabaseReply(const drogon::orm::Result& result, const Reply& reply) {
   const auto status = body["status"].asInt();
   if (status != 200 && status != 201 && status != 400 && status != 401 &&
       status != 403 && status != 404 && status != 409 && status != 413 &&
-      status != 415) {
+      status != 415 && status != 429) {
     Unavailable(reply);
     return;
   }

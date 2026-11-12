@@ -41,7 +41,13 @@ export interface ResultPage {
   questions: {id: string; content: string; state: string; available: boolean}[];
   nextCursor: string | null;
 }
-const sources = ['personal', 'admin_personal', 'reusable', 'admin_manual'];
+const sources = [
+  'personal',
+  'admin_personal',
+  'reusable',
+  'registration',
+  'admin_manual',
+];
 // Reject unsafe counts and unknown identifiers
 function count(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
@@ -165,7 +171,7 @@ export function publicResult(
       !isRecord(value.sources) ||
       !sources.every(
         (key) =>
-          (key === 'admin_personal' &&
+          (['admin_personal', 'registration'].includes(key) &&
             (value.sources as Record<string, unknown>)[key] === undefined) ||
           count((value.sources as Record<string, unknown>)[key]),
       )

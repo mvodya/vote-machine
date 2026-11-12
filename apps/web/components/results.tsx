@@ -24,6 +24,7 @@ const sourceNames: Record<string, string> = {
   personal: 'Персональные ссылки',
   admin_personal: 'Персональные ссылки',
   reusable: 'Многоразовые ссылки',
+  registration: 'Ссылки с регистрацией',
   admin_manual: 'Ручной ввод',
 };
 export interface ResultsSnapshot {

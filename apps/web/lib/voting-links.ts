@@ -138,7 +138,7 @@ export function linksCsv(
         link.mode === 'personal'
           ? 'Персональная'
           : link.mode === 'registration'
-            ? 'С регистрацией'
+            ? 'Ссылки с регистрацией'
             : 'Многоразовая',
       ),
       translate(locale, link.revoked ? 'Отозвана' : 'Действует'),

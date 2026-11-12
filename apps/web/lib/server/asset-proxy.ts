@@ -7,6 +7,7 @@ import {secretPattern} from '../rooms';
 import {isAsset, publicAsset, maxUploadBytes} from '../assets';
 import {processMedia, MediaError} from './media.mjs';
 import {putObject, getObject, headObject} from './storage.mjs';
+import {mcpBackend} from './mcp-backend';
 
 const headers = {
   'Cache-Control': 'private, no-store',
@@ -111,20 +112,55 @@ async function uploadForm(request: Request) {
   return file;
 }
 // Validate, normalize and upload only after the room access check
-export async function uploadAsset(request: Request, room: string) {
-  if (!sameOrigin(request)) return failure(403);
+export async function uploadAsset(
+  request: Request,
+  room: string,
+  agent?: {token: string},
+) {
+  if (!agent && !sameOrigin(request)) return failure(403);
   let claimed = false;
   try {
-    const token = adminToken(request, room);
-    await backend(`/api/rooms/${room}/assets/access`, token);
+    const token = agent?.token ?? adminToken(request, room);
+    // Use the agent grant for every step, including after a slow upload
+    async function call(
+      action: 'access' | 'reserve' | 'finish',
+      id?: string,
+      body?: Record<string, unknown>,
+    ) {
+      if (agent) {
+        const response = await mcpBackend(
+          'operation',
+          room,
+          token,
+          `media_${action}`,
+          {
+            ...(id ? {id} : {}),
+            ...body,
+          },
+        );
+        if (!response.ok) throw new AccessError(response.status);
+        return response.json();
+      }
+      const suffix =
+        action === 'access'
+          ? '/access'
+          : action === 'finish'
+            ? `/${id}/finish`
+            : '';
+      return backend(
+        `/api/rooms/${room}/assets${suffix}`,
+        token,
+        body,
+        action === 'finish',
+      );
+    }
+    await call('access');
     if (processing >= 2)
       return failure(503, 'Загрузка занята, попробуйте снова');
     processing++;
     claimed = true;
     const file = await uploadForm(request);
-    const reserved = await backend(`/api/rooms/${room}/assets`, token, {
-      bytes: file.size,
-    });
+    const reserved = await call('reserve', undefined, {bytes: file.size});
     const id = reserved.asset?.id;
     if (
       typeof id !== 'string' ||
@@ -142,18 +178,13 @@ export async function uploadAsset(request: Request, room: string) {
       result.mime,
       AbortSignal.timeout(30000),
     );
-    const finished = await backend(
-      `/api/rooms/${room}/assets/${id}/finish`,
-      token,
-      {
-        mime: result.mime,
-        width: result.width,
-        height: result.height,
-        bytes: result.data.length,
-        sha256: createHash('sha256').update(result.data).digest('hex'),
-      },
-      true,
-    );
+    const finished = await call('finish', id, {
+      mime: result.mime,
+      width: result.width,
+      height: result.height,
+      bytes: result.data.length,
+      sha256: createHash('sha256').update(result.data).digest('hex'),
+    });
     if (!isAsset(finished.asset) || finished.asset.id !== id)
       throw new Error('Invalid media');
     return NextResponse.json(

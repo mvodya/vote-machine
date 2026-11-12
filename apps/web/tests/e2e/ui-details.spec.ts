@@ -22,6 +22,7 @@ test('logo, connection details and app information fit a narrow screen', async (
   });
   await expect(connection).toBeVisible();
   await expect(connection.getByText('Задержка', {exact: true})).toBeVisible();
+  await expect(connection.getByText(/^\d+ мс$/)).toBeVisible();
   await expect(
     connection.getByRole('img', {name: /^Последние задержки:/}),
   ).toBeVisible();
@@ -68,8 +69,23 @@ test('admin link starts covered and tab navigation skips panel containers', asyn
 }) => {
   const f = await votingFixture(page);
   await page.goto(`/rooms/${f.room.id}`);
+  const edit = page.getByRole('button', {name: 'Редактировать', exact: true});
+  await expect(edit).toBeVisible();
+  await expect(edit).toHaveText('');
+  await expect(edit.locator('svg')).toHaveCount(1);
   const settings = page.getByRole('tab', {name: 'Настройки', exact: true});
   await settings.click();
+  const adminPanel = page.getByRole('region', {
+    name: 'Административный доступ',
+    exact: true,
+  });
+  const mcpPanel = page.getByRole('region', {name: 'MCP и API', exact: true});
+  await expect(mcpPanel).toBeVisible();
+  expect(
+    await adminPanel.evaluate((element) =>
+      element.nextElementSibling?.getAttribute('aria-label'),
+    ),
+  ).toBe('MCP и API');
   const link = page.getByLabel('Административная ссылка', {exact: true});
   await expect(link).toHaveAttribute('type', 'password');
   await link.click();

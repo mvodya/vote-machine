@@ -22,6 +22,32 @@
 
 Administrators share links with participants themselves. The admin link grants full access to the room
 
+## MCP for agents
+
+Create a room in the browser and open **Settings > MCP and API**. Add the shared `/api/mcp` URL to a client using Streamable HTTP. The client can list tools without a token
+
+```json
+{
+  "mcpServers": {
+    "vote-machine": {
+      "url": "https://your-vote-machine.example/api/mcp"
+    }
+  }
+}
+```
+
+Use the room's API token as `apiToken` in MCP tool calls, or configure the client to send it in the `Authorization: Bearer <token>` header. The token selects the room and grants administrator access to the available tools
+
+- Read questions and options, including drafts
+- Create up to 20 drafts in one batch or update an existing question using its current revision
+- Upload an image and use the returned `asset:<id>` in Markdown
+- Read room summaries, question totals and paged answers for a registration group. Anonymous answers and results hidden until closing follow the same rules as the room UI
+- Find registration groups, list their members, correct names and moderate entry using the latest member revision
+
+For scripts, send the same bearer token with a JSON POST to `/api/agent/{toolName}`. The `media_upload` tool accepts base64 images up to 8 MiB, and its HTTP endpoint also accepts a multipart `file` up to 10 MiB
+
+Reveal, copy or rotate the token in the same settings panel. Rotation immediately invalidates the old token for both MCP and the HTTP API
+
 ## Installation
 
 Requires Git, Node.js 24 and Docker.

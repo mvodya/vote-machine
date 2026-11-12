@@ -501,7 +501,7 @@ export function Respondents({
             >
               <option value="personal">{t('Персональная')}</option>
               <option value="reusable">{t('Многоразовая')}</option>
-              <option value="registration">{t('С регистрацией')}</option>
+              <option value="registration">{t('Ссылки с регистрацией')}</option>
             </SelectField>
             {mode === 'registration' && (
               <CheckboxField
@@ -665,7 +665,7 @@ export function Respondents({
                           ? t('Персональная')
                           : t(
                               link.mode === 'registration'
-                                ? 'С регистрацией'
+                                ? 'Ссылки с регистрацией'
                                 : 'Многоразовая',
                             )}
                       </span>
@@ -698,6 +698,13 @@ export function Respondents({
                                 ? t('Онлайн')
                                 : t('Не в сети')}
                           </span>
+                          {link.mode === 'registration' && (
+                            <span>
+                              {t('Регистраций: {count}', {
+                                count: online[link.id].registeredCount ?? 0,
+                              })}
+                            </span>
+                          )}
                           {link.mode === 'reusable' && (
                             <span>
                               {t('Заходов: ')}

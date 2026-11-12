@@ -115,3 +115,20 @@ it('translates CSV headers without changing user option text', () => {
   expect(csv).toContain('"Option","Votes","Percentage"');
   expect(csv).toContain('"Ответы","1","100"');
 });
+
+it('keeps registration sources separate and reads older result payloads', () => {
+  const value = publicResult(
+    {
+      ...result,
+      sources: {personal: 0, reusable: 0, registration: 1, admin_manual: 0},
+    },
+    true,
+  )!;
+  expect(value.sources).toEqual({
+    personal: 0,
+    reusable: 0,
+    registration: 1,
+    admin_manual: 0,
+  });
+  expect(publicResult(result, true)!.sources?.registration).toBe(0);
+});

@@ -19,6 +19,7 @@
 #include "diagnostics.hpp"
 #include "links.hpp"
 #include "live.hpp"
+#include "mcp.hpp"
 #include "questions.hpp"
 #include "registration.hpp"
 #include "results.hpp"
@@ -49,39 +50,44 @@ drogon::HttpResponsePtr JsonReply(
 void CheckDatabase(const drogon::orm::DbClientPtr& database, const Reply& reply,
                    bool hello) {
   database->execSqlAsync(
-      hello ? "SELECT $1::text AS message"
-            : "SELECT $1::text AS message, "
-              "to_regprocedure('public.vm_create_room(text,bytea,bytea)') IS "
-              "NOT NULL AND "
-              "to_regprocedure('public.vm_add_voting_links(uuid,bytea,jsonb)') "
-              "IS "
-              "NOT NULL AND "
-              "to_regprocedure('public.vm_question_request(uuid,bytea,uuid,"
-              "text,jsonb)') IS NOT NULL AND "
-              "to_regprocedure('public.vm_asset_request(uuid,bytea,uuid,text,"
-              "jsonb)') IS NOT NULL AND "
-              "to_regprocedure('public.vm_close_due()') IS NOT NULL AND "
-              "to_regprocedure('public.vm_cast_personal(uuid,bytea,uuid,jsonb)'"
-              ") IS NOT NULL AND "
-              "to_regprocedure('public.vm_participant_journey(uuid,bytea,jsonb)"
-              "') IS NOT NULL AND "
-              "to_regprocedure('public.vm_store_question(uuid,bytea,uuid,text,"
-              "jsonb)') IS NOT NULL AND "
-              "to_regprocedure('public.vm_cast_ballot(uuid,uuid,bytea,boolean,"
-              "uuid,jsonb)') IS NOT NULL AND "
-              "to_regprocedure('public.vm_results(uuid,bytea,boolean,uuid,"
-              "jsonb)') IS NOT NULL AND "
-              "to_regprocedure('public.vm_event_state(uuid,bytea,boolean)') IS "
-              "NOT NULL AND "
-              "to_regprocedure('public.vm_question_presence(uuid,bytea,jsonb)')"
-              " IS NOT NULL AND "
-              "to_regprocedure('public.vm_request_admission(bytea,uuid,bytea,"
-              "text,text,jsonb)') IS NOT NULL AND "
-              "to_regprocedure('public.vm_delete_room(uuid,bytea,jsonb)') IS "
-              "NOT NULL AND "
-              "to_regprocedure('public.vm_room_experience(uuid,bytea,boolean,"
-              "jsonb)') IS NOT NULL AS "
-              "schema_ready",
+      hello
+          ? "SELECT $1::text AS message"
+          : "SELECT $1::text AS message, "
+            "to_regprocedure('public.vm_create_room(text,bytea,bytea)') IS "
+            "NOT NULL AND "
+            "to_regprocedure('public.vm_add_voting_links(uuid,bytea,jsonb)') "
+            "IS "
+            "NOT NULL AND "
+            "to_regprocedure('public.vm_question_request(uuid,bytea,uuid,"
+            "text,jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_asset_request(uuid,bytea,uuid,text,"
+            "jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_close_due()') IS NOT NULL AND "
+            "to_regprocedure('public.vm_cast_personal(uuid,bytea,uuid,jsonb)'"
+            ") IS NOT NULL AND "
+            "to_regprocedure('public.vm_participant_journey(uuid,bytea,jsonb)"
+            "') IS NOT NULL AND "
+            "to_regprocedure('public.vm_store_question(uuid,bytea,uuid,text,"
+            "jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_cast_ballot(uuid,uuid,bytea,boolean,"
+            "uuid,jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_results(uuid,bytea,boolean,uuid,"
+            "jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_event_state(uuid,bytea,boolean)') IS "
+            "NOT NULL AND "
+            "to_regprocedure('public.vm_question_presence(uuid,bytea,jsonb)')"
+            " IS NOT NULL AND "
+            "to_regprocedure('public.vm_request_admission(bytea,uuid,bytea,"
+            "text,text,jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_delete_room(uuid,bytea,jsonb)') IS "
+            "NOT NULL AND "
+            "to_regprocedure('public.vm_room_experience(uuid,bytea,boolean,"
+            "jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_room_agent_operation(uuid,bytea,text,"
+            "jsonb)') IS NOT NULL AND "
+            "to_regprocedure('public.vm_room_agent_token(uuid,bytea,text,bytea,"
+            "bytea)') IS NOT NULL AS "
+            "schema_ready",
       [reply, hello](const drogon::orm::Result& result) {
         Json::Value body;
         // The hello route returns the database reply
@@ -191,6 +197,8 @@ int main() {
             ? vote_machine::HashSecret("vote-machine:gateway:" +
                                        std::string(ReadEnv("ADMIN_LINK_KEY")))
             : std::string(gateway_key);
+    vote_machine::RegisterMcpHandlers(
+        database, drain_key, std::string(ReadEnv("ADMIN_LINK_KEY")));
     // Operators retire one replica without logging or exposing its key
     drogon::app().registerHandler(
         "/internal/drain",

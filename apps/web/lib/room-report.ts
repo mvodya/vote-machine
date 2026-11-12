@@ -33,7 +33,7 @@ export interface RoomReport {
     answers: {questionId: string; choices: string[]}[];
   }[];
 }
-const kinds = ['personal', 'reusable', 'admin_manual'];
+const kinds = ['personal', 'reusable', 'registration', 'admin_manual'];
 // Keep counts precise before building charts or a workbook
 function count(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;

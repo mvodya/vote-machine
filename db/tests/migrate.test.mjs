@@ -7206,7 +7206,7 @@ test('deleting a registration group removes its members and named answers while 
       (await results(client, f, true, f.question.id, {view: 'export'})).report;
     const before = await report();
     assert.equal(before.answers, 4);
-    assert.deepEqual(before.sources, []);
+    assert.deepEqual(before.sources, [{kind: 'registration', answers: 4}]);
     assert.equal(before.participants, 2);
     assert.deepEqual(before.links, [
       {
@@ -7239,7 +7239,7 @@ test('deleting a registration group removes its members and named answers while 
     );
     const after = await report();
     assert.equal(after.answers, 2);
-    assert.deepEqual(after.sources, []);
+    assert.deepEqual(after.sources, [{kind: 'registration', answers: 2}]);
     assert.equal(after.participants, 2);
     assert.deepEqual(after.links, []);
     assert.deepEqual(after.people, []);
@@ -7264,7 +7264,7 @@ test('deleting a registration group removes its members and named answers while 
       '0',
     );
     await assert.rejects(
-      runMigrations({databaseUrl, direction: 'down'}),
+      rollbackFrom(databaseUrl, '1795651200000'),
       /Recover detached registration sources/,
     );
     assert.deepEqual(await report(), after);
@@ -7341,5 +7341,645 @@ test('concurrent deletion of a reusable link keeps anonymous runs distinct and r
         .count,
       '0',
     );
+  });
+});
+
+test('MCP question batches are atomic and retry safe and updates honor question revisions', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const token = randomBytes(32).toString('hex');
+    assert.equal((await agentToken(client, admin, token)).status, 200);
+    const run = (action, data = {}) =>
+      agentOperation(client, null, token, action, data);
+    const question = questionDocument({
+      content: 'First draft',
+      choices: [{content: 'A'}, {content: 'B'}],
+    });
+    const invalid = await run('questions_create_batch', {
+      requestId: randomUUID(),
+      questions: [question, {...question, minChoices: 5}],
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.index, 1);
+    assert.deepEqual((await run('questions_list', {after: '0'})).questions, []);
+    const batch = {
+      requestId: randomUUID(),
+      questions: [
+        question,
+        {...question, content: 'Second draft', state: 'open'},
+      ],
+    };
+    const created = await run('questions_create_batch', batch);
+    assert.equal(created.status, 201);
+    assert.deepEqual(await run('questions_create_batch', batch), created);
+    assert.equal(
+      (await run('questions_create_batch', {...batch, questions: [question]}))
+        .status,
+      409,
+    );
+    const list = (await run('questions_list', {after: '0'})).questions;
+    assert.equal(list.length, 2);
+    assert(list.every((q) => q.state === 'draft'));
+    const q = (await run('questions_get', {id: created.questions[0].id}))
+      .question;
+    const update = {
+      id: q.id,
+      revision: q.revision,
+      question: {...q, content: 'Edited by agent', state: 'open'},
+    };
+    assert.equal((await run('questions_update', update)).status, 200);
+    assert.equal((await run('questions_update', update)).status, 409);
+    const current = (await questionCall(client, admin, 'get', {}, q.id))
+      .question;
+    assert.equal(current.content, 'Edited by agent');
+    assert.equal(current.state, 'draft');
+  });
+});
+
+// Use a fake cipher here because encryption is handled by the API
+async function agentToken(client, admin, token, action = 'ensure') {
+  const {rows} = await client.query(
+    'SELECT * FROM vm_room_agent_token($1,$2,$3,$4,$5)',
+    [
+      admin.room.id,
+      hash(admin.session),
+      action,
+      hash(token),
+      Buffer.from(token, 'hex'),
+    ],
+  );
+  return rows[0];
+}
+
+// Exercise the same token check used by both public endpoints
+async function agentOperation(
+  client,
+  room,
+  token,
+  action = 'access',
+  data = {},
+) {
+  const {rows} = await client.query(
+    'SELECT vm_room_agent_operation($1,$2,$3,$4) AS reply',
+    [room, hash(token), action, JSON.stringify(data)],
+  );
+  return rows[0].reply;
+}
+
+test('room API tokens are stable on concurrent issuance and rotate for both access paths', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const admin = await adminRoom(client);
+    const other = await adminRoom(client);
+    const candidates = [
+      randomBytes(32).toString('hex'),
+      randomBytes(32).toString('hex'),
+    ];
+    const replacement = randomBytes(32).toString('hex');
+    const second = new pg.Client({connectionString: databaseUrl});
+    await second.connect();
+    try {
+      const issued = await Promise.all([
+        agentToken(client, admin, candidates[0]),
+        agentToken(second, admin, candidates[1]),
+      ]);
+      const token = issued[0].encrypted;
+      assert(candidates.includes(token));
+      assert.deepEqual(issued, [
+        {status: 200, encrypted: token},
+        {status: 200, encrypted: token},
+      ]);
+      assert.equal(
+        (await agentOperation(client, null, token)).room,
+        admin.room.id,
+      );
+      assert.equal(
+        (await agentOperation(client, other.room.id, token)).status,
+        401,
+      );
+      assert.equal(
+        (
+          await agentToken(
+            client,
+            {...admin, session: other.session},
+            replacement,
+            'rotate',
+          )
+        ).status,
+        401,
+      );
+      assert.equal(
+        (
+          await agentToken(
+            client,
+            {...admin, session: token},
+            replacement,
+            'rotate',
+          )
+        ).status,
+        401,
+      );
+
+      const batch = {
+        requestId: randomUUID(),
+        questions: [questionDocument({content: 'Retained draft'})],
+      };
+      const created = await agentOperation(
+        client,
+        null,
+        token,
+        'questions_create_batch',
+        batch,
+      );
+      assert.equal(created.status, 201);
+      assert.deepEqual(await agentToken(client, admin, replacement, 'rotate'), {
+        status: 200,
+        encrypted: replacement,
+      });
+      for (const room of [null, admin.room.id]) {
+        assert.equal((await agentOperation(second, room, token)).status, 401);
+        assert.equal(
+          (await agentOperation(second, room, replacement)).room,
+          admin.room.id,
+        );
+      }
+      assert.deepEqual(
+        await agentOperation(
+          second,
+          null,
+          replacement,
+          'questions_create_batch',
+          batch,
+        ),
+        created,
+      );
+      await assert.rejects(
+        rollbackFrom(databaseUrl, '1795910400000'),
+        /Room API tokens must be cleared before rollback/,
+      );
+      assert.equal(
+        (await agentOperation(client, null, replacement)).status,
+        200,
+      );
+
+      // Delete only the disposable room and check a clean rollback and reapply
+      const {
+        rows: [room],
+      } = await client.query('SELECT revision FROM rooms WHERE id=$1', [
+        admin.room.id,
+      ]);
+      const {
+        rows: [{reply: removed}],
+      } = await client.query('SELECT vm_delete_room($1,$2,$3) AS reply', [
+        admin.room.id,
+        hash(admin.session),
+        JSON.stringify({
+          confirmation: admin.room.id,
+          revision: String(room.revision),
+        }),
+      ]);
+      assert.equal(removed.status, 200);
+      assert.equal(
+        (await agentOperation(client, null, replacement)).status,
+        401,
+      );
+      await rollbackFrom(databaseUrl, '1795910400000');
+      assert.equal(
+        (
+          await client.query(
+            "SELECT to_regclass('room_agent_tokens') AS tokens",
+          )
+        ).rows[0].tokens,
+        null,
+      );
+      await runMigrations({databaseUrl});
+      assert.equal((await agentToken(client, other, replacement)).status, 200);
+    } finally {
+      await second.end();
+    }
+  });
+});
+
+test('retiring OAuth removes old grants while preserving room tokens and batch receipts', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    await rollbackFrom(databaseUrl, '1795996800000');
+    const admin = await adminRoom(client);
+    const room = admin.room.id;
+    const legacy = randomBytes(32).toString('hex');
+    const token = randomBytes(32).toString('hex');
+    await client.query(
+      `
+      WITH old_client AS (
+        INSERT INTO mcp_clients(name,redirects) VALUES('Old client',ARRAY['https://client.test/callback']) RETURNING id
+      )
+      INSERT INTO mcp_connections(room_id,admin_id,client_id,resource,scopes,redirect_uri,challenge,code_until,access_hash,access_until,full_admin)
+      SELECT $1,a.id,c.id,'https://vote.test/mcp',ARRAY['questions:read'],'https://client.test/callback',repeat('a',43),
+        now(),$2,now()+interval '1 hour',true FROM room_admin_sessions a CROSS JOIN old_client c WHERE a.room_id=$1
+    `,
+      [room, hash(legacy)],
+    );
+
+    const oldAccess = async () =>
+      (
+        await client.query('SELECT vm_mcp_operation($1,$2,$3,$4) AS reply', [
+          room,
+          hash(legacy),
+          'access',
+          '{"resource":"https://vote.test/mcp"}',
+        ])
+      ).rows[0].reply.status;
+    const removed = async () =>
+      (
+        await client.query(`
+      SELECT to_regclass('mcp_clients') IS NULL AND to_regclass('mcp_connections') IS NULL
+        AND to_regclass('mcp_question_batches') IS NULL
+        AND to_regprocedure('vm_mcp_oauth(uuid,bytea,text,jsonb)') IS NULL
+        AND to_regprocedure('vm_mcp_operation(uuid,bytea,text,jsonb)') IS NULL
+        AND to_regprocedure('vm_mcp_oauth_before_full_access(uuid,bytea,text,jsonb)') IS NULL
+        AND to_regprocedure('vm_mcp_operation_before_full_access(uuid,bytea,text,jsonb)') IS NULL AS gone
+    `)
+      ).rows[0].gone;
+    assert.equal(await oldAccess(), 200);
+    await agentToken(client, admin, token);
+    const batch = {
+      requestId: randomUUID(),
+      questions: [questionDocument({content: 'Keep this draft'})],
+    };
+    const created = await agentOperation(
+      client,
+      room,
+      token,
+      'questions_create_batch',
+      batch,
+    );
+    assert.equal(created.status, 201);
+
+    await runMigrations({databaseUrl});
+    assert.equal(await removed(), true);
+    assert.equal((await agentOperation(client, room, legacy)).status, 401);
+    assert.deepEqual(
+      await agentOperation(
+        client,
+        room,
+        token,
+        'questions_create_batch',
+        batch,
+      ),
+      created,
+    );
+    await assert.rejects(
+      rollbackFrom(databaseUrl, '1795910400000'),
+      /Room API tokens must be cleared before rollback/,
+    );
+    assert.equal(await removed(), true);
+    assert.equal(
+      (await agentOperation(client, room, token, 'results_summary')).status,
+      200,
+    );
+
+    await rollbackFrom(databaseUrl, '1795996800000');
+    assert.equal(await oldAccess(), 401);
+    assert.deepEqual(
+      await agentOperation(
+        client,
+        room,
+        token,
+        'questions_create_batch',
+        batch,
+      ),
+      created,
+    );
+    await runMigrations({databaseUrl});
+    assert.equal(await removed(), true);
+  });
+});
+
+test('MCP results and roster use room access, revisions and the same privacy rules as the admin UI', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client);
+    const other = await registrationFixture(client, false);
+    const token = randomBytes(32).toString('hex');
+    await agentToken(client, f.admin, token);
+    const run = (action, data = {}) =>
+      agentOperation(client, null, token, action, data);
+    const {groups} = await run('registration_groups_list');
+    assert.deepEqual(groups, [
+      {
+        id: f.group.id,
+        name: 'Students',
+        requireModeration: true,
+        revokedAt: null,
+      },
+    ]);
+    assert.deepEqual(
+      (await run('registration_groups_list', {after: '1'})).groups,
+      [],
+    );
+    assert.equal(
+      (await run('registration_members_list', {groupId: other.group.id}))
+        .status,
+      404,
+    );
+
+    const p = registrationPacket('A. Example');
+    const {member} = await registerPerson(client, f, p);
+    const groupId = f.group.id;
+    const pending = await run('registration_members_list', {
+      groupId,
+      filter: 'pending',
+    });
+    assert.equal(pending.members[0].id, member.id);
+    const change = {
+      groupId,
+      memberId: member.id,
+      revision: pending.members[0].revision,
+    };
+    assert.equal(
+      (await run('registration_member_moderate', {...change, action: 'secret'}))
+        .status,
+      400,
+    );
+    assert.equal(
+      (
+        await run('registration_member_moderate', {
+          ...change,
+          action: 'approve',
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await run('registration_member_rename', {
+          ...change,
+          name: 'Wrong revision',
+        })
+      ).status,
+      409,
+    );
+    const registered = (await run('registration_members_list', {groupId}))
+      .members[0];
+    assert.equal(
+      (
+        await run('registration_member_rename', {
+          ...change,
+          revision: registered.revision,
+          name: 'Alice Example',
+        })
+      ).status,
+      200,
+    );
+    const {votingId} = await registerPerson(client, f);
+    const voter = {
+      link: {id: votingId},
+      session: p.session,
+      question: f.question,
+    };
+
+    const hidden = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {hideResultsUntilEnd: true}),
+        'open',
+      )
+    ).question;
+    const anonymous = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {anonymous: true}),
+        'open',
+      )
+    ).question;
+    for (const question of [f.question, hidden, anonymous]) {
+      assert(
+        (await cast(client, {...voter, question}, ballotInput(question)))
+          .answer,
+      );
+    }
+    // An answer from another group in the same room is never included
+    const key = linkItem('Other students', 'registration');
+    const [anotherGroup] = await addLinks(client, f.admin, [key]);
+    const {session} = await openLink(client, anotherGroup, key.key);
+    const otherPacket = registrationPacket('Other member');
+    const anotherVoter = await registerPerson(
+      client,
+      {group: anotherGroup, session},
+      otherPacket,
+    );
+    assert(
+      (
+        await cast(
+          client,
+          {
+            link: {id: anotherVoter.votingId},
+            session: otherPacket.session,
+            question: f.question,
+          },
+          ballotInput(f.question),
+        )
+      ).answer,
+    );
+
+    const questionId = f.question.id;
+    const query = {groupId, questionId};
+    const grouped = await run('registration_results', query);
+    assert.deepEqual(grouped, {
+      status: 200,
+      available: true,
+      groupId,
+      questionId,
+      nextCursor: null,
+      answers: [
+        {
+          memberId: member.id,
+          name: 'Alice Example',
+          choices: [f.question.choices[0].id],
+        },
+      ],
+    });
+    assert.equal(
+      (
+        await run('registration_results', {
+          ...query,
+          questionId: other.question.id,
+        })
+      ).status,
+      404,
+    );
+    const named = (await run('results_get', {questionId})).result;
+    assert.equal(named.total, 2);
+    assert.equal(
+      named.people.find((person) => person.linkId === votingId).name,
+      'Alice Example',
+    );
+    assert.deepEqual(
+      (
+        await run('registration_results', {
+          ...query,
+          after: named.people.find((person) => person.linkId === votingId).id,
+        })
+      ).answers,
+      [],
+    );
+    assert(
+      (await run('results_list')).questions.some(
+        (question) => question.id === questionId,
+      ),
+    );
+    const allocation = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {
+          questionType: 'allocation',
+          choiceMode: 'multiple',
+          minChoices: 2,
+          maxChoices: 2,
+          allowAnswerChange: true,
+          choices: [
+            {content: 'A', capacity: 2},
+            {content: 'B', capacity: 2},
+          ],
+        }),
+        'open',
+      )
+    ).question;
+    const allocationVoter = {...voter, question: allocation};
+    const partial = await cast(
+      client,
+      allocationVoter,
+      ballotInput(allocation),
+    );
+    assert.equal(partial.status, 200);
+    const allocationQuery = {...query, questionId: allocation.id};
+    assert.deepEqual(
+      (await run('registration_results', allocationQuery)).answers,
+      [],
+    );
+    assert.equal((await run('results_summary')).report.answers, 3);
+    const complete = await cast(
+      client,
+      allocationVoter,
+      ballotInput(allocation, {
+        choices: allocation.choices.map((choice) => choice.id),
+        ballotRevision: partial.answer.revision,
+      }),
+    );
+    assert.equal(complete.status, 200);
+    assert.equal(
+      (await run('registration_results', allocationQuery)).answers.length,
+      1,
+    );
+    for (const question of [hidden, anonymous]) {
+      assert.deepEqual(
+        await run('registration_results', {...query, questionId: question.id}),
+        {status: 200, available: false},
+      );
+      assert.equal(
+        (await run('results_get', {questionId: question.id})).result.people,
+        undefined,
+      );
+    }
+    assert.equal(
+      (await run('results_get', {questionId: hidden.id})).result.available,
+      false,
+    );
+    assert.equal(
+      (await run('results_get', {questionId: anonymous.id})).result.total,
+      1,
+    );
+    assert.equal(
+      (await lifecycle(client, f.admin, hidden, 'close')).status,
+      200,
+    );
+    assert.equal(
+      (await run('registration_results', {...query, questionId: hidden.id}))
+        .answers.length,
+      1,
+    );
+
+    await rollbackFrom(databaseUrl, '1796083200000');
+    assert.equal((await run('registration_groups_list')).status, 403);
+    await runMigrations({databaseUrl});
+    assert.deepEqual(await run('registration_results', query), grouped);
+  });
+});
+
+test('registration sources stay separate in question and room results across rollback and reapply', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const packet = registrationPacket();
+    const person = await registerPerson(client, f, packet);
+    const voter = {
+      link: {id: person.votingId},
+      session: packet.session,
+      question: f.question,
+    };
+    assert.equal(
+      (await cast(client, voter, ballotInput(f.question))).status,
+      200,
+    );
+    const read = () => results(client, f, true, f.question.id);
+    const report = () => results(client, f, true, null, {view: 'summary'});
+    assert.deepEqual((await read()).result.sources, {
+      personal: 0,
+      reusable: 0,
+      registration: 1,
+      admin_manual: 0,
+    });
+    assert.deepEqual((await report()).report.sources, [
+      {kind: 'registration', answers: 1},
+    ]);
+
+    const presence = async () =>
+      (
+        await client.query('SELECT vm_admin_presence($1,$2,$3) AS reply', [
+          f.admin.room.id,
+          hash(f.admin.session),
+          JSON.stringify([f.group.id]),
+        ])
+      ).rows[0].reply.links[0];
+    assert.equal((await presence()).registeredCount, 1);
+    const key = linkItem('Pending group', 'registration');
+    const [pendingGroup] = await addLinks(client, f.admin, [
+      {...key, requireModeration: true},
+    ]);
+    const {session} = await openLink(client, pendingGroup, key.key);
+    const pending = await registerPerson(
+      client,
+      {group: pendingGroup, session},
+      registrationPacket('Pending'),
+    );
+    const {
+      rows: [{reply: presencePage}],
+    } = await client.query('SELECT vm_admin_presence($1,$2,$3) AS reply', [
+      f.admin.room.id,
+      hash(f.admin.session),
+      JSON.stringify([pendingGroup.id]),
+    ]);
+    assert.equal(presencePage.links[0].pendingCount, 1);
+    assert.equal(presencePage.links[0].registeredCount, 0);
+    assert.equal(pending.member.state, 'pending');
+
+    await client.query(
+      "CREATE VIEW external_sources AS SELECT vm_results(NULL::uuid,NULL::bytea,true,NULL::uuid,'{}'::jsonb)",
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down'}),
+      /depend/,
+    );
+    assert.equal((await read()).result.sources.registration, 1);
+    await client.query('DROP VIEW external_sources');
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal((await read()).result.sources.registration, undefined);
+    await runMigrations({databaseUrl});
+    assert.equal((await read()).result.sources.registration, 1);
+    assert.equal((await report()).report.answers, 1);
   });
 });

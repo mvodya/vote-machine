@@ -256,9 +256,12 @@ export function createIngress({
       }
       if (path.startsWith('/api/')) {
         const write = !['GET', 'HEAD'].includes(req.method);
+        // Agent endpoints also accept native clients without an Origin
+        const nativeClient =
+          path === '/api/mcp' || path.startsWith('/api/agent/');
         if (
           req.headers['sec-fetch-site'] === 'cross-site' ||
-          (write && !req.headers.origin) ||
+          (write && !nativeClient && !req.headers.origin) ||
           (req.headers.origin &&
             new URL(req.headers.origin).origin !== origin.origin)
         ) {

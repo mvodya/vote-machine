@@ -168,3 +168,9 @@ it('localizes workbook labels without translating room names or question content
   expect(book.worksheets[1].getCell('B1').value).toBe('Ответы');
   expect(book.worksheets.at(-1)!.name).toBe('By participant');
 });
+
+it('accepts the registration source in admin and shared room summaries', () => {
+  const data = {...report, sources: [{kind: 'registration', answers: 1}]};
+  expect(publicRoomReport(data, true)!.sources).toEqual(data.sources);
+  expect(publicRoomReport(data, false)!.sources).toEqual(data.sources);
+});

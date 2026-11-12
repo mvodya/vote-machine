@@ -12,6 +12,7 @@ import {localTimeZone} from '../../../lib/time';
 import {RoomName} from './room-name';
 import {Questions} from './questions';
 import {QuestionPolicy} from './question-policy';
+import {McpSettings} from './mcp-settings';
 import {Respondents} from './respondents';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {Copy, Eye, EyeOff} from 'lucide-react';
@@ -374,58 +375,63 @@ export default function AdminRoom({id}: {id: string}) {
                         <ResultsPolicy roomId={id} onDenied={denyAccess} />
                         <DeleteRoom room={room} onDenied={denyAccess} />
                       </div>
-                      <Panel aria-label={t('Административный доступ')}>
-                        <h2 className="mb-3 text-lg font-semibold">
-                          {t('Административный доступ')}
-                        </h2>
-                        <p className="mb-5 text-sm">
-                          {t('Ссылка дает полный доступ к управлению комнатой')}
-                        </p>
-                        {link ? (
-                          <>
-                            <TextField
-                              id="admin-link"
-                              type={linkVisible ? 'text' : 'password'}
-                              autoComplete="off"
-                              endAction={
-                                <Button
-                                  variant="ghost"
-                                  aria-label={
-                                    linkVisible
-                                      ? t('Скрыть административную ссылку')
-                                      : t('Показать административную ссылку')
-                                  }
-                                  onClick={() =>
-                                    setLinkVisible((value) => !value)
-                                  }
-                                >
-                                  {linkVisible ? <EyeOff /> : <Eye />}
-                                </Button>
-                              }
-                              onClick={() => setLinkVisible(true)}
-                              label={t('Административная ссылка')}
-                              className="font-mono"
-                              readOnly
-                              value={link}
-                              onFocus={(event) => event.target.select()}
-                            />
+                      <div className="space-y-5">
+                        <Panel aria-label={t('Административный доступ')}>
+                          <h2 className="mb-3 text-lg font-semibold">
+                            {t('Административный доступ')}
+                          </h2>
+                          <p className="mb-5 text-sm">
+                            {t(
+                              'Ссылка дает полный доступ к управлению комнатой',
+                            )}
+                          </p>
+                          {link ? (
+                            <>
+                              <TextField
+                                id="admin-link"
+                                type={linkVisible ? 'text' : 'password'}
+                                autoComplete="off"
+                                endAction={
+                                  <Button
+                                    variant="ghost"
+                                    aria-label={
+                                      linkVisible
+                                        ? t('Скрыть административную ссылку')
+                                        : t('Показать административную ссылку')
+                                    }
+                                    onClick={() =>
+                                      setLinkVisible((value) => !value)
+                                    }
+                                  >
+                                    {linkVisible ? <EyeOff /> : <Eye />}
+                                  </Button>
+                                }
+                                onClick={() => setLinkVisible(true)}
+                                label={t('Административная ссылка')}
+                                className="font-mono"
+                                readOnly
+                                value={link}
+                                onFocus={(event) => event.target.select()}
+                              />
+                              <Button
+                                onClick={() => void copy()}
+                                variant="secondary"
+                                className="mt-4"
+                                startIcon={<Copy />}
+                              >
+                                {t('Скопировать ссылку')}
+                              </Button>
+                            </>
+                          ) : (
                             <Button
-                              onClick={() => void copy()}
-                              variant="secondary"
-                              className="mt-4"
-                              startIcon={<Copy />}
+                              onClick={() => setAttempt((value) => value + 1)}
                             >
-                              {t('Скопировать ссылку')}
+                              {t('Получить ссылку')}
                             </Button>
-                          </>
-                        ) : (
-                          <Button
-                            onClick={() => setAttempt((value) => value + 1)}
-                          >
-                            {t('Получить ссылку')}
-                          </Button>
-                        )}
-                      </Panel>
+                          )}
+                        </Panel>
+                        <McpSettings roomId={id} onDenied={denyAccess} />
+                      </div>
                     </div>
                   )}
                 </TabPanel>

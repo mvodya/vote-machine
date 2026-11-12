@@ -394,13 +394,17 @@ export function Questions({
                       }}
                     />
                     <Button
-                      variant="secondary"
+                      variant="ghost"
                       startIcon={item.editLocked ? <Eye /> : <Pencil />}
+                      aria-label={
+                        item.editLocked ? t('Просмотреть') : t('Редактировать')
+                      }
+                      title={
+                        item.editLocked ? t('Просмотреть') : t('Редактировать')
+                      }
                       disabled={busy}
                       onClick={() => void open(item.id)}
-                    >
-                      {item.editLocked ? t('Просмотреть') : t('Редактировать')}
-                    </Button>
+                    />
                     {
                       <Button
                         variant="ghost"

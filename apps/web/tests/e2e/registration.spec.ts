@@ -60,7 +60,7 @@ test('registration creation uses group labels and exposes only its moderation se
     .check();
   await page.getByRole('button', {name: 'Создать ссылки', exact: true}).click();
   const row = page.getByRole('listitem', {name: 'Students', exact: true});
-  await expect(row).toContainText('С регистрацией');
+  await expect(row).toContainText('Ссылки с регистрацией');
   await row
     .getByRole('button', {name: 'Изменить имя: Students', exact: true})
     .click();
@@ -537,6 +537,12 @@ test('registration group results have a separate section and deletion follows re
       .getByRole('button', {name: 'Отправить ответ', exact: true})
       .click();
     await page.goto(`/rooms/${f.room.id}`);
+    await page.getByRole('tab', {name: 'Респонденты', exact: true}).click();
+    await expect(
+      page
+        .getByRole('listitem', {name: 'Students', exact: true})
+        .getByText('Регистраций: 1', {exact: true}),
+    ).toBeVisible();
     await page.getByRole('tab', {name: 'Результаты', exact: true}).click();
     const summary = page.getByRole('region', {
       name: 'Общие результаты',
@@ -547,7 +553,7 @@ test('registration group results have a separate section and deletion follows re
       summary.locator('section').filter({
         has: page.getByRole('heading', {name, exact: true}),
       });
-    const registered = chart('С регистрацией');
+    const registered = chart('Ссылки с регистрацией');
     await expect(registered.getByText('Students', {exact: true})).toBeVisible();
     await expect(registered.getByRole('listitem')).toHaveText('Students1');
     await expect(summary.getByText('Students', {exact: true})).toHaveCount(1);
@@ -558,8 +564,27 @@ test('registration group results have a separate section and deletion follows re
       chart('Многоразовые ссылки').getByText('Нет ответов'),
     ).toBeVisible();
     await expect(
-      chart('Источники ответов').getByText('Нет ответов'),
+      chart('Источники ответов').getByText('Ссылки с регистрацией', {
+        exact: true,
+      }),
     ).toBeVisible();
+    await page
+      .getByRole('button', {name: 'Результаты: Choose a result', exact: true})
+      .click();
+    const detail = page.getByRole('region', {
+      name: 'Итоги вопроса',
+      exact: true,
+    });
+    await expect(
+      detail
+        .locator('dl > div')
+        .filter({has: page.getByText('Ссылки с регистрацией', {exact: true})}),
+    ).toHaveText('Ссылки с регистрацией1');
+    await expect(
+      detail
+        .locator('dl > div')
+        .filter({has: page.getByText('Персональные ссылки', {exact: true})}),
+    ).toHaveText('Персональные ссылки0');
     await page.getByRole('tab', {name: 'Респонденты', exact: true}).click();
     const group = page.getByRole('listitem', {name: 'Students', exact: true});
     const remove = group.getByRole('button', {

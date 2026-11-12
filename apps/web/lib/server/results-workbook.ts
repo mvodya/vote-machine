@@ -6,6 +6,7 @@ import {markdownSummary} from '../markdown';
 const kinds: Record<string, string> = {
   personal: 'Персональная ссылка',
   reusable: 'Многоразовая ссылка',
+  registration: 'Ссылки с регистрацией',
   admin_manual: 'Ручной ввод',
 };
 
@@ -91,7 +92,7 @@ export async function resultsWorkbook(
           ...report.links.map((link) => [
             link.name,
             link.mode === 'registration'
-              ? t('С регистрацией')
+              ? t('Ссылки с регистрацией')
               : link.mode === 'personal'
                 ? t('Персональная')
                 : t('Многоразовая'),

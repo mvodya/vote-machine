@@ -11,6 +11,7 @@ import {Loading, Spinner} from './ui/loading';
 const sources: Record<string, string> = {
   personal: 'Персональные ссылки',
   reusable: 'Многоразовые ссылки',
+  registration: 'Ссылки с регистрацией',
   admin_manual: 'Ручной ввод',
 };
 // Use the same filtered snapshot for counters and charts
@@ -207,7 +208,7 @@ export function RoomSummary({
                     }))}
                 />
                 <Bars
-                  title={t('С регистрацией')}
+                  title={t('Ссылки с регистрацией')}
                   items={report.links
                     .filter((link) => link.mode === 'registration')
                     .slice(0, 10)
