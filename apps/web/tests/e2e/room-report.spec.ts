@@ -161,7 +161,7 @@ test('anonymous XLSX contains aggregates but no participant associations', async
     expect(adminResponse.status()).toBe(200);
     const adminBook = await workbook(await adminResponse.body());
     expect(adminBook.getWorksheet('По участникам')!.rowCount).toBe(1);
-    expect(adminBook.getWorksheet('По участникам')!.columnCount).toBe(3);
+    expect(adminBook.getWorksheet('По участникам')!.columnCount).toBe(4);
     const publicResponse = await participant.request.get(
       `/api/vote/${f.link.id}/results?format=xlsx`,
     );

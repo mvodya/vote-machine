@@ -83,17 +83,19 @@ it('rejects cross-origin registration and forwards only the entered name', async
     401,
   );
 });
-it('escapes registration CSV names and ignores internal status fields', () => {
+it('exports group and member IDs while escaping CSV names', () => {
   const csv = registrationsCsv(
     [
       {...person, name: ' =SUM(1,2)'},
       {...person, name: 'A "quote"', blocked: true},
     ],
     (value) => value,
+    '=Group',
   );
   expect(csv).toContain('"\' =SUM(1,2)"');
-  expect(csv).toContain('"A ""quote""","Заблокирован"');
-  expect(csv).not.toContain(member);
+  expect(csv).toContain('"A ""quote""","\'=Group","Заблокирован"');
+  expect(csv).toContain(member);
+  expect(csv).toContain('"ID участника","Имя","Группа","Статус"');
   expect(
     registrationStatus({...status, member: {...person, revision: '-1'}}),
   ).toBeNull();
@@ -146,4 +148,21 @@ it('checks admin rename origin and forwards only a valid name with its revision'
     name: 'Bob',
     revision: '1',
   });
+});
+
+it('registration CSV keeps pending and blocked people but omits rejected attempts', () => {
+  const csv = registrationsCsv(
+    [
+      {...person, name: 'Pending', state: 'pending'},
+      {...person, name: 'Blocked', blocked: true},
+      {...person, name: 'Rejected', state: 'rejected'},
+    ],
+    (value) => value,
+    'Students',
+  );
+  expect(csv).toContain('"Pending","Students","Ожидает подтверждения"');
+  expect(csv).toContain('"Blocked","Students","Заблокирован"');
+  expect(csv).not.toContain('Rejected');
+  expect(csv).not.toContain('callSequence');
+  expect(csv).not.toContain(token);
 });

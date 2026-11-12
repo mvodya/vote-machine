@@ -30,6 +30,9 @@ export interface RoomReport {
     name: string | null;
     kind: string;
     groupName?: string;
+    // Public member and group IDs are separate from voting credentials
+    memberId?: string;
+    groupId?: string;
     answers: {questionId: string; choices: string[]}[];
   }[];
 }
@@ -150,6 +153,12 @@ export function publicRoomReport(
         (person.groupName !== undefined &&
           (typeof person.groupName !== 'string' ||
             [...person.groupName].length > 200)) ||
+        (person.memberId !== undefined &&
+          (typeof person.memberId !== 'string' ||
+            !roomIdPattern.test(person.memberId))) ||
+        (person.groupId !== undefined &&
+          (typeof person.groupId !== 'string' ||
+            !roomIdPattern.test(person.groupId))) ||
         !kinds.includes(String(person.kind)) ||
         !Array.isArray(person.answers)
       )
@@ -174,7 +183,17 @@ export function publicRoomReport(
       report.people.push({
         id: person.id,
         name: person.name as string | null,
-        kind: String(person.kind),
+        // Older reports marked registered people as personal links
+        kind:
+          typeof person.groupName === 'string' && person.kind === 'personal'
+            ? 'registration'
+            : String(person.kind),
+        ...(typeof person.memberId === 'string'
+          ? {memberId: person.memberId}
+          : {}),
+        ...(typeof person.groupId === 'string'
+          ? {groupId: person.groupId}
+          : {}),
         ...(typeof person.groupName === 'string'
           ? {groupName: person.groupName}
           : {}),

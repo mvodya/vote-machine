@@ -134,6 +134,7 @@ export function registrationUrl(
 export function registrationsCsv(
   members: RegisteredMember[],
   t: (message: string) => string,
+  groupName: string,
 ) {
   const cell = (value: unknown) => {
     const text = String(value ?? '');
@@ -145,11 +146,15 @@ export function registrationsCsv(
     rejected: 'Отказано',
   };
   const rows = [
-    [t('Имя'), t('Статус')],
-    ...members.map((m) => [
-      m.name,
-      t(m.blocked ? 'Заблокирован' : states[m.state]),
-    ]),
+    [t('ID участника'), t('Имя'), t('Группа'), t('Статус')],
+    ...members
+      .filter((member) => member.state !== 'rejected')
+      .map((m) => [
+        m.id,
+        m.name,
+        groupName,
+        t(m.blocked ? 'Заблокирован' : states[m.state]),
+      ]),
   ];
   return '\uFEFF' + rows.map((row) => row.map(cell).join(',')).join('\r\n');
 }

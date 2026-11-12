@@ -74,7 +74,7 @@ it('writes real XLSX sheets with plain text cells and no anonymous session colum
   await anonBook.xlsx.load(
     new Uint8Array(await resultsWorkbook(anonymous, true)).buffer,
   );
-  expect(anonBook.getWorksheet('По участникам')!.columnCount).toBe(3);
+  expect(anonBook.getWorksheet('По участникам')!.columnCount).toBe(4);
   expect(anonBook.getWorksheet('По участникам')!.rowCount).toBe(1);
 });
 it('omits the participant worksheet and link names from the respondent workbook', async () => {
@@ -107,7 +107,7 @@ it('keeps long Unicode selections in continuation rows without cutting off text'
   const sheet = book.getWorksheet('По участникам')!;
   expect(sheet.rowCount).toBe(3);
   expect(
-    String(sheet.getCell('D2').value) + String(sheet.getCell('D3').value),
+    String(sheet.getCell('E2').value) + String(sheet.getCell('E3').value),
   ).toBe(text);
   expect(sheet.getCell('A3').value).toBe(report.people[0].id);
 });
@@ -173,4 +173,112 @@ it('accepts the registration source in admin and shared room summaries', () => {
   const data = {...report, sources: [{kind: 'registration', answers: 1}]};
   expect(publicRoomReport(data, true)!.sources).toEqual(data.sources);
   expect(publicRoomReport(data, false)!.sources).toEqual(data.sources);
+});
+
+it('exports registered names, groups and member IDs without labeling them as personal links', async () => {
+  const memberId = 'b96c3a49-0198-4545-8dce-44b70c86494d';
+  const groupId = 'c96c3a49-0198-4545-8dce-44b70c86494d';
+  const data = {
+    ...report,
+    people: [
+      {
+        ...report.people[0],
+        name: '=Alice',
+        kind: 'registration',
+        groupName: '=Students',
+        memberId,
+        groupId,
+      },
+    ],
+  };
+  const parsed = publicRoomReport(data, true, true)!;
+  expect(parsed.people[0]).toMatchObject({
+    kind: 'registration',
+    memberId,
+    groupId,
+  });
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(
+    new Uint8Array(await resultsWorkbook(parsed, true)).buffer,
+  );
+  const page = book.getWorksheet('По участникам')!;
+  expect(page.getRow(1).values).toEqual([
+    undefined,
+    'Участник / прохождение',
+    'Имя участника / ссылки',
+    'Группа',
+    'Режим',
+    'Question / [title]',
+  ]);
+  expect(page.getRow(2).values).toEqual([
+    undefined,
+    memberId,
+    '=Alice',
+    '=Students',
+    'Ссылки с регистрацией',
+    '=HYPERLINK("bad")',
+  ]);
+  expect(page.getCell('B2').type).toBe(ExcelJS.ValueType.String);
+  expect(page.getCell('C2').type).toBe(ExcelJS.ValueType.String);
+  expect(page.autoFilter).toBe('A1:E2');
+  expect(page.views[0]).toMatchObject({state: 'frozen', ySplit: 1});
+  expect(book.worksheets[1].getRow(3).font.bold).toBe(true);
+  expect(book.worksheets[1].autoFilter).toBe('A3:C4');
+  expect(book.worksheets[1].getCell('C4').numFmt).toBe('0.##"%"');
+
+  // Older exports have group names but no separate member fields
+  expect(
+    publicRoomReport(
+      {...data, people: [{...report.people[0], groupName: 'Students'}]},
+      true,
+      true,
+    )!.people[0].kind,
+  ).toBe('registration');
+  expect(
+    publicRoomReport(
+      {...data, people: [{...data.people[0], memberId: 'secret'}]},
+      true,
+      true,
+    ),
+  ).toBeNull();
+  const publicBook = new ExcelJS.Workbook();
+  await publicBook.xlsx.load(
+    new Uint8Array(
+      await resultsWorkbook(publicRoomReport(data, false, true)!, false),
+    ).buffer,
+  );
+  expect(publicBook.getWorksheet('По участникам')).toBeUndefined();
+  const rows: unknown[] = [];
+  publicBook.worksheets.forEach((sheet) =>
+    sheet.eachRow((row) => rows.push(row.values)),
+  );
+  expect(JSON.stringify(rows)).not.toContain('Students');
+  expect(JSON.stringify(rows)).not.toContain(memberId);
+});
+
+it('keeps separate rows for equal names from different registration groups', async () => {
+  const data = {
+    ...report,
+    people: [
+      {...report.people[0], name: 'Alex', groupName: 'Group A'},
+      {
+        ...report.people[0],
+        id: 'p:b96c3a49-0198-4545-8dce-44b70c86494d',
+        name: 'Alex',
+        groupName: 'Group B',
+      },
+    ],
+  };
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(
+    new Uint8Array(
+      await resultsWorkbook(publicRoomReport(data, true, true)!, true),
+    ).buffer,
+  );
+  const page = book.getWorksheet('По участникам')!;
+  expect(page.rowCount).toBe(3);
+  expect(page.getCell('B2').value).toBe('Alex');
+  expect(page.getCell('B3').value).toBe('Alex');
+  expect(page.getCell('C2').value).toBe('Group A');
+  expect(page.getCell('C3').value).toBe('Group B');
 });

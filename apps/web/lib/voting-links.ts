@@ -128,7 +128,7 @@ export function linksCsv(
   locale: Locale = 'ru',
 ) {
   const rows = [
-    ['Имя', 'Режим', 'Статус', 'Ссылка'].map((label) =>
+    ['Имя / группа', 'Режим', 'Статус', 'Ссылка'].map((label) =>
       translate(locale, label),
     ),
     ...links.map((link) => [

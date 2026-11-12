@@ -211,7 +211,9 @@ export function RegistrationMembers({
         after = data.nextCursor;
       }
       const url = URL.createObjectURL(
-        new Blob([registrationsCsv(all, t)], {type: 'text/csv;charset=utf-8'}),
+        new Blob([registrationsCsv(all, t, group.name)], {
+          type: 'text/csv;charset=utf-8',
+        }),
       );
       const link = document.createElement('a');
       link.href = url;

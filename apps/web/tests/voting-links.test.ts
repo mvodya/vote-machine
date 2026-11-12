@@ -59,9 +59,9 @@ describe('link exports', () => {
       ],
       'https://vote.test',
     );
-    expect(csv.startsWith('\uFEFF"Имя","Режим","Статус","Ссылка"\r\n')).toBe(
-      true,
-    );
+    expect(
+      csv.startsWith('\uFEFF"Имя / группа","Режим","Статус","Ссылка"\r\n'),
+    ).toBe(true);
     expect(csv).toContain('"\' =SUM(1,2)"');
     expect(csv).toContain(
       '"A ""quote""\nNew line","Персональная","Отозвана",""',

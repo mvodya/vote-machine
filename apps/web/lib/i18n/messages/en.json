@@ -696,5 +696,8 @@
   "Обновить API-токен?": "Rotate the API token?",
   "Старый токен сразу перестанет работать в MCP и API": "The old token will immediately stop working in MCP and the API",
   "Ссылки с регистрацией": "Registration links",
-  "Регистраций: {count}": "Registrations: {count}"
+  "Регистраций: {count}": "Registrations: {count}",
+  "Имя участника / ссылки": "Participant / link name",
+  "ID участника": "Participant ID",
+  "Имя / группа": "Name / group"
 }

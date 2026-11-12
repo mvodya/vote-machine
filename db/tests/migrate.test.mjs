@@ -7970,16 +7970,90 @@ test('registration sources stay separate in question and room results across rol
     await client.query(
       "CREATE VIEW external_sources AS SELECT vm_results(NULL::uuid,NULL::bytea,true,NULL::uuid,'{}'::jsonb)",
     );
-    await assert.rejects(
-      runMigrations({databaseUrl, direction: 'down'}),
-      /depend/,
-    );
+    await assert.rejects(rollbackFrom(databaseUrl, '1796169600000'), /depend/);
     assert.equal((await read()).result.sources.registration, 1);
     await client.query('DROP VIEW external_sources');
-    await runMigrations({databaseUrl, direction: 'down'});
+    await rollbackFrom(databaseUrl, '1796169600000');
     assert.equal((await read()).result.sources.registration, undefined);
     await runMigrations({databaseUrl});
     assert.equal((await read()).result.sources.registration, 1);
     assert.equal((await report()).report.answers, 1);
+  });
+});
+
+test('registration workbook identities preserve anonymous and hidden export boundaries through rollback', async () => {
+  await withDatabase(async ({client, databaseUrl}) => {
+    await runMigrations({databaseUrl});
+    const f = await registrationFixture(client, false);
+    const packet = registrationPacket('Alice');
+    const person = await registerPerson(client, f, packet);
+    const anonymous = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {anonymous: true}),
+        'open',
+      )
+    ).question;
+    const hidden = (
+      await lifecycle(
+        client,
+        f.admin,
+        await readyQuestion(client, f.admin, {hideResultsUntilEnd: true}),
+        'open',
+      )
+    ).question;
+    const voter = {link: {id: person.votingId}, session: packet.session};
+    for (const question of [f.question, anonymous, hidden]) {
+      assert.equal(
+        (await cast(client, {...voter, question}, ballotInput(question)))
+          .status,
+        200,
+      );
+    }
+    const report = async () =>
+      (await results(client, f, true, null, {view: 'export'})).report;
+    let exported = await report();
+    assert.equal(exported.people.length, 1);
+    assert.deepEqual(exported.people[0], {
+      id: 'p:' + person.votingId,
+      name: 'Alice',
+      kind: 'registration',
+      groupName: 'Students',
+      groupId: f.group.id,
+      memberId: person.member.id,
+      answers: [
+        {questionId: f.question.id, choices: [f.question.choices[0].content]},
+      ],
+    });
+    assert(exported.sheets.some((question) => question.id === anonymous.id));
+    assert(!exported.sheets.some((question) => question.id === hidden.id));
+    const summary = (await results(client, f, true, null, {view: 'summary'}))
+      .report;
+    assert.deepEqual(summary.people, []);
+    assert.equal(JSON.stringify(summary).includes(person.member.id), false);
+
+    await client.query(
+      'CREATE VIEW external_export AS SELECT vm_room_report(NULL::uuid,NULL::bytea,true,NULL::uuid,true)',
+    );
+    await assert.rejects(
+      runMigrations({databaseUrl, direction: 'down'}),
+      /depend/,
+    );
+    assert.equal((await report()).people[0].memberId, person.member.id);
+    await client.query('DROP VIEW external_export');
+    await runMigrations({databaseUrl, direction: 'down'});
+    assert.equal((await report()).people[0].kind, 'personal');
+    await runMigrations({databaseUrl});
+    assert.deepEqual(await report(), exported);
+    assert.equal(
+      (await lifecycle(client, f.admin, hidden, 'close')).status,
+      200,
+    );
+    exported = await report();
+    assert.equal(exported.people[0].answers.length, 2);
+
+    // Exporting a list never changes the registered browser identity
+    assert.equal((await registerPerson(client, f)).member.id, person.member.id);
   });
 });

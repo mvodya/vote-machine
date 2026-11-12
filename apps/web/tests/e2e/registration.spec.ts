@@ -1,5 +1,7 @@
 import {expect, test, type Page} from '@playwright/test';
 import {votingFixture} from './voting-helpers';
+import ExcelJS from 'exceljs';
+import {readFile} from 'node:fs/promises';
 
 // All registration checks use real group links and independent browser cookies
 async function setup(page: Page, moderation = false) {
@@ -609,6 +611,65 @@ test('registration group results have a separate section and deletion follows re
     await expect(
       student.getByText('Ссылка недействительна', {exact: true}),
     ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test('registration table exports contain member names, groups and public IDs', async ({
+  page,
+  browser,
+}) => {
+  const f = await setup(page);
+  const context = await browser.newContext({locale: 'ru-RU'});
+  try {
+    const student = await context.newPage();
+    await enroll(student, f.url, 'Group voter');
+    await student.getByRole('radio', {name: 'Yes', exact: true}).check();
+    await student
+      .getByRole('button', {name: 'Отправить ответ', exact: true})
+      .click();
+    await expect(
+      student.getByText('Все вопросы пройдены', {exact: true}),
+    ).toBeVisible();
+    await page.goto(`/rooms/${f.room.id}`);
+    const {
+      members: [member],
+    } = await (
+      await page.request.get(
+        `/api/rooms/${f.room.id}/links/${f.group.id}/members`,
+      )
+    ).json();
+    const file = await page.request.get(
+      `/api/rooms/${f.room.id}/results?format=xlsx`,
+    );
+    expect(file.status()).toBe(200);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(new Uint8Array(await file.body()).buffer);
+    const people = book.getWorksheet('По участникам')!;
+    expect(people.getRow(2).values).toEqual([
+      undefined,
+      member.id,
+      'Group voter',
+      'Students',
+      'Ссылки с регистрацией',
+      'Yes',
+    ]);
+    expect(people.autoFilter).toBe('A1:E2');
+
+    await page.getByRole('tab', {name: 'Респонденты', exact: true}).click();
+    const group = page.getByRole('listitem', {name: 'Students', exact: true});
+    await group
+      .getByRole('button', {name: 'Зарегистрированные', exact: true})
+      .click();
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', {name: 'Скачать CSV', exact: true}).click();
+    const csvFile = await downloading;
+    const csv = await readFile((await csvFile.path())!, 'utf8');
+    expect(csv).toContain('"ID участника","Имя","Группа","Статус"');
+    expect(csv).toContain(
+      `"${member.id}","Group voter","Students","Подтвержден"`,
+    );
   } finally {
     await context.close();
   }
